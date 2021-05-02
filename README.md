@@ -7,7 +7,7 @@
 ## Step 0.2: Computation of a field on the triangles.
 
 Some interesting timings:
-Computation of the field on the triangles on the low resolution mesh using either a vectorized loop (@avx - LoopVectorization package) or standard vectorisation.
+Computation of the field on the triangles on a low resolution mesh (max triangle area 0.01) using either a vectorized loop (@avx - LoopVectorization package) or standard vectorisation.
 
 Looped, 4 times:<br/>
   0.000015 seconds<br/>
@@ -20,7 +20,7 @@ Vectorized, 4 times:<br/>
   0.000015 seconds (12 allocations: 19.125 KiB)<br/>
   0.000014 seconds (12 allocations: 19.125 KiB)<br/>
 
-At high resolution:
+At high resolution (max triangle area 0.0001):
 
 Looped, 4 times:<br/>
   0.005380 seconds<br/>
