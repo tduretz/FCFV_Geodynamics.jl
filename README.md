@@ -4,10 +4,12 @@
 
 ## Step 0.1: Creating a triangular mesh with Triangle via TriangleMesh.
 
+The [Traingle](https://www.cs.cmu.edu/~quake/triangle.html) mesh generator is accessible through several packages. It is not clear which one should be used (?). Here, I've chosen to use [TriangleMesh](https://github.com/konsim83/TriangleMesh.jl) which allows to parse in command line arguments of the original Triangle.  
+
 ## Step 0.2: Computation of a field on the triangles.
 
 Some interesting timings:
-Computation of the field on the triangles on a low resolution mesh (max triangle area 0.01) using either a vectorized loop (@avx - LoopVectorization package) or standard vectorisation.
+Computation of the field on the triangles on a low resolution mesh (max triangle area 0.01) using either a vectorized loop (@avx - [LoopVectorization package](https://github.com/JuliaSIMD/LoopVectorization.jl)) or standard vectorisation.
 
 Looped, 4 times:<br/>
   0.000015 seconds<br/>
@@ -33,11 +35,11 @@ Vectorized, 4 times:<br/>
   0.015696 seconds (24 allocations: 15.630 MiB)<br/>
   0.015948 seconds (24 allocations: 15.630 MiB)<br/>
 
-As a conclusion, the package LoopVectorization rocks!
+As a conclusion, the package [LoopVectorization](https://github.com/JuliaSIMD/LoopVectorization.jl) rocks!
 
 ## Step 0.3: Visualising data ona Triangular mesh using Pyplot
 
-It was difficult to find a straighforward way to visualise data on triangle within existing Julia packages. Luckily, matplotlib has everything neede and is readily avalable via the PyPlot package.
+It was difficult to find a straighforward way to visualise data on triangles within existing Julia packages (docs are sometimes incomplete or practical examples are simply missing). Luckily, matplotlib has everything needed and is readily avalable via the PyPlot package.
 
 Low resolution:<br/>
 
