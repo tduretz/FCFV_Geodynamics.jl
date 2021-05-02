@@ -49,3 +49,4 @@ High resolution:<br/>
 
 ![](/images/0_HighRes.png)
 
+\\( a^2 = b^2 \\)
