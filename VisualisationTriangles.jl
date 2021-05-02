@@ -16,9 +16,15 @@ function tplot(p, t, v)
     # Plot triangular mesh with nodes `p` and triangles `t`
     plt.clf()
     tris = convert(Array{Int64}, hcat(t...)')
+    fig1, ax1 = plt.subplots()
     display(tripcolor(first.(p), last.(p), tris .- 1, v,
-              cmap="jet", edgecolors="none", linewidth=0) )
+              cmap="viridis", edgecolors="none", linewidth=0) )
     axis("equal")
+    plt.ylim([0, 1])
+    plt.xlim([0, 1])
+    ax1.set_title("Low res.")
+    ax1.set_xlabel("x")
+    ax1.set_ylabel("y")
     plt.colorbar()
     plt.show()
     return 
@@ -90,7 +96,7 @@ s  = vcat(sx, sy)         # segments
 # Triangulation
 holes    = Array{Float64}(undef,2,0)
 domain   = TriangleMesh.Polygon_pslg(size(p,2), p, 0, Array{Int64}(undef,2,0), 0, Array{Float64}(undef,2,0),  size(s,2), s, st[:], 0, holes)
-switches = "Dpenq33IAa0.00001"#"Dpenq33o2IAa"
+switches = "Dpenq33IAa0.01"#"Dpenq33o2IAa"
 mesh     = TriangleMesh.create_mesh(domain, switches)
 nvert_el = 3 # vertices per element
 
