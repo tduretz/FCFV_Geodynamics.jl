@@ -4,7 +4,7 @@
 
 ## Step 0.1: Creating a triangular mesh with Triangle via TriangleMesh.
 
-The [Traingle](https://www.cs.cmu.edu/~quake/triangle.html) mesh generator is accessible through several packages. It is not clear which one should be used (?). Here, I've chosen to use [TriangleMesh](https://github.com/konsim83/TriangleMesh.jl) which allows to parse in command line arguments of the original Triangle.  
+The [Triangle](https://www.cs.cmu.edu/~quake/triangle.html) mesh generator is accessible through several packages. It is not clear which one should be used (?). Here, I've chosen to use [TriangleMesh](https://github.com/konsim83/TriangleMesh.jl) which allows to parse in command line arguments of the original Triangle.  
 
 ## Step 0.2: Computation of a field on the triangles.
 
