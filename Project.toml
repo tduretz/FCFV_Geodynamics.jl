@@ -1,0 +1,5 @@
+[deps]
+LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+PyPlot = "d330b81b-6aea-500a-939a-2ce795aea3ee"
+TriangleMesh = "e5719326-7e34-5a7d-b19a-3e86f2e9acf7"
