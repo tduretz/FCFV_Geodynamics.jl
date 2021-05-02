@@ -1,4 +1,4 @@
-ENV["MPLBACKEND"]="tkagg"
+ENV["MPLBACKEND"]="macosx"
 # Problem #1 was to find a simple way to plot piecewise constant fields on triangles:
 # solution from: https://robertsweeneyblanco.github.io/Programming_for_Mathematical_Applications/Computational_Geometry/Triangulations.html
 # Proble #2 was to get any figures popping out in VScode 
