@@ -37,7 +37,7 @@ Vectorized, 4 times:<br/>
 
 As a conclusion, the package [LoopVectorization](https://github.com/JuliaSIMD/LoopVectorization.jl) rocks!
 
-## Step 0.3: Visualising data ona Triangular mesh using Pyplot
+## Step 0.3: Visualising data on a Triangular mesh using Pyplot
 
 It was difficult to find a straighforward way to visualise data on triangles within existing Julia packages (docs are sometimes incomplete or practical examples are simply missing). Luckily, matplotlib has everything needed and is readily avalable via the PyPlot package.
 
