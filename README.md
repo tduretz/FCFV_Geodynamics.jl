@@ -39,9 +39,11 @@ As a conclusion, the package LoopVectorization rocks!
 
 It was difficult to find a straighforward way to visualise data on triangle within existing Julia packages. Luckily, matplotlib has everything neede and is readily avalable via the PyPlot package.
 
-Low resolution:
+Low resolution:<br/>
+
 ![](/images/0_LowRes.png)
 
-High resolution:
+High resolution:<br/>
+
 ![](/images/0_HighRes.png)
 
