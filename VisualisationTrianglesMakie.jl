@@ -1,31 +1,16 @@
-ENV["MPLBACKEND"]="Qt5Agg"
-# Problem #1 was to find a simple way to plot piecewise constant fields on triangles:
-# solution from: https://robertsweeneyblanco.github.io/Programming_for_Mathematical_Applications/Computational_Geometry/Triangulations.html
-# Problem #2 was to get any figures popping out in VScode 
-# and: https://github.com/JuliaPy/PyPlot.jl/issues/418
-using PyPlot
 using Base.Threads
 using LoopVectorization
 import TriangleMesh
 using Printf
-pygui(true)
+using CairoMakie
+import AbstractPlotting.GeometryBasics
 
 #--------------------------------------------------------------------#
 
-function tplot(p, t, v)
-    # Plot triangular mesh with nodes `p` and triangles `t`
-    # clf()
-    # tris = convert(Array{Int64}, hcat(t...)')
-    # display(tripcolor(first.(p), last.(p), tris .- 1, v,
-    #           cmap="viridis", edgecolors="none", linewidth=0) )
-    # axis("equal")
-    # ylim([0, 1])
-    # xlim([0, 1])
-    # title("Low res.")
-    # xlabel("x")
-    # ylabel("y")
-    # colorbar()
-    # show()
+function tplot(Mesh, v)
+    p   = [AbstractPlotting.GeometryBasics.Polygon( Point2f0[ (Mesh.point[1, Mesh.cell[j,i]],Mesh.point[2, Mesh.cell[j,i]]) for j=1:3]    )
+    for i in 1:Mesh.n_cell]
+    display(poly(p, color = v ))
     return 
 end
 
@@ -100,16 +85,6 @@ mesh     = TriangleMesh.create_mesh(domain, switches)
 nvert_el = 3 # vertices per element
 println(size(mesh.cell))
 
-# Prepare mesh for visalisation
-p1 = fill(Float64[], size(mesh.point,2))
-for i=1:size(mesh.point,2)
-    p1[i] = [mesh.point[1,i], mesh.point[2,i]]
-end
-t1 = fill(Int64[], size(mesh.cell,2))
-for i=1:size(mesh.cell,2)
-    t1[i] = [mesh.cell[1,i], mesh.cell[2,i], mesh.cell[3,i]]
-end
-
 # Generate function to be visualised on mesh
 alp = 0.1; bet = 0.3; a = 5.1; b = 4.3; c = -6.2; d = 3.4;
 xc = zeros(mesh.n_cell)
@@ -129,10 +104,7 @@ for icall=1:ncalls
     @time Tanalytic!(mesh, xc ,yc , T, nvert_el, a, b, c, d, alp, bet, vec)
 end
 # # Visualise
-tplot(p1, t1, T) 
-
-println(typeof(t1))
-println(typeof(p1))
+tplot(mesh, T) 
 
 return
 end
