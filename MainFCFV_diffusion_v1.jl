@@ -36,11 +36,11 @@ end
     # Create sides of mesh
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    nx, ny     = 10, 10
-    quad = true
+    nx, ny     = 100, 100
+    quad = false
 
     # FCFV parameter
-    tau = 1#1e-2
+    tau = 1e-3
 
     if quad==true 
         mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax )
@@ -239,7 +239,18 @@ end
     ue_mat = MAT.read(file, "ue")
 
     # Visualise
-    @time PlotMakie(mesh, ue_mat )
+    @time PlotMakie( mesh, ue )
+    # function qplot(x, y, v)
+    # xc=LinRange(xmin,xmax,nx)
+    # yc=LinRange(ymin,ymax,ny)
+    # display( heatmap(xc,yc,reshape(ue,nx,ny), clim=[0.7 1.5]) )
+        # clf()
+        # display( pcolor(xc, yc, reshape(ue,nx,ny)) )
+        # colorbar()
+        # xlabel("x")
+        # ylabel("y")
+        # show()
+    # end
 
 # end
 

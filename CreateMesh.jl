@@ -171,8 +171,8 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
     x2  = LinRange(xmin,xmax,nx2)
     y2  = LinRange(ymin,ymax,ny2)
     # 2D mesh: fake ngrid for P-T space ;)
-    x2d   = repeat(x2, 1, length(y2))
-    y2d   = repeat(y2, 1, length(x2))'
+    x2d   = repeat(x2, 1, length(y2))'
+    y2d   = repeat(y2, 1, length(x2))
     nodes = zeros(Int64, size(x2d))
     # Number active dofs (midfaces) - Face node numbering
     inum = 0
@@ -287,8 +287,8 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
     mesh.bc     = tf
 
     if quad==true 
-        nodeA = [1 2 4 3]
-        nodeB = [2 3 1 4]
+        nodeA = [2 1 3 4]
+        nodeB = [3 2 4 1]
     end
 
     # Compute normal to faces
@@ -297,7 +297,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
     mesh.dA  = zeros(Float64,mesh.nel,mesh.nf_el)
 
      # Assemble FCFV elements
-     @avx for iel=1:mesh.nel  
+     for iel=1:mesh.nel  
         
         # println("element: ",  iel)
 
@@ -313,10 +313,12 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
             dy     = abs(mesh.yv[vert1] - mesh.yv[vert2] );
             dAi    = sqrt(dx^2 + dy^2);
 
-            # println(bc)
-            # @printf("face node, x = %2.2e y = %2.2e\n", mesh.xf[nodei], mesh.yf[nodei])
-            # @printf("vert1    , x = %2.2e y = %2.2e\n", mesh.xv[vert1], mesh.yv[vert1])
-            # @printf("vert2    , x = %2.2e y = %2.2e\n", mesh.xv[vert2], mesh.yv[vert2])
+            # if iel==1
+            #     println(bc)
+            #     @printf("face node, x = %2.2e y = %2.2e\n", mesh.xf[nodei], mesh.yf[nodei])
+            #     @printf("vert1    , x = %2.2e y = %2.2e\n", mesh.xv[vert1], mesh.yv[vert1])
+            #     @printf("vert2    , x = %2.2e y = %2.2e\n", mesh.xv[vert2], mesh.yv[vert2])
+            # end
            
             # Face normal
             n_x  =  dy/dAi
