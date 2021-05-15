@@ -19,6 +19,8 @@ Base.@kwdef mutable struct FCFV_Mesh
     e2v    ::Union{Matrix{Int64},   Missing} = missing # cell 2 node numbering
     e2f    ::Union{Matrix{Int64},   Missing} = missing # cell 2 face numbering
     vole   ::Union{Vector{Float64}, Missing} = missing # volume of element
+    n_x    ::Union{Vector{Float64}, Missing} = missing # normal 2 face x
+    n_y    ::Union{Vector{Float64}, Missing} = missing # normal 2 face y
 end
 
 function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax )
@@ -40,7 +42,7 @@ holes    = Array{Float64}(undef,2,0)
 domain   = TriangleMesh.Polygon_pslg(size(p,2), p, 0, Array{Int64}(undef,2,0), 0, Array{Float64}(undef,2,0),  size(s,2), s, st[:], 0, holes)
 # switches = "Dpenq33IAa$(area)"
 astring = @sprintf("%0.10lf", area)
-switches = "o2Dpenq33IAa$(astring)"
+switches = "Dpenq33o2IAa$(astring)" #Dpq33o2IAa
 println(switches)
 trimesh  = TriangleMesh.create_mesh(domain, switches)
 nvert_el = 3 # vertices per element
@@ -51,24 +53,26 @@ mesh.nel    = trimesh.n_cell
 e2v         = trimesh.cell[1:3,:]
 mesh.nv     = maximum(e2v)
 e2f         = trimesh.cell[4:6,:] .- mesh.nv
+mesh.nf     = maximum(e2f)
 mesh.xv     = trimesh.point[1,1:mesh.nv]
 mesh.yv     = trimesh.point[2,1:mesh.nv]
 mesh.xf     = trimesh.point[1,mesh.nv+1:end]
 mesh.yf     = trimesh.point[2,mesh.nv+1:end]
 mesh.bc     = trimesh.point_marker[mesh.nv+1:end]
-mesh.nf     = maximum(e2f)
+
 # println(size(trimesh.point))
 # println(size(mesh.xf))
 # println(mesh.nn+1)
-println(trimesh.point_marker)
-println(size(trimesh.point_marker))
+# println(trimesh.point_marker)
+# println(size(trimesh.point_marker))
 
 nel  = trimesh.n_cell
 vole = zeros(nel)
 xc   = zeros(nel)
 yc   = zeros(nel)
 
-@avx for iel=1:nel
+sumv=0.0
+for iel=1:nel
     # Compute volumes of triangles - use vertices coordinates
     x1 = mesh.xv[e2v[1,iel]]
     y1 = mesh.yv[e2v[1,iel]]
@@ -83,9 +87,10 @@ yc   = zeros(nel)
     vole[iel] = sqrt(s*(s-a)*(s-b)*(s-c))
     xc[iel]   = 1.0/3.0*(x1+x2+x3)
     yc[iel]   = 1.0/3.0*(y1+y2+y3)
+    sumv+=vole[iel] 
 end
+println("volume = ", sumv)
 
-mesh.nel    = nel
 mesh.e2v    = e2v'
 mesh.e2f    = e2f'
 mesh.nn_el  = 3
@@ -113,8 +118,8 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
     x2  = LinRange(xmin,xmax,nx2)
     y2  = LinRange(ymin,ymax,ny2)
     # 2D mesh: fake ngrid for P-T space ;)
-    x2d   = repeat(x2, 1, length(y2))'
-    y2d   = repeat(y2, 1, length(x2))
+    x2d   = repeat(x2, 1, length(y2))
+    y2d   = repeat(y2, 1, length(x2))'
     nodes = zeros(Int64, size(x2d))
     # Number active dofs (midfaces) - Face node numbering
     inum = 0
@@ -170,7 +175,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
     face = zeros(Int64, 4, ncell)
     @avx for i=1:nx
         for j=1:ny
-            k  = i + (j-1)*nx
+            k  = j + (i-1)*ny
             jc = i+1 + (i-1)*1
             ic = j+1 + (j-1)*1
             face[1,k] =  nodes[ic,jc-1] # South
@@ -184,9 +189,9 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
     vert = zeros(Int64, 4, ncell)
     @avx for i=1:nx
         for j=1:ny
-            k  = i + (j-1)*nx
-            ic = i+1 + (i-1)*1
-            jc = j+1 + (j-1)*1
+            k  = j + (i-1)*ny
+            jc = i+1 + (i-1)*1
+            ic = j+1 + (j-1)*1
             vert[1,k] =  nodes[ic-1,jc+1] # South
             vert[2,k] =  nodes[ic-1,jc-1] # East
             vert[3,k] =  nodes[ic+1,jc-1] # North
@@ -211,21 +216,59 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
 
     # Fill structure
     mesh        = FCFV_Mesh()
+        # Compute normal to faces
+        mesh.n_x = zeros(ncell,4)
+        mesh.n_y = zeros(ncell,4)
     mesh.type   = "quad"
     mesh.nel    = ncell
     mesh.nf     = nface
     mesh.nv     = (nx+1)*(ny+1)
     mesh.xv     = xn
     mesh.yv     = yn
-    mesh.e2v    = vert' # cell nodes - not dofs! Dofs are in 'cell'
-    mesh.e2f    = face'
     mesh.xf     = xf
     mesh.yf     = yf
-    mesh.nn_el  = 4
-    mesh.nf_el  = 4
     mesh.xc     = xc
     mesh.yc     = yc
     mesh.vole   = dx*dy*ones(ncell)
     mesh.bc     = tf
+
+    if quad==true 
+        nodeA = [1 2 4 3]
+        nodeB = [2 3 1 4]
+    end
+
+
+    #  # Assemble FCFV elements
+    #  for iel=1:mesh.nel  
+        
+    #     for ifac=1:mesh.nf_el
+            
+    #         nodei  = mesh.e2f[iel,ifac]
+
+    #         # Vertices
+    #         vert1  = mesh.e2v[iel,nodeA[ifac]]
+    #         vert2  = mesh.e2v[iel,nodeB[ifac]]
+    #         bc     = mesh.bc[nodei]
+    #         dx     = abs(mesh.xv[vert1] - mesh.xv[vert2] );
+    #         dy     = abs(mesh.yv[vert1] - mesh.yv[vert2] );
+    #         dAi    = sqrt(dx^2 + dy^2);
+
+    #         # Face normal
+    #         n_x  =  dy/dAi
+    #         n_y  = -dx/dAi
+            
+    #         # Third vector
+    #         v_x  = mesh.xf[nodei] - mesh.xc[iel]
+    #         v_y  = mesh.yf[nodei] - mesh.yc[iel]
+            
+    #         # Check wether the normal points outwards
+    #         dot  = n_x*v_x + n_y*v_y 
+    #         normx[iel,ifac]  = (dot>=0.0)*n_x - (dot<0.0)*n_x
+    #         normx[iel,ifac]  = (dot>=0.0)*n_y - (dot<0.0)*n_y
+    #     end
+    # end
+    mesh.n_x = n_x
+    mesh.n_z = n_z
+
     return mesh
 end
