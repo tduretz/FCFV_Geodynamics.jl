@@ -19,8 +19,9 @@ Base.@kwdef mutable struct FCFV_Mesh
     e2v    ::Union{Matrix{Int64},   Missing} = missing # cell 2 node numbering
     e2f    ::Union{Matrix{Int64},   Missing} = missing # cell 2 face numbering
     vole   ::Union{Vector{Float64}, Missing} = missing # volume of element
-    n_x    ::Union{Vector{Float64}, Missing} = missing # normal 2 face x
-    n_y    ::Union{Vector{Float64}, Missing} = missing # normal 2 face y
+    n_x    ::Union{Matrix{Float64}, Missing} = missing # normal 2 face x
+    n_y    ::Union{Matrix{Float64}, Missing} = missing # normal 2 face y
+    dA     ::Union{Matrix{Float64}, Missing} = missing # face length
 end
 
 function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax )
@@ -98,6 +99,58 @@ mesh.nf_el  = 3
 mesh.xc     = xc
 mesh.yc     = yc
 mesh.vole   = vole
+
+if quad==false 
+    nodeA = [2 3 1]
+    nodeB = [3 1 2]
+    nodeC = [1 2 3]
+end
+
+# Compute normal to faces
+mesh.n_x = zeros(Float64,mesh.nel,mesh.nf_el)
+mesh.n_y = zeros(Float64,mesh.nel,mesh.nf_el)
+mesh.dA  = zeros(Float64,mesh.nel,mesh.nf_el)
+
+ # Assemble FCFV elements
+ for iel=1:mesh.nel  
+    
+    # println("element: ",  iel)
+
+    for ifac=1:mesh.nf_el
+        
+        nodei  = mesh.e2f[iel,ifac]
+
+        # Vertices
+        vert1  = mesh.e2v[iel,nodeA[ifac]]
+        vert2  = mesh.e2v[iel,nodeB[ifac]]
+        vert3  = mesh.e2v[iel,nodeC[ifac]]
+        bc     = mesh.bc[nodei]
+        dx     = (mesh.xv[vert1] - mesh.xv[vert2] );
+        dy     = (mesh.yv[vert1] - mesh.yv[vert2] );
+        dAi    = sqrt(dx^2 + dy^2);
+
+        # println(bc)
+        # @printf("face node, x = %2.2e y = %2.2e\n", mesh.xf[nodei], mesh.yf[nodei])
+        # @printf("vert1    , x = %2.2e y = %2.2e\n", mesh.xv[vert1], mesh.yv[vert1])
+        # @printf("vert2    , x = %2.2e y = %2.2e\n", mesh.xv[vert2], mesh.yv[vert2])
+       
+        # Face normal
+        n_x  = - dy/dAi
+        n_y  =   dx/dAi
+        
+        # Third vector
+        # v_x  = mesh.xf[nodei] - mesh.xc[iel]
+        # v_y  = mesh.yf[nodei] - mesh.yc[iel]
+        v_x  = mesh.xv[vert1] - mesh.xv[vert3]
+        v_y  = mesh.yv[vert1] - mesh.yv[vert3]
+        
+        # Check wether the normal points outwards
+        dot                 = n_x*v_x + n_y*v_y 
+        mesh.n_x[iel,ifac]  = (dot>=0.0)*n_x - (dot<0.0)*n_x
+        mesh.n_y[iel,ifac]  = (dot>=0.0)*n_y - (dot<0.0)*n_y
+        mesh.dA[iel,ifac]   = dAi
+    end
+end
 
 return mesh
 
@@ -216,17 +269,18 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
 
     # Fill structure
     mesh        = FCFV_Mesh()
-        # Compute normal to faces
-        mesh.n_x = zeros(ncell,4)
-        mesh.n_y = zeros(ncell,4)
     mesh.type   = "quad"
     mesh.nel    = ncell
     mesh.nf     = nface
+    mesh.nf_el  = 4
+    mesh.nf_el  = 4
     mesh.nv     = (nx+1)*(ny+1)
     mesh.xv     = xn
     mesh.yv     = yn
     mesh.xf     = xf
     mesh.yf     = yf
+    mesh.e2v    = vert' # cell nodes - not dofs! Dofs are in 'cell'
+    mesh.e2f    = face'
     mesh.xc     = xc
     mesh.yc     = yc
     mesh.vole   = dx*dy*ones(ncell)
@@ -237,38 +291,49 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
         nodeB = [2 3 1 4]
     end
 
+    # Compute normal to faces
+    mesh.n_x = zeros(Float64,mesh.nel,mesh.nf_el)
+    mesh.n_y = zeros(Float64,mesh.nel,mesh.nf_el)
+    mesh.dA  = zeros(Float64,mesh.nel,mesh.nf_el)
 
-    #  # Assemble FCFV elements
-    #  for iel=1:mesh.nel  
+     # Assemble FCFV elements
+     @avx for iel=1:mesh.nel  
         
-    #     for ifac=1:mesh.nf_el
-            
-    #         nodei  = mesh.e2f[iel,ifac]
+        # println("element: ",  iel)
 
-    #         # Vertices
-    #         vert1  = mesh.e2v[iel,nodeA[ifac]]
-    #         vert2  = mesh.e2v[iel,nodeB[ifac]]
-    #         bc     = mesh.bc[nodei]
-    #         dx     = abs(mesh.xv[vert1] - mesh.xv[vert2] );
-    #         dy     = abs(mesh.yv[vert1] - mesh.yv[vert2] );
-    #         dAi    = sqrt(dx^2 + dy^2);
+        for ifac=1:mesh.nf_el
+            
+            nodei  = mesh.e2f[iel,ifac]
 
-    #         # Face normal
-    #         n_x  =  dy/dAi
-    #         n_y  = -dx/dAi
+            # Vertices
+            vert1  = mesh.e2v[iel,nodeA[ifac]]
+            vert2  = mesh.e2v[iel,nodeB[ifac]]
+            bc     = mesh.bc[nodei]
+            dx     = abs(mesh.xv[vert1] - mesh.xv[vert2] );
+            dy     = abs(mesh.yv[vert1] - mesh.yv[vert2] );
+            dAi    = sqrt(dx^2 + dy^2);
+
+            # println(bc)
+            # @printf("face node, x = %2.2e y = %2.2e\n", mesh.xf[nodei], mesh.yf[nodei])
+            # @printf("vert1    , x = %2.2e y = %2.2e\n", mesh.xv[vert1], mesh.yv[vert1])
+            # @printf("vert2    , x = %2.2e y = %2.2e\n", mesh.xv[vert2], mesh.yv[vert2])
+           
+            # Face normal
+            n_x  =  dy/dAi
+            n_y  = -dx/dAi
             
-    #         # Third vector
-    #         v_x  = mesh.xf[nodei] - mesh.xc[iel]
-    #         v_y  = mesh.yf[nodei] - mesh.yc[iel]
+            # Third vector
+            v_x  = mesh.xf[nodei] - mesh.xc[iel]
+            v_y  = mesh.yf[nodei] - mesh.yc[iel]
             
-    #         # Check wether the normal points outwards
-    #         dot  = n_x*v_x + n_y*v_y 
-    #         normx[iel,ifac]  = (dot>=0.0)*n_x - (dot<0.0)*n_x
-    #         normx[iel,ifac]  = (dot>=0.0)*n_y - (dot<0.0)*n_y
-    #     end
-    # end
-    mesh.n_x = n_x
-    mesh.n_z = n_z
+            # Check wether the normal points outwards
+            dot                 = n_x*v_x + n_y*v_y 
+            mesh.n_x[iel,ifac]  = (dot>=0.0)*n_x - (dot<0.0)*n_x
+            mesh.n_y[iel,ifac]  = (dot>=0.0)*n_y - (dot<0.0)*n_y
+            mesh.dA[iel,ifac]   = dAi
+        end
+    end
+
 
     return mesh
 end
