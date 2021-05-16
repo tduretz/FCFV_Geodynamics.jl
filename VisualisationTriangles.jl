@@ -12,20 +12,31 @@ pygui(true)
 
 #--------------------------------------------------------------------#
 
-function tplot(p, t, v)
+function tplot(mesh,p, t, v)
+
+    # Prepare mesh for visalisation
+    p1 = fill(Float64[], mesh.nv)
+    for i=1:mesh.nv
+        p1[i] = [mesh.xv[i], mesh.yv[i]]
+    end
+    t1 = fill(Int64[], mesh.nel)
+    for i=1:mesh.nel
+        t1[i] = [mesh.e2n[1,i], mesh.e2n[2,i], mesh.e2n[3,i]]
+    end
+
     # Plot triangular mesh with nodes `p` and triangles `t`
-    # clf()
-    # tris = convert(Array{Int64}, hcat(t...)')
-    # display(tripcolor(first.(p), last.(p), tris .- 1, v,
-    #           cmap="viridis", edgecolors="none", linewidth=0) )
-    # axis("equal")
-    # ylim([0, 1])
-    # xlim([0, 1])
-    # title("Low res.")
-    # xlabel("x")
-    # ylabel("y")
-    # colorbar()
-    # show()
+    clf()
+    tris = convert(Array{Int64}, hcat(t...)')
+    display(tripcolor(first.(p), last.(p), tris .- 1, v,
+              cmap="viridis", edgecolors="none", linewidth=0) )
+    axis("equal")
+    ylim([0, 1])
+    xlim([0, 1])
+    title("Low res.")
+    xlabel("x")
+    ylabel("y")
+    colorbar()
+    show()
     return 
 end
 

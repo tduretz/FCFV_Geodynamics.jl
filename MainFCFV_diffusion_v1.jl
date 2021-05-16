@@ -4,23 +4,76 @@ using CairoMakie
 import AbstractPlotting.GeometryBasics
 using SparseArrays, LinearAlgebra
 import UnicodePlots 
+import Plots
 
-@views function PlotMakie( Mesh, v )
-    p   = [AbstractPlotting.GeometryBasics.Polygon( Point2f0[ (mesh.xv[Mesh.e2v[i,j]], mesh.yv[Mesh.e2v[i,j]]) for j=1:mesh.nf_el] ) for i in 1:Mesh.nel]
-    display(poly(p, color = v, colormap = :viridis, strokewidth = 0, strokecolor = :black, markerstrokewidth=0, markerstrokecolor = (0, 0, 0, 0)))
+
+# # ENV["MPLBACKEND"]="Qt5Agg"
+# # ENV["MPLBACKEND"] = "module://gr.matplotlib.backend_gr"
+# # Problem #1 was to find a simple way to plot piecewise constant fields on triangles:
+# # solution from: https://robertsweeneyblanco.github.io/Programming_for_Mathematical_Applications/Computational_Geometry/Triangulations.html
+# # Problem #2 was to get any figures popping out in VScode 
+# # and: https://github.com/JuliaPy/PyPlot.jl/issues/418
+# # import PyCall, PyPlot
+# using Base.Threads
+# using LoopVectorization
+# import TriangleMesh
+# using Printf
+# # PyCall.pygui(:qt5)
+# # PyPlot.pygui(true)
+
+#--------------------------------------------------------------------#
+
+# function tplot(mesh, v)
+
+#     # Prepare mesh for visalisation
+#     p = fill(Float64[], mesh.nv)
+#     for i=1:mesh.nv
+#         p[i] = [mesh.xv[i], mesh.yv[i]]
+#     end
+#     t = fill(Int64[], mesh.nel)
+#     for i=1:mesh.nel
+#         t[i] = [mesh.e2v[i,1], mesh.e2v[i,2], mesh.e2v[i,3]]
+#     end
+
+#     # Plot triangular mesh with nodes `p` and triangles `t`
+#     PyPlot.clf()
+#     tris =  PyPlot.convert(Array{Int64}, hcat(t...)')
+#     display(PyPlot.tripcolor(first.(p), last.(p), tris .- 1, v,
+#               cmap="viridis", edgecolors="none", linewidth=0) )
+#     PyPlot.axis("equal")
+#     PyPlot.ylim([0, 1])
+#     PyPlot.xlim([0, 1])
+#     PyPlot.title("Low res.")
+#     PyPlot.xlabel("x")
+#     PyPlot.ylabel("y")
+#     PyPlot.colorbar()
+#     PyPlot.show()
+#     return 
+# end
+
+@views function PlotMakie( mesh, v )
+    p   = [AbstractPlotting.GeometryBasics.Polygon( Point2f0[ (mesh.xv[mesh.e2v[i,j]], mesh.yv[mesh.e2v[i,j]]) for j=1:mesh.nf_el] ) for i in 1:mesh.nel]
+    scene = poly(p, color = v, colormap = :jet1, strokewidth = 0, strokecolor = :black, markerstrokewidth=0, markerstrokecolor = (0, 0, 0, 0), aspect_ratio=:equal, clims=[0.7 1.4])
+    display(scene)
+
+    # red = 20
+    # iel = 100
+    # p = Plots.plot()
+    # for iel=1:10#mesh.nel
+    #         Plots.plot!(  [mesh.xv[mesh.e2v[iel,2]], mesh.xv[mesh.e2v[iel,3]]], [mesh.yv[mesh.e2v[iel,2]], mesh.yv[mesh.e2v[iel,3]]], leg = false, aspect_ratio=:equal   )
+    #         Plots.plot!( [mesh.xv[mesh.e2v[iel,3]], mesh.xv[mesh.e2v[iel,1]]], [mesh.yv[mesh.e2v[iel,3]], mesh.yv[mesh.e2v[iel,1]]]  )
+    #         Plots.plot!( [mesh.xv[mesh.e2v[iel,1]], mesh.xv[mesh.e2v[iel,2]]], [mesh.yv[mesh.e2v[iel,1]], mesh.yv[mesh.e2v[iel,2]]]  )
+
+    
+    #     Plots.scatter!( [mesh.xf[mesh.e2f[iel,1]]], [mesh.yf[mesh.e2f[iel,1]]]  )    
+    #     Plots.plot!(    [mesh.xf[mesh.e2f[iel,1]], mesh.xf[mesh.e2f[iel,1]]+mesh.n_x[iel,1]/red], [mesh.yf[mesh.e2f[iel,1]], mesh.yf[mesh.e2f[iel,1]]+mesh.n_y[iel,1]/red ] )
+    #     Plots.scatter!( [mesh.xf[mesh.e2f[iel,2]]], [mesh.yf[mesh.e2f[iel,2]]]  )    
+    #     Plots.plot!(    [mesh.xf[mesh.e2f[iel,2]], mesh.xf[mesh.e2f[1iel,2]]+mesh.n_x[iel,2]/red], [mesh.yf[mesh.e2f[iel,2]], mesh.yf[mesh.e2f[iel,2]]+mesh.n_y[iel,2]/red ] )
+    #     Plots.scatter!( [mesh.xf[mesh.e2f[iel,3]]], [mesh.yf[mesh.e2f[iel,3]]]  )    
+    #     Plots.plot!(    [mesh.xf[mesh.e2f[iel,3]], mesh.xf[mesh.e2f[iel,3]]+mesh.n_x[iel,3]/red], [mesh.yf[mesh.e2f[iel,3]], mesh.yf[mesh.e2f[iel,3]]+mesh.n_y[iel,3]/red ] )
+    # end
+    # display(p)
     return 
-end
-
-function ComputeCentroids!( mesh )
-    aa = 1.0/mesh.nf_el
-    @avx for i=1:mesh.nel
-        mesh.xc[i] = 0;
-        mesh.yc[i] = 0;
-        for j=1:mesh.nf_el
-            mesh.xc[i] += aa * mesh.xv[mesh.e2v[j,i]] 
-            mesh.yc[i] += aa * mesh.yv[mesh.e2v[j,i]] 
-        end
-    end
 end
 
 function Tanalytic2!( mesh, T, a, b, c, d, alp, bet )
@@ -31,22 +84,36 @@ function Tanalytic2!( mesh, T, a, b, c, d, alp, bet )
     return
 end
 
-# @views function main()
+function StabParam(tau, dA, Vol)
+    # taui = tau*dA
+    taui = tau*dA*100
+    # taui = tau*Vol*100000
+    # taui = tau
+    return taui
+end
+
+@views function main()
 
     # Create sides of mesh
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    nx, ny     = 100, 100
-    quad = false
+    nx, ny     = 80, 80
+    mesh_type  = "Quadrangles"
+    mesh_type  = "UnstructTriangles"
+    # mesh_type  = "StructTriangles"
+  
 
-    # FCFV parameter
-    tau = 1e-3
-
-    if quad==true 
+    if mesh_type=="Quadrangles" 
+        tau = 1
         mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax )
-    elseif quad==false  
+    elseif mesh_type=="UnstructTriangles"  
+        tau = 1
         mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax ) 
+    elseif mesh_type=="StructTriangles"
+        tau = 10000000000
+        mesh = MakeStructTriMesh( nx, ny, xmin, xmax, ymin, ymax )
     end
+
 
     println("Number of elements: ", mesh.nel)
 
@@ -54,11 +121,7 @@ end
     alp = 0.1; bet = 0.3; a = 5.1; b = 4.3; c = -6.2; d = 3.4;
 
     Tanal  = zeros(mesh.nel)
-    ncalls = 4
-    # A) Loop version with @avx
-    for icall=1:ncalls
-        @time Tanalytic2!(mesh , Tanal, a, b, c, d, alp, bet)
-    end
+    @time Tanalytic2!(mesh , Tanal, a, b, c, d, alp, bet)
 
     # Compute some mesh vectors 
     se = zeros(mesh.nel)
@@ -69,14 +132,14 @@ end
     # Dirichlet values on cell faces
     Tdir = zeros(mesh.nf)
     Tneu = zeros(mesh.nf)
-    @avx for in=1:mesh.nf
+    for in=1:mesh.nf
         x        = mesh.xf[in]
         y        = mesh.yf[in]
         Tdir[in] = exp(alp*sin(a*x + c*y) + bet*cos(b*x + d*y))
     end
 
     # Source term
-    @avx for iel=1:mesh.nel
+    for iel=1:mesh.nel
         x       = mesh.xc[iel]
         y       = mesh.yc[iel]   
         T       = exp(alp*sin(a*x + c*y) + bet*cos(b*x + d*y))
@@ -95,12 +158,12 @@ end
             dAi   = mesh.dA[iel,ifac]
             ni_x  = mesh.n_x[iel,ifac]
             ni_y  = mesh.n_y[iel,ifac]
-            taui  = tau#*dAi                              # Stabilisation parameter for the face
+            taui  = StabParam(tau,dAi,mesh.vole[iel])                              # Stabilisation parameter for the face
 
             # Assemble
             ze[iel,1] += (bc==1) * dAi*ni_x*Tdir[nodei]  # Dirichlet
             ze[iel,2] += (bc==1) * dAi*ni_y*Tdir[nodei]  # Dirichlet
-            be[iel]   += (bc==1) * dAi*taui*Tdir[nodei]                # Dirichlet
+            be[iel]   += (bc==1) * dAi*taui*Tdir[nodei]  # Dirichlet
             ae[iel]   +=           dAi*taui
             
         end
@@ -113,8 +176,8 @@ end
 
     for iel=1:mesh.nel 
 
-        Ke = zeros(4,4);
-        fe = zeros(4,1);
+        Ke = zeros(mesh.nf_el,mesh.nf_el);
+        fe = zeros(mesh.nf_el,1);
         
         for ifac=1:mesh.nf_el 
 
@@ -126,7 +189,7 @@ end
                 dAi  = mesh.dA[iel,ifac]
                 ni_x = mesh.n_x[iel,ifac]
                 ni_y = mesh.n_y[iel,ifac]
-                taui = tau#*dAi
+                taui = StabParam(tau,dAi,mesh.vole[iel])  
                 
                 for jfac=1:mesh.nf_el
 
@@ -138,7 +201,7 @@ end
                         dAj  = mesh.dA[iel,jfac]
                         nj_x = mesh.n_x[iel,jfac]
                         nj_y = mesh.n_y[iel,jfac]
-                        tauj = tau#*dAj
+                        tauj = StabParam(tau,dAj,mesh.vole[iel])  
                         
                         # Delta
                         del = 0.0
@@ -146,7 +209,7 @@ end
                         
                         # Element matrix
                         nitnj         = ni_x*nj_x + ni_y*nj_y;
-                        Ke[ifac,jfac] = dAi * (1.0/ae[iel] * dAj * taui*tauj - 1.0/mesh.vole[iel]*dAi*nitnj - taui*del);
+                        Ke[ifac,jfac] = dAi * (1.0/ae[iel] * dAj * taui*tauj - 1.0/mesh.vole[iel]*dAj*nitnj - taui*del);
                     end
                     
                 end
@@ -156,7 +219,7 @@ end
                 if bci == 2; Xi = 1.0; end # indicates Neumann dof
                 ti = Tneu[nodei]
                 nitze     = ni_x*ze[iel,1] + ni_y*ze[iel,2]
-                fe[ifac] += dAi * (1.0/mesh.vole[iel]*nitze - ti*Xi - 1.0/ae[iel]*be[iel]*taui)
+                fe[ifac]  = dAi * (1.0/mesh.vole[iel]*nitze - ti*Xi - 1.0/ae[iel]*be[iel]*taui)
                 
             end
         end
@@ -172,12 +235,12 @@ end
                 for jfac=1:mesh.nf_el
 
                     nodej  = mesh.e2f[iel,jfac]
-                    bcj    = mesh.bc[nodei]
+                    bcj    = mesh.bc[nodej]
 
                     if bcj != 1
                         push!(rows, mesh.e2f[ iel,ifac])  
                         push!(cols, mesh.e2f[ iel,jfac]) 
-                        push!(vals,       -Ke[ifac,jfac])
+                        push!(vals,      -Ke[ifac,jfac])
                     end
                 end
                 f[mesh.e2f[ iel,ifac]] -= fe[ifac]
@@ -211,7 +274,7 @@ end
             dAi   = mesh.dA[iel,ifac]
             ni_x  = mesh.n_x[iel,ifac]
             ni_y  = mesh.n_y[iel,ifac]
-            taui  = tau#*dAi    # Stabilisation parameter for the face
+            taui  = StabParam(tau,dAi,mesh.vole[iel])      # Stabilisation parameter for the face
 
             # Assemble
             ue[iel]   += (bc!=1) *  dAi*taui*uh[mesh.e2f[iel, ifac]]/ae[iel]
@@ -234,12 +297,16 @@ end
     # println(mesh.e2f)
 
 
-    import MAT
-    file   = MAT.matopen("/Users/imac/ownCloud/FCFV/Mat100_ue.mat")
-    ue_mat = MAT.read(file, "ue")
+    # import MAT
+    # file   = MAT.matopen("/Users/imac/ownCloud/FCFV/Mat100_ue.mat")
+    # ue_mat = MAT.read(file, "ue")
+
 
     # Visualise
     @time PlotMakie( mesh, ue )
+println(maximum(ue))
+println(maximum(Tanal))
+    # tplot(mesh, ue)
     # function qplot(x, y, v)
     # xc=LinRange(xmin,xmax,nx)
     # yc=LinRange(ymin,ymax,ny)
@@ -252,6 +319,6 @@ end
         # show()
     # end
 
-# end
+end
 
-# main()
+main()
