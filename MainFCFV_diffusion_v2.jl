@@ -159,12 +159,12 @@ function ComputeElementValues(mesh, uh, ae, be, ze, Tdir, tau)
     return ue, qx, qy
 end
 
-@views function main()
+# @views function main()
 
     # Create sides of mesh
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    nx, ny     = 8, 8
+    nx, ny     = 2, 2
     mesh_type  = "Quadrangles"
     # mesh_type  = "UnstructTriangles"
   
@@ -194,6 +194,8 @@ end
     cols = Int64[]
     vals = Float64[]
     f    = zeros(mesh.nf);
+
+    K_v   = zeros(mesh.nel, mesh.nf_el, mesh.nf_el)
 
     for iel=1:mesh.nel 
 
@@ -230,7 +232,8 @@ end
                         
                         # Element matrix
                         nitnj         = ni_x*nj_x + ni_y*nj_y;
-                        Ke[ifac,jfac] = dAi * (1.0/ae[iel] * dAj * taui*tauj - 1.0/mesh.vole[iel]*dAj*nitnj - taui*del);
+                        Ke[ifac,jfac] =-dAi * (1.0/ae[iel] * dAj * taui*tauj - 1.0/mesh.vole[iel]*dAj*nitnj - taui*del);
+                        K_v[iel,ifac,jfac] = Ke[ifac,jfac]
                     end
                     
                 end
@@ -240,7 +243,7 @@ end
                 if bci == 2; Xi = 1.0; end # indicates Neumann dof
                 ti = Tneu[nodei]
                 nitze     = ni_x*ze[iel,1] + ni_y*ze[iel,2]
-                fe[ifac]  = dAi * (1.0/mesh.vole[iel]*nitze - ti*Xi - 1.0/ae[iel]*be[iel]*taui)
+                fe[ifac]  =-dAi * (1.0/mesh.vole[iel]*nitze - ti*Xi - 1.0/ae[iel]*be[iel]*taui)
                 
             end
         end
@@ -261,10 +264,10 @@ end
                     if bcj != 1
                         push!(rows, mesh.e2f[ iel,ifac])  
                         push!(cols, mesh.e2f[ iel,jfac]) 
-                        push!(vals,      -Ke[ifac,jfac])
+                        push!(vals,       Ke[ifac,jfac])
                     end
                 end
-                f[mesh.e2f[ iel,ifac]] -= fe[ifac]
+                f[mesh.e2f[ iel,ifac]] += fe[ifac]
             else
                 push!(rows, mesh.e2f[ iel,ifac])  
                 push!(cols, mesh.e2f[ iel,ifac]) 
@@ -274,14 +277,33 @@ end
         end
 
     end
+
+    
+
+    ii    = 1:mesh.nf_el  
+    i_i   = repeat(ii, 1, length(ii))'
+    i_j   = repeat(ii, 1, length(ii))
+    K_i   = mesh.e2f[:,i_i]
+    K_j   = mesh.e2f[:,i_j]
+
+    isbc   = mesh.bc[mesh.e2f] .* (i_i .== i_j)
+    
+    # bc_i   = 1 .- isbc[:,i_i]
+    # bc_j   = 1 .- isbc[:,i_j]
+
+    Kbc    = K_v .+ isbc[:,i_i].* isbc[:,i_j] .* (1.0)
+
+
     K = sparse(rows, cols, vals, mesh.nf, mesh.nf)
+    K1 = sparse(K_i[:], K_j[:], Kbc[:], mesh.nf, mesh.nf)
+    droptol!(K1, 1e-6)
+    display(UnicodePlots.spy(K1))
     droptol!(K, 1e-6)
     uh   = K\f
 
     # Reconstruct element values
     Te, qx, qy = ComputeElementValues(mesh, uh, ae, be, ze, Tdir, tau)
-    
-    # display(UnicodePlots.spy(K))
+
     # println(uh[:])
 
     # for iel=1:mesh.nel
@@ -316,6 +338,6 @@ end
         # show()
     # end
 
-end
+# end
 
-main()
+# main()
