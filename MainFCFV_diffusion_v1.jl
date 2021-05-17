@@ -76,78 +76,36 @@ import Plots
     return 
 end
 
-function Tanalytic2!( mesh, T, a, b, c, d, alp, bet )
+function Tanalytic2!( mesh, T, Tdir, Tneu, se, a, b, c, d, alp, bet )
+    # Evaluate T analytic on cell faces
+    @avx for in=1:mesh.nf
+        x        = mesh.xf[in]
+        y        = mesh.yf[in]
+        Tdir[in] = exp(alp*sin(a*x + c*y) + bet*cos(b*x + d*y))
+    end
     # Evaluate T analytic on barycentres
-    @avx for i=1:mesh.nel
-        T[i] = exp(alp*sin(a*mesh.xc[i] + c*mesh.yc[i]) + bet*cos(b*mesh.xc[i] + d*mesh.yc[i]))
+    @avx for iel=1:mesh.nel
+        x       = mesh.xc[iel]
+        y       = mesh.yc[iel]
+        T       = exp(alp*sin(a*x + c*y) + bet*cos(b*x + d*y))
+        T[iel]  = T
+        se[iel] = T*(-a*alp*cos(a*x + c*y) + b*bet*sin(b*x + d*y))*(a*alp*cos(a*x + c*y) - b*bet*sin(b*x + d*y)) + T*(a^2*alp*sin(a*x + c*y) + b^2*bet*cos(b*x + d*y)) + T*(-alp*c*cos(a*x + c*y) + bet*d*sin(b*x + d*y))*(alp*c*cos(a*x + c*y) - bet*d*sin(b*x + d*y)) + T*(alp*c^2*sin(a*x + c*y) + bet*d^2*cos(b*x + d*y))
     end
     return
 end
 
 function StabParam(tau, dA, Vol)
-    # taui = tau*dA
-    taui = tau*dA*100
-    # taui = tau*Vol*100000
-    # taui = tau
+    taui = tau*dA
     return taui
 end
 
-@views function main()
-
-    # Create sides of mesh
-    xmin, xmax = 0, 1
-    ymin, ymax = 0, 1
-    nx, ny     = 80, 80
-    mesh_type  = "Quadrangles"
-    mesh_type  = "UnstructTriangles"
-    # mesh_type  = "StructTriangles"
-  
-
-    if mesh_type=="Quadrangles" 
-        tau = 1
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax )
-    elseif mesh_type=="UnstructTriangles"  
-        tau = 1
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax ) 
-    elseif mesh_type=="StructTriangles"
-        tau = 10000000000
-        mesh = MakeStructTriMesh( nx, ny, xmin, xmax, ymin, ymax )
-    end
-
-
-    println("Number of elements: ", mesh.nel)
-
-    # Generate function to be visualised on mesh
-    alp = 0.1; bet = 0.3; a = 5.1; b = 4.3; c = -6.2; d = 3.4;
-
-    Tanal  = zeros(mesh.nel)
-    @time Tanalytic2!(mesh , Tanal, a, b, c, d, alp, bet)
-
-    # Compute some mesh vectors 
-    se = zeros(mesh.nel)
+function ComputeFCFV(mesh, se, Tdir, tau)
     ae = zeros(mesh.nel)
     be = zeros(mesh.nel)
     ze = zeros(mesh.nel,2)
 
-    # Dirichlet values on cell faces
-    Tdir = zeros(mesh.nf)
-    Tneu = zeros(mesh.nf)
-    for in=1:mesh.nf
-        x        = mesh.xf[in]
-        y        = mesh.yf[in]
-        Tdir[in] = exp(alp*sin(a*x + c*y) + bet*cos(b*x + d*y))
-    end
-
-    # Source term
-    for iel=1:mesh.nel
-        x       = mesh.xc[iel]
-        y       = mesh.yc[iel]   
-        T       = exp(alp*sin(a*x + c*y) + bet*cos(b*x + d*y))
-        se[iel] = T*(-a*alp*cos(a*x + c*y) + b*bet*sin(b*x + d*y))*(a*alp*cos(a*x + c*y) - b*bet*sin(b*x + d*y)) + T*(a^2*alp*sin(a*x + c*y) + b^2*bet*cos(b*x + d*y)) + T*(-alp*c*cos(a*x + c*y) + bet*d*sin(b*x + d*y))*(alp*c*cos(a*x + c*y) - bet*d*sin(b*x + d*y)) + T*(alp*c^2*sin(a*x + c*y) + bet*d^2*cos(b*x + d*y))
-    end
-
     # Assemble FCFV elements
-    for iel=1:mesh.nel  
+    @avx for iel=1:mesh.nel  
 
         be[iel] = be[iel]   + mesh.vole[iel]*se[iel]
         
@@ -168,7 +126,70 @@ end
             
         end
     end
+    return ae, be, ze
+end
 
+function ComputeElementValues(mesh, uh, ae, be, ze, Tdir, tau)
+    ue          = zeros(mesh.nel);
+    qx          = zeros(mesh.nel);
+    qy          = zeros(mesh.nel);
+
+    @avx for iel=1:mesh.nel
+    
+        ue[iel]  =  be[iel]/ae[iel]
+        qx[iel]  = -1.0/mesh.vole[iel]*ze[iel,1]
+        qy[iel]  = -1.0/mesh.vole[iel]*ze[iel,2]
+        
+        for ifac=1:mesh.nf_el
+            
+            # Face
+            nodei = mesh.e2f[iel,ifac]
+            bc    = mesh.bc[nodei]
+            dAi   = mesh.dA[iel,ifac]
+            ni_x  = mesh.n_x[iel,ifac]
+            ni_y  = mesh.n_y[iel,ifac]
+            taui  = StabParam(tau,dAi,mesh.vole[iel])      # Stabilisation parameter for the face
+
+            # Assemble
+            ue[iel] += (bc!=1) *  dAi*taui*uh[mesh.e2f[iel, ifac]]/ae[iel]
+            qx[iel] -= (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_x*uh[mesh.e2f[iel, ifac]]
+            qe[iel] -= (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_y*uh[mesh.e2f[iel, ifac]]
+         end
+    end
+    return ue, qx, qy
+end
+
+@views function main()
+
+    # Create sides of mesh
+    xmin, xmax = 0, 1
+    ymin, ymax = 0, 1
+    nx, ny     = 80, 80
+    mesh_type  = "Quadrangles"
+    # mesh_type  = "UnstructTriangles"
+  
+    if mesh_type=="Quadrangles" 
+        tau = 100
+        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax )
+    elseif mesh_type=="UnstructTriangles"  
+        tau = 100
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax ) 
+    end
+
+    println("Number of elements: ", mesh.nel)
+
+    # Source term and BCs etc...
+    Tanal  = zeros(mesh.nel)
+    se     = zeros(mesh.nel)
+    Tdir   = zeros(mesh.nf)
+    Tneu   = zeros(mesh.nf)
+    alp = 0.1; bet = 0.3; a = 5.1; b = 4.3; c = -6.2; d = 3.4;
+    @time Tanalytic2!(mesh , Tanal, Tdir, Tneu, se, a, b, c, d, alp, bet)
+
+    # Compute some mesh vectors 
+    ae, be, ze = ComputeFCFV(mesh, se, Tdir, tau)
+
+    # Assemble stiffness matrix 
     rows = Int64[]
     cols = Int64[]
     vals = Float64[]
@@ -258,30 +279,7 @@ end
     uh   = K\f
 
     # Reconstruct element values
-    ue          = zeros(mesh.nel);
-    qe          = zeros(mesh.nel,2);
-    for iel=1:mesh.nel
-    
-        ue[iel]   = be[iel]/ae[iel]
-        qe[iel,1] =-1.0/mesh.vole[iel]*ze[iel,1]
-        qe[iel,2] =-1.0/mesh.vole[iel]*ze[iel,2]
-        
-        for ifac=1:mesh.nf_el
-            
-            # Face
-            nodei = mesh.e2f[iel,ifac]
-            bc    = mesh.bc[nodei]
-            dAi   = mesh.dA[iel,ifac]
-            ni_x  = mesh.n_x[iel,ifac]
-            ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau,dAi,mesh.vole[iel])      # Stabilisation parameter for the face
-
-            # Assemble
-            ue[iel]   += (bc!=1) *  dAi*taui*uh[mesh.e2f[iel, ifac]]/ae[iel]
-            qe[iel,1] -= (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_x*uh[mesh.e2f[iel, ifac]]
-            qe[iel,2] -= (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_y*uh[mesh.e2f[iel, ifac]]
-         end
-    end
+    Te, qx, qy = ComputeElementValues(mesh, uh, ae, be, ze, Tdir, tau)
     
     # display(UnicodePlots.spy(K))
     # println(uh[:])
@@ -301,11 +299,10 @@ end
     # file   = MAT.matopen("/Users/imac/ownCloud/FCFV/Mat100_ue.mat")
     # ue_mat = MAT.read(file, "ue")
 
-
     # Visualise
-    @time PlotMakie( mesh, ue )
-println(maximum(ue))
-println(maximum(Tanal))
+    @time PlotMakie( mesh, Te )
+    println(maximum(Te))
+    println(maximum(Tanal))
     # tplot(mesh, ue)
     # function qplot(x, y, v)
     # xc=LinRange(xmin,xmax,nx)
