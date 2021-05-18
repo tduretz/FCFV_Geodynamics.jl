@@ -47,21 +47,20 @@ function ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
 end
     
 
-function StabParam(tau, dA, Vol)
-    taui = tau*dA
+function StabParam(tau, dA, Vol, mesh_type)
+    if mesh_type=="Quadrangles";        taui = tau;   end
+    if mesh_type=="UnstructTriangles";  taui = tau*dA end
     return taui
 end
     
-@views function main()
+@views function main( N, mesh_type )  
 
     println("\n******** FCFV POISSON********")
 
     # Create sides of mesh
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    nx, ny     = 32, 32
-    # mesh_type  = "Quadrangles"
-    mesh_type  = "UnstructTriangles"
+    nx, ny     = N, N
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
@@ -116,4 +115,5 @@ end
 
 end
 
-main()
+# mesh_type  = "Quadrangles"
+main( 16, "UnstructTriangles" )

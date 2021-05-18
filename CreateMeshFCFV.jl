@@ -104,7 +104,7 @@ trimesh  = TriangleMesh.create_mesh(domain, switches)
 nvert_el = 3 # vertices per element
 
 mesh        = FCFV_Mesh()
-mesh.type   = "triangle"
+mesh.type   = "UnstructTriangles"
 mesh.nel    = trimesh.n_cell
 e2v         = trimesh.cell[1:3,:]
 mesh.nv     = maximum(e2v)
@@ -312,7 +312,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
 
     # Fill structure
     mesh        = FCFV_Mesh()
-    mesh.type   = "quad"
+    mesh.type   = "Quadrangles"
     mesh.nel    = ncell
     mesh.nf     = nface
     mesh.nf_el  = 4

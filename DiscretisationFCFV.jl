@@ -15,7 +15,7 @@ function ComputeFCFV(mesh, se, Tdir, tau)
             dAi   = mesh.dA[iel,ifac]
             ni_x  = mesh.n_x[iel,ifac]
             ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau,dAi,mesh.vole[iel])                              # Stabilisation parameter for the face
+            taui  = StabParam(tau,dAi,mesh.vole[iel],mesh.type)                              # Stabilisation parameter for the face
 
             # Assemble
             ze[iel,1] += (bc==1) * dAi*ni_x*Tdir[nodei]  # Dirichlet
@@ -47,7 +47,7 @@ function ComputeElementValues(mesh, uh, ae, be, ze, Tdir, tau)
             dAi   = mesh.dA[iel,ifac]
             ni_x  = mesh.n_x[iel,ifac]
             ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau,dAi,mesh.vole[iel])      # Stabilisation parameter for the face
+            taui  = StabParam(tau,dAi,mesh.vole[iel],mesh.type)      # Stabilisation parameter for the face
 
             # Assemble
             ue[iel] += (bc!=1) *  dAi*taui*uh[mesh.e2f[iel, ifac]]/ae[iel]
@@ -73,7 +73,7 @@ function ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
             dAi   = mesh.dA[iel,ifac]
             ni_x  = mesh.n_x[iel,ifac]
             ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau,dAi,mesh.vole[iel])  
+            taui  = StabParam(tau,dAi,mesh.vole[iel], mesh.type)  
                 
             for jfac=1:mesh.nf_el
 
@@ -82,7 +82,7 @@ function ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
                 dAj   = mesh.dA[iel,jfac]
                 nj_x  = mesh.n_x[iel,jfac]
                 nj_y  = mesh.n_y[iel,jfac]
-                tauj  = StabParam(tau,dAj,mesh.vole[iel])  
+                tauj  = StabParam(tau,dAj,mesh.vole[iel], mesh.type)  
                         
                 # Delta
                 del = 0.0 + (ifac==jfac)*1.0
