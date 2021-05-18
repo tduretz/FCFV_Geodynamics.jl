@@ -4,6 +4,7 @@ include("DiscretisationFCFV.jl")
 using LoopVectorization
 using SparseArrays, LinearAlgebra
 import UnicodePlots 
+import Plots
 
 function SetUpProblem!( mesh, T, Tdir, Tneu, se, a, b, c, d, alp, bet )
     # Evaluate T analytic on cell faces
@@ -49,7 +50,8 @@ end
 
 function StabParam(tau, dA, Vol, mesh_type)
     if mesh_type=="Quadrangles";        taui = tau;   end
-    if mesh_type=="UnstructTriangles";  taui = tau*dA end
+    # if mesh_type=="UnstructTriangles";  taui = tau*dA end
+    if mesh_type=="UnstructTriangles";  taui = tau end
     return taui
 end
     
@@ -63,12 +65,13 @@ end
     nx, ny     = N, N
   
     # Generate mesh
+    println("Mesh generation :")
     if mesh_type=="Quadrangles" 
         tau  = 1
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax )
+        @time mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax )
     elseif mesh_type=="UnstructTriangles"  
-        tau  = 100
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax ) 
+        tau  = 1
+        @time  mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax ) 
     end
     println("Number of elements: ", mesh.nel)
 
@@ -109,11 +112,35 @@ end
     println("Error in qy: ", err_qy)
 
     # Visualise
-    println("Visualisation:")
-    @time PlotMakie( mesh, Te )
+    # println("Visualisation:")
+    # @time PlotMakie( mesh, Te )
     # PlotElements( mesh )
-
+    return err_T, err_qx, err_qy
 end
 
-# mesh_type  = "Quadrangles"
-main( 16, "UnstructTriangles" )
+N          = [8, 16, 32, 64, 128, 256, 512]
+mesh_type  = "Quadrangles"
+eT_quad    = zeros(size(N))
+eqx_quad   = zeros(size(N))
+eqy_quad   = zeros(size(N))
+for k=1:length(N)
+    @time err_T, err_qx, err_qy = main( N[k], mesh_type )
+    eT_quad[k]  = err_T
+    eqx_quad[k] = err_qx
+    eqy_quad[k] = err_qy
+end
+
+mesh_type  = "UnstructTriangles"
+eT_tri     = zeros(size(N))
+eqx_tri    = zeros(size(N))
+eqy_tri    = zeros(size(N))
+for k=1:length(N)
+    @time err_T, err_qx, err_qy = main( N[k], mesh_type )
+    eT_tri[k]  = err_T
+    eqx_tri[k] = err_qx
+    eqy_tri[k] = err_qy
+end
+
+p = Plots.plot(  log10.(1.0 ./ N) , log10.(eT_quad), markershape=:rect,      label="Quads"                          )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_tri),  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
+display(p)

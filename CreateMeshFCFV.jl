@@ -156,11 +156,11 @@ mesh.n_y = zeros(Float64,mesh.nel,mesh.nf_el)
 mesh.dA  = zeros(Float64,mesh.nel,mesh.nf_el)
 
  # Assemble FCFV elements
- for iel=1:mesh.nel  
+ @avx for iel=1:mesh.nel  
     
     # println("element: ",  iel)
 
-    @avx for ifac=1:mesh.nf_el
+    for ifac=1:mesh.nf_el
         
         nodei  = mesh.e2f[iel,ifac]
 
