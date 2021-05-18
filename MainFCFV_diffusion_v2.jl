@@ -206,6 +206,8 @@ end
 
             nodei  = mesh.e2f[iel,ifac]
             bci    = mesh.bc[nodei]
+
+            K_v[iel,ifac,ifac] = 1.0
             
             if bci != 1
 
@@ -286,12 +288,12 @@ end
     K_i   = mesh.e2f[:,i_i]
     K_j   = mesh.e2f[:,i_j]
 
-    isbc   = mesh.bc[mesh.e2f] .* (i_i .== i_j)
+    isbc  # = mesh.bc[mesh.e2f] .* (i_i .== i_j)
     
     # bc_i   = 1 .- isbc[:,i_i]
     # bc_j   = 1 .- isbc[:,i_j]
 
-    Kbc    = K_v .+ isbc[:,i_i].* isbc[:,i_j] .* (1.0)
+    Kbc    = K_v# .+ isbc[:,i_i].* isbc[:,i_j] .* (1.0)
 
 
     K = sparse(rows, cols, vals, mesh.nf, mesh.nf)
@@ -299,7 +301,7 @@ end
     droptol!(K1, 1e-6)
     display(UnicodePlots.spy(K1))
     droptol!(K, 1e-6)
-    uh   = K\f
+    uh   = K1\f
 
     # Reconstruct element values
     Te, qx, qy = ComputeElementValues(mesh, uh, ae, be, ze, Tdir, tau)
