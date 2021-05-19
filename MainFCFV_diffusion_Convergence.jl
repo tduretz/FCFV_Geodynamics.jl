@@ -100,6 +100,7 @@ end
     # Solve for hybrid variable
     println("Direct solve:")
     @time Th   = K\f
+    # @time Th   = cholesky(K)\f
 
     # Reconstruct element values
     println("Compute element values:")
