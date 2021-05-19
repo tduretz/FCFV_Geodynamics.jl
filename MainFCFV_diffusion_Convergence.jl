@@ -49,9 +49,9 @@ end
     
 
 function StabParam(tau, dA, Vol, mesh_type)
-    if mesh_type=="Quadrangles";        taui = tau;   end
-    # if mesh_type=="UnstructTriangles";  taui = tau*dA end
-    if mesh_type=="UnstructTriangles";  taui = tau end
+    if mesh_type=="Quadrangles";        taui = tau;    end
+    if mesh_type=="UnstructTriangles";  taui = tau*dA; end
+    # if mesh_type=="UnstructTriangles";  taui = tau end
     return taui
 end
     
@@ -73,7 +73,7 @@ end
         tau  = 1
         @time  mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax ) 
     end
-    println("Number of elements: ", mesh.nel)
+    println("Number of elements: ", mesh.nel, " number of dofs: ", mesh.nf)
 
     # Source term and BCs etc...
     Tanal  = zeros(mesh.nel)
@@ -95,12 +95,18 @@ end
     # Assemble triplets and sparse
     println("Assemble triplets and sparse:")
     @time K, f = CreateTripletsSparse(mesh, Kv, fv)
-    # display(UnicodePlots.spy(K))
+    
+    Kchk = K .- K'
+    droptol!(Kchk, 1e-10)
+    display(UnicodePlots.spy(Kchk))
+    # println(diag(K))
+    println(minimum(diag(K)))
+    println(maximum(diag(K)))
 
     # Solve for hybrid variable
     println("Direct solve:")
-    @time Th   = K\f
-    # @time Th   = cholesky(K)\f
+    # @time Th   = K\f
+    @time Th   = cholesky(K)\f
 
     # Reconstruct element values
     println("Compute element values:")
@@ -119,7 +125,9 @@ end
     return err_T, err_qx, err_qy
 end
 
-N          = [8, 16, 32, 64, 128, 256, 512]
+# N          = [256, 512, 1024]
+N= 8
+# # N          = [8, 16, 32, 64, 128, 256, 512]
 mesh_type  = "Quadrangles"
 eT_quad    = zeros(size(N))
 eqx_quad   = zeros(size(N))
@@ -131,6 +139,7 @@ for k=1:length(N)
     eqy_quad[k] = err_qy
 end
 
+N= 8
 mesh_type  = "UnstructTriangles"
 eT_tri     = zeros(size(N))
 eqx_tri    = zeros(size(N))
@@ -142,6 +151,6 @@ for k=1:length(N)
     eqy_tri[k] = err_qy
 end
 
-p = Plots.plot(  log10.(1.0 ./ N) , log10.(eT_quad), markershape=:rect,      label="Quads"                          )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_tri),  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
-display(p)
+# p = Plots.plot(  log10.(1.0 ./ N) , log10.(eT_quad), markershape=:rect,      label="Quads"                          )
+# p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_tri),  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
+# display(p)
