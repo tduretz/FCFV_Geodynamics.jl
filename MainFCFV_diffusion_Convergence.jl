@@ -106,7 +106,23 @@ end
     # Solve for hybrid variable
     println("Direct solve:")
     # @time Th   = K\f
-    @time Th   = cholesky(K)\f
+    PC  = 0.5.*(K.+K')
+    PCc = cholesky(PC)
+    Th  = zeros(mesh.nf)
+    dTh = zeros(mesh.nf,1)
+    r   = zeros(mesh.nf,1)
+    r  .= f - K*Th
+    # @time Th   = K\f
+    for rit=1:5
+        println("It. ", rit, " - Norm of residual: ", norm(r)/length(r))
+        if norm(r)/length(r) < 1e-10
+            break
+        end
+        dTh  .= PCc\r
+        Th  .+= dTh[:]
+        r    .= f - K*Th
+    end
+  
 
     # Reconstruct element values
     println("Compute element values:")
