@@ -50,8 +50,8 @@ end
 
 function StabParam(tau, dA, Vol, mesh_type)
     if mesh_type=="Quadrangles";        taui = tau;    end
-    if mesh_type=="UnstructTriangles";  taui = tau*dA; end
-    # if mesh_type=="UnstructTriangles";  taui = tau end
+    # if mesh_type=="UnstructTriangles";  taui = tau*dA; end
+    if mesh_type=="UnstructTriangles";  taui = tau end
     return taui
 end
     
@@ -96,12 +96,12 @@ end
     println("Assemble triplets and sparse:")
     @time K, f = CreateTripletsSparse(mesh, Kv, fv)
     
-    Kchk = K .- K'
-    droptol!(Kchk, 1e-10)
-    display(UnicodePlots.spy(Kchk))
-    # println(diag(K))
-    println(minimum(diag(K)))
-    println(maximum(diag(K)))
+    # Kchk = K .- K'
+    # droptol!(Kchk, 1e-10)
+    # display(UnicodePlots.spy(Kchk))
+    # # println(diag(K))
+    # println(minimum(diag(K)))
+    # println(maximum(diag(K)))
 
     # Solve for hybrid variable
     println("Direct solve:")
@@ -114,16 +114,15 @@ end
     r  .= f - K*Th
     # @time Th   = K\f
     for rit=1:5
+        r    .= f - K*Th
         println("It. ", rit, " - Norm of residual: ", norm(r)/length(r))
         if norm(r)/length(r) < 1e-10
             break
         end
         dTh  .= PCc\r
         Th  .+= dTh[:]
-        r    .= f - K*Th
     end
   
-
     # Reconstruct element values
     println("Compute element values:")
     @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
@@ -138,35 +137,41 @@ end
     # println("Visualisation:")
     # @time PlotMakie( mesh, Te )
     # PlotElements( mesh )
-    return err_T, err_qx, err_qy
+    return mesh.nf, err_T, err_qx, err_qy
 end
 
 # N          = [256, 512, 1024]
-N= 8
-# # N          = [8, 16, 32, 64, 128, 256, 512]
+N          = [8, 16, 32, 64, 128, 256, 512, 1024] 
 mesh_type  = "Quadrangles"
 eT_quad    = zeros(size(N))
 eqx_quad   = zeros(size(N))
 eqy_quad   = zeros(size(N))
+t_quad     = zeros(size(N))
+ndof_quad  = zeros(size(N))
 for k=1:length(N)
-    @time err_T, err_qx, err_qy = main( N[k], mesh_type )
-    eT_quad[k]  = err_T
-    eqx_quad[k] = err_qx
-    eqy_quad[k] = err_qy
+    t_quad[k]    = @elapsed ndof, err_T, err_qx, err_qy = main( N[k], mesh_type )
+    eT_quad[k]   = err_T
+    eqx_quad[k]  = err_qx
+    eqy_quad[k]  = err_qy
+    ndof_quad[k] = ndof
 end
 
-N= 8
 mesh_type  = "UnstructTriangles"
 eT_tri     = zeros(size(N))
 eqx_tri    = zeros(size(N))
 eqy_tri    = zeros(size(N))
+t_tri      = zeros(size(N))
+ndof_tri   = zeros(size(N))
 for k=1:length(N)
-    @time err_T, err_qx, err_qy = main( N[k], mesh_type )
-    eT_tri[k]  = err_T
-    eqx_tri[k] = err_qx
-    eqy_tri[k] = err_qy
+    t_tri[k]     = @elapsed ndof, err_T, err_qx, err_qy = main( N[k], mesh_type )
+    eT_tri[k]    = err_T
+    eqx_tri[k]   = err_qx
+    eqy_tri[k]   = err_qy
+    ndof_tri[k]  = ndof
 end
 
-# p = Plots.plot(  log10.(1.0 ./ N) , log10.(eT_quad), markershape=:rect,      label="Quads"                          )
-# p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_tri),  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
-# display(p)
+p = Plots.plot(  log10.(1.0 ./ N) , log10.(eT_quad), markershape=:rect,      label="Quads"                          )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_tri),  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
+# p = Plots.plot(  ndof_quad[2:end], t_quad[2:end], markershape=:rect,      label="Quads"                          )
+# p = Plots.plot!( ndof_tri[2:end],  t_tri[2:end],  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "ndof", ylabel = "time" )
+display(p)
