@@ -2,15 +2,15 @@
 
 This repository contains an implementation of the Face-Centered Finite Volume (FCFV) Poisson solver presented in Sevilla et al. (2018). The code heavily relies on the [LoopVectorization package](https://github.com/JuliaSIMD/LoopVectorization.jl). The code supports quadrangular and triangular elements. Triangular mesh generation relies on the [TriangleMesh package](https://github.com/konsim83/TriangleMesh.jl), which is a Julia wrapper to [Triangle](https://www.cs.cmu.edu/~quake/triangle.html) (Shewchuk, 2002). 
 
-Convergence to manufactured solution (see Sevilla et al., 2018):<br/>
+Convergence to manufactured solution using [MainFCFV_diffusion_Convergence.jl](./MainFCFV_diffusion_Convergence.jl) (see Sevilla et al., 2018):<br/>
 
 ![](/images/1_conv_diff_cst.png)
 
-Total execution time of Julia code, as fucntion of the total number of dofs (excluding visualisation):<br/>
+Total execution time of Julia code, as function of the total number of dofs (excluding visualisation):<br/>
 
 ![](/images/1_time_diff_cst.png)
 
-An example of computation on quads (512^2 - 262144 elements):
+An example of computation on quads using (512^2 - 262144 elements):
 
 ![](/images/1_quad_diff_cst.png)
 
