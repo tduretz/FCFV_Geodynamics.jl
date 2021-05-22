@@ -47,8 +47,10 @@ function ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
 end
     
 
-function StabParam(tau, dA, Vol)
-    taui = tau*dA
+function StabParam(tau, dA, Vol, mesh_type)
+    if mesh_type=="Quadrangles";        taui = tau;    end
+    # if mesh_type=="UnstructTriangles";  taui = tau*dA; end
+    if mesh_type=="UnstructTriangles";  taui = tau end
     return taui
 end
     
@@ -59,9 +61,9 @@ end
     # Create sides of mesh
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    nx, ny     = 32, 32
-    # mesh_type  = "Quadrangles"
-    mesh_type  = "UnstructTriangles"
+    nx, ny     = 512, 512
+    mesh_type  = "Quadrangles"
+    # mesh_type  = "UnstructTriangles"
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
@@ -97,7 +99,23 @@ end
 
     # Solve for hybrid variable
     println("Direct solve:")
-    @time Th   = K\f
+    # @time Th   = K\f
+    PC  = 0.5.*(K.+K')
+    PCc = cholesky(PC)
+    Th  = zeros(mesh.nf)
+    dTh = zeros(mesh.nf,1)
+    r   = zeros(mesh.nf,1)
+    r  .= f - K*Th
+    # @time Th   = K\f
+    for rit=1:5
+        r    .= f - K*Th
+        println("It. ", rit, " - Norm of residual: ", norm(r)/length(r))
+        if norm(r)/length(r) < 1e-10
+            break
+        end
+        dTh  .= PCc\r
+        Th  .+= dTh[:]
+    end
 
     # Reconstruct element values
     println("Compute element values:")
