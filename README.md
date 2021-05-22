@@ -18,7 +18,7 @@ An example of computation on triangles (450219 elements):
 
 ![](/images/1_tri_diff_cst.png)
 
-The "grainy" pattern is due to the white outlines around elments which I did not manage to remove when plotting with Makie.
+The "grainy" pattern is due to the white outlines around elements which I did not manage to remove when plotting with Makie.
 
 # References
 
