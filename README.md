@@ -1,6 +1,6 @@
 # FCFV_geodynamics.jl
 
-This repository contains an implementation of the Face-Centered Finite Volume (FCFV) Poisson solver presented in Sevilla et al. (2018). The code heavily relies on the [LoopVectorization package](https://github.com/JuliaSIMD/LoopVectorization.jl). The code supports quadrangular and triangular elements.Triangular mesh generation relies on the [TriangleMesh package](https://github.com/konsim83/TriangleMesh.jl), which is a Julia wrapper to [Triangle](https://www.cs.cmu.edu/~quake/triangle.html) (Shewchuk, 2002). 
+This repository contains an implementation of the Face-Centered Finite Volume (FCFV) Poisson solver presented in Sevilla et al. (2018). The code heavily relies on the [LoopVectorization package](https://github.com/JuliaSIMD/LoopVectorization.jl). The code supports quadrangular and triangular elements. Triangular mesh generation relies on the [TriangleMesh package](https://github.com/konsim83/TriangleMesh.jl), which is a Julia wrapper to [Triangle](https://www.cs.cmu.edu/~quake/triangle.html) (Shewchuk, 2002). 
 
 Convergence to manufactured solution (see Sevilla et al., 2018):<br/>
 
