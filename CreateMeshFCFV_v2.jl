@@ -23,6 +23,10 @@ Base.@kwdef mutable struct FCFV_Mesh
     n_y    ::Union{Matrix{Float64}, Missing} = missing # normal 2 face y
     dA     ::Union{Matrix{Float64}, Missing} = missing # face length
     f2e    ::Union{Matrix{Int64},   Missing} = missing # face 2 element numbering
+    dA_f   ::Union{Matrix{Float64}, Missing} = missing # face 2 element numbering
+    vole_f ::Union{Matrix{Float64}, Missing} = missing # volume of element
+    n_x_f  ::Union{Matrix{Float64}, Missing} = missing # normal 2 face x
+    n_y_f  ::Union{Matrix{Float64}, Missing} = missing # normal 2 face y
 end
 
 function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax )
@@ -196,6 +200,67 @@ mesh.dA  = zeros(Float64,mesh.nel,mesh.nf_el)
         mesh.dA[iel,ifac]   = dAi
     end
 end
+
+# Create face to element numbering
+mesh.f2e    = zeros(Int,mesh.nf,2)
+mesh.vole_f = zeros(Float64,mesh.nf,2)
+mesh.n_x_f  = zeros(Float64,mesh.nf,2)
+mesh.n_y_f  = zeros(Float64,mesh.nf,2)
+mesh.dA_f   = zeros(Float64,mesh.nf,2)
+
+# idof = 1:mesh.nf_el  
+# ii   = repeat(idof, 1, length(idof))'
+# ij   = repeat(idof, 1, length(idof))
+# Ki   = mesh.e2f[:,ii]
+# Kj   = mesh.e2f[:,ij]
+
+# println("Ki")
+# println(Ki)
+# println("Kj")
+# println(Kj)
+
+
+# println(size(trimesh.cell_neighbor))
+
+for iel=1:mesh.nel 
+
+    # println(iel)
+    # println(trimesh.cell_neighbor[:,iel].-1)
+
+    for ifac=1:mesh.nf_el
+
+        nodei              = mesh.e2f[iel,ifac]
+        iel1               = iel
+        iel2               = trimesh.cell_neighbor[ifac,iel]-1
+        mesh.f2e[nodei, 1] = iel1
+        mesh.f2e[nodei, 2] = iel2
+
+        mesh.vole_f[nodei,1] = mesh.vole[iel1]
+        mesh.dA_f[nodei,1]   = mesh.dA[iel1,ifac]
+        mesh.n_x_f[nodei,1]  = mesh.n_x[iel1,ifac]
+        mesh.n_y_f[nodei,1]  = mesh.n_y[iel1,ifac]
+        if iel2>0
+            mesh.vole_f[nodei,2] = mesh.vole[iel2]
+            mesh.dA_f[nodei,2]   = mesh.dA[iel1,ifac]
+            mesh.n_x_f[nodei,2]  =-mesh.n_x[iel1,ifac]
+            mesh.n_y_f[nodei,2]  =-mesh.n_y[iel1,ifac]
+        end
+
+    end
+
+
+end
+
+
+
+println(mesh.e2f)
+println(mesh.f2e)
+
+# # Loop through field names and fields: standard
+# for fname in fieldnames(typeof(trimesh))
+#     println("Field name: ", fname)
+#     println("Content   : ", getfield(trimesh, fname))
+# end
 
 return mesh
 
@@ -378,6 +443,9 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
         end
     end
 
+    # Create face to element numbering
+    mesh.f2e = zeros(Int,mesh.nel,2)
+    # for 
 
     return mesh
 end

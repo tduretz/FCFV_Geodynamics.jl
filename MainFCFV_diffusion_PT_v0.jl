@@ -1,4 +1,4 @@
-include("CreateMeshFCFV.jl")
+include("CreateMeshFCFV_v2.jl")
 include("VisuFCFV.jl")
 include("DiscretisationFCFV.jl")
 using LoopVectorization
@@ -61,9 +61,9 @@ end
     # Create sides of mesh
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    nx, ny     = 8, 8
-    mesh_type  = "Quadrangles"
-    # mesh_type  = "UnstructTriangles"
+    nx, ny     = 2, 2
+    # mesh_type  = "Quadrangles"
+    mesh_type  = "UnstructTriangles"
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
@@ -116,6 +116,47 @@ end
         dTh  .= PCc\r
         Th  .+= dTh[:]
     end
+
+    # Compute residual on faces
+    @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
+    F = zeros(mesh.nf)
+    for idof=1:mesh.nf
+
+        bc = mesh.bc[idof]
+        # F[idof] = (bc!=1) * 1.0
+
+        # element 1
+        iel   = mesh.f2e[idof,1]
+        yes   = iel>0
+        dAi   = (yes==1) * mesh.dA_f[idof,1]  + (yes==0) * 0.0
+        ni_x  = (yes==1) * mesh.n_x_f[idof,1] + (yes==0) * 0.0
+        ni_y  = (yes==1) * mesh.n_y_f[idof,1] + (yes==0) * 0.0
+        tau0   = StabParam(tau,dAi,mesh.vole_f[idof,1],mesh.type) 
+        taui  = (yes==1) * tau0 + (yes==0) * 0.0
+        Tel   = (yes==1) * Te[iel] + (yes==0) * 0.0
+        qxel  = (yes==1) * qx[iel] + (yes==0) * 0.0
+        qyel  = (yes==1) * qy[iel] + (yes==0) * 0.0
+        
+        F[idof] += (bc!=1) * (yes==1) * (dAi*ni_x*qxel + dAi*ni_y*qyel + dAi*taui*Tel - dAi*taui*Th[idof])
+
+        # element 2
+        iel   = mesh.f2e[idof,2]
+        yes   = iel>0
+        if iel>0
+        dAi   = (yes==1) * mesh.dA_f[idof,2]  + (yes==0) * 0.0
+        ni_x  = (yes==1) * mesh.n_x_f[idof,2] + (yes==0) * 0.0
+        ni_y  = (yes==1) * mesh.n_y_f[idof,2] + (yes==0) * 0.0
+        tau0   = StabParam(tau,dAi,mesh.vole_f[idof,2],mesh.type) 
+        taui  = (yes==1) * tau0 + (yes==0) * 0.0
+        Tel   = (yes==1) * Te[iel] + (yes==0) * 0.0
+        qxel  = (yes==1) * qx[iel] + (yes==0) * 0.0
+        qyel  = (yes==1) * qy[iel] + (yes==0) * 0.0
+        F[idof] += (bc!=1) * (yes==1) * (dAi*ni_x*qxel + dAi*ni_y*qyel + dAi*taui*Tel - dAi*taui*Th[idof])
+        end
+        
+    end
+    println(F)
+    println("Norm of matrix-free residual: ", norm(F)/length(F))
 
     # Reconstruct element values
     println("Compute element values:")
