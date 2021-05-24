@@ -61,7 +61,7 @@ end
     # Create sides of mesh
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    nx, ny     = 2, 2
+    nx, ny     = 20, 20
     # mesh_type  = "Quadrangles"
     mesh_type  = "UnstructTriangles"
   
@@ -120,7 +120,7 @@ end
     # Compute residual on faces -  This is check
     @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
     @time F = ResidualOnFaces(mesh, Th, Te, qx, qy, tau)
-    println(F)
+    # println(F)
     println("Norm of matrix-free residual: ", norm(F)/length(F))
 
     # >>>>>>>>>>>>> LUDO, for you:
@@ -135,7 +135,7 @@ end
         Te, qx, qy = ComputeElementValues(mesh, Th_PT, ae, be, ze, Tdir, tau) # @avx inside ;) ---> DiscretisationFCFV.jl
         F          = ResidualOnFaces(mesh, Th_PT, Te, qx, qy, tau)            # @avx inside ;) ---> DiscretisationFCFV.jl
         F         .= (1 - dmp).*F0 .+ F                                       # to be updated with @avx
-        Th_PT    .+= dTtau.*F                                                 # to be updated with @avx
+        Th_PT    .+= dTdtau.*F                                                 # to be updated with @avx
         F0        .= F                                                        # to be updated with @avx
         if mod(iter,nout) == 0
             println("PT Iter. ", iter, " --- Norm of matrix-free residual: ", norm(F)/length(F))
@@ -145,6 +145,8 @@ end
             end
         end
     end
+
+    Th .=Th_PT
 
     # >>>>>>>>>>>>> LUDO, for you:
 

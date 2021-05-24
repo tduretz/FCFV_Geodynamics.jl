@@ -217,6 +217,9 @@ end
 for iel=1:mesh.nel 
 
     for ifac=1:mesh.nf_el
+
+        # [2 3 5 4 1 5 3 1; 
+        #  3 5 2 1 5 4 4 2]
    
         nodei                = mesh.e2f[iel,ifac]
         iel1                 = iel
@@ -239,8 +242,6 @@ for iel=1:mesh.nel
 
 
 end
-
-
 
 println(mesh.e2f)
 println(mesh.f2e)
