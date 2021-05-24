@@ -5,6 +5,8 @@ using LoopVectorization
 using SparseArrays, LinearAlgebra
 import UnicodePlots 
 
+#--------------------------------------------------------------------#
+
 function SetUpProblem!( mesh, T, Tdir, Tneu, se, a, b, c, d, alp, bet )
     # Evaluate T analytic on cell faces
     @avx for in=1:mesh.nf
@@ -22,6 +24,8 @@ function SetUpProblem!( mesh, T, Tdir, Tneu, se, a, b, c, d, alp, bet )
     end
     return
 end
+
+#--------------------------------------------------------------------#
 
 function ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
     eT  = zeros(mesh.nel)
@@ -45,7 +49,8 @@ function ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
     errqy = norm(eqy)/norm(qya)
     return errT, errqx, errqy
 end
-    
+
+#--------------------------------------------------------------------#    
 
 function StabParam(tau, dA, Vol, mesh_type)
     if mesh_type=="Quadrangles";        taui = tau;    end
@@ -53,6 +58,8 @@ function StabParam(tau, dA, Vol, mesh_type)
     if mesh_type=="UnstructTriangles";  taui = tau end
     return taui
 end
+
+#--------------------------------------------------------------------#
     
 @views function main()
 
@@ -146,7 +153,7 @@ end
         end
     end
 
-    Th .=Th_PT
+    Th .= Th_PT
 
     # >>>>>>>>>>>>> LUDO, for you:
 

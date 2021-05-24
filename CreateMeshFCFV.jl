@@ -23,6 +23,10 @@ Base.@kwdef mutable struct FCFV_Mesh
     n_y    ::Union{Matrix{Float64}, Missing} = missing # normal 2 face y
     dA     ::Union{Matrix{Float64}, Missing} = missing # face length
     f2e    ::Union{Matrix{Int64},   Missing} = missing # face 2 element numbering
+    dA_f   ::Union{Matrix{Float64}, Missing} = missing # face 2 element numbering
+    vole_f ::Union{Matrix{Float64}, Missing} = missing # volume of element
+    n_x_f  ::Union{Matrix{Float64}, Missing} = missing # normal 2 face x
+    n_y_f  ::Union{Matrix{Float64}, Missing} = missing # normal 2 face y
 end
 
 function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax )

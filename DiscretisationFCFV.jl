@@ -28,6 +28,8 @@ function ComputeFCFV(mesh, se, Tdir, tau)
     return ae, be, ze
 end
 
+#--------------------------------------------------------------------#
+
 function ComputeElementValues(mesh, uh, ae, be, ze, Tdir, tau)
     ue          = zeros(mesh.nel);
     qx          = zeros(mesh.nel);
@@ -58,8 +60,10 @@ function ComputeElementValues(mesh, uh, ae, be, ze, Tdir, tau)
     return ue, qx, qy
 end
 
-function ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
+#--------------------------------------------------------------------#
 
+function ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
+    # Assemble element matrices and rhs
     f    = zeros(mesh.nf);
     Kv   = zeros(mesh.nel, mesh.nf_el, mesh.nf_el)
     fv   = zeros(mesh.nel, mesh.nf_el)
@@ -106,6 +110,8 @@ function ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
     return Kv, fv
 end
 
+#--------------------------------------------------------------------#
+
 function CreateTripletsSparse(mesh, Kv, fv)
     # Create triplets and assemble sparse matrix
     idof = 1:mesh.nf_el  
@@ -121,9 +127,11 @@ function CreateTripletsSparse(mesh, Kv, fv)
     return K, f
 end
 
+#--------------------------------------------------------------------#
+
 function ResidualOnFaces(mesh, Th, Te, qx, qy, tau) 
     F = zeros(mesh.nf)
-    @avx for idof=1:mesh.nf  # ne marche pas avec avx
+    @avx for idof=1:mesh.nf 
 
         # Identify BC faces
         bc = mesh.bc[idof]
@@ -157,52 +165,3 @@ function ResidualOnFaces(mesh, Th, Te, qx, qy, tau)
     end
     return F 
 end
-
-# function ResidualOnFaces(mesh, Th, Te, qx, qy, tau) 
-#     F = zeros(mesh.nf)
-#     for idof=1:mesh.nf  # ne marche pas avec avx
-
-#         bc = mesh.bc[idof]
-
-#         # element 1
-#         iel   = mesh.f2e[idof,1]
-#         yes   = iel>0
-#         dAi   = (yes==1) * mesh.dA_f[idof,1]  + (yes==0) * 0.0
-#         ni_x  = (yes==1) * mesh.n_x_f[idof,1] + (yes==0) * 0.0
-#         ni_y  = (yes==1) * mesh.n_y_f[idof,1] + (yes==0) * 0.0
-#         tau0   = StabParam(tau,dAi,mesh.vole_f[idof,1],mesh.type) 
-#         taui  = (yes==1) * tau0 + (yes==0) * 0.0
-#         Tel   = (yes==1) * Te[iel] + (yes==0) * 0.0
-#         qxel  = (yes==1) * qx[iel] + (yes==0) * 0.0
-#         qyel  = (yes==1) * qy[iel] + (yes==0) * 0.0
-        
-#         F1 = (bc!=1) * (yes==1) * (dAi*ni_x*qxel + dAi*ni_y*qyel + dAi*taui*Tel - dAi*taui*Th[idof])
-
-#         # element 2
-#         iel   = mesh.f2e[idof,2]
-#         yes   = iel>0
-#         # if iel>0
-#         #     dAi   = (yes==1) * mesh.dA_f[idof,2]  + (yes==0) * 0.0
-#         #     ni_x  = (yes==1) * mesh.n_x_f[idof,2] + (yes==0) * 0.0
-#         #     ni_y  = (yes==1) * mesh.n_y_f[idof,2] + (yes==0) * 0.0
-#         #     tau0   = StabParam(tau,dAi,mesh.vole_f[idof,2],mesh.type) 
-#         #     taui  = (yes==1) * tau0 + (yes==0) * 0.0
-#         #     Tel   = (yes==1) * Te[iel] + (yes==0) * 0.0
-#         #     qxel  = (yes==1) * qx[iel] + (yes==0) * 0.0
-#         #     qyel  = (yes==1) * qy[iel] + (yes==0) * 0.0
-#         #     F[idof] += (bc!=1) * (yes==1) * (dAi*ni_x*qxel + dAi*ni_y*qyel + dAi*taui*Tel - dAi*taui*Th[idof])
-#         # end
-#         iel   = (yes==1) * iel  + (yes==0) * 1
-#         dAi   = (yes==1) * mesh.dA_f[idof,2]  + (yes==0) * 0.0
-#         ni_x  = (yes==1) * mesh.n_x_f[idof,2] + (yes==0) * 0.0
-#         ni_y  = (yes==1) * mesh.n_y_f[idof,2] + (yes==0) * 0.0
-#         tau0  = StabParam(tau,dAi,mesh.vole_f[idof,2],mesh.type) 
-#         taui  = (yes==1) * tau0 + (yes==0) * 0.0
-#         Tel   = (yes==1) * Te[iel] + (yes==0) * 0.0
-#         qxel  = (yes==1) * qx[iel] + (yes==0) * 0.0
-#         qyel  = (yes==1) * qy[iel] + (yes==0) * 0.0
-#         F2      = (bc!=1) * (yes==1) * (dAi*ni_x*qxel + dAi*ni_y*qyel + dAi*taui*Tel - dAi*taui*Th[idof])
-#         F[idof] = F1 + F2
-#     end
-#     return F 
-# end

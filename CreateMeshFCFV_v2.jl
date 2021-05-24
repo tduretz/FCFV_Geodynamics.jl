@@ -2,6 +2,8 @@ import TriangleMesh
 using Printf
 using LoopVectorization
 
+#--------------------------------------------------------------------#
+
 Base.@kwdef mutable struct FCFV_Mesh
     type   ::Union{String, Missing}          = missing
     nel    ::Union{Int64,  Missing}          = missing
@@ -29,231 +31,229 @@ Base.@kwdef mutable struct FCFV_Mesh
     n_y_f  ::Union{Matrix{Float64}, Missing} = missing # normal 2 face y
 end
 
+#--------------------------------------------------------------------#
+
 function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax )
 
-dx   = (xmax-xmin)/nx
-dy   = (ymax-ymin)/ny
-area = dx*dy
+    dx   = (xmax-xmin)/nx
+    dy   = (ymax-ymin)/ny
+    area = dx*dy
 
-# Four corners of the domain
-px   = [xmin xmax xmax xmin]
-py   = [ymin ymin ymax ymax]
-sx   = [ 1 2 3 4 ] 
-sy   = [ 2 3 4 1 ]
-st   = [ 1 1 1 1 ]          # segment markers
+    # Four corners of the domain
+    px   = [xmin xmax xmax xmin]
+    py   = [ymin ymin ymax ymax]
+    sx   = [ 1 2 3 4 ] 
+    sy   = [ 2 3 4 1 ]
+    st   = [ 1 1 1 1 ]          # segment markers
 
-p    = vcat(px, py)         # points
-s    = vcat(sx, sy)         # segments
+    p    = vcat(px, py)         # points
+    s    = vcat(sx, sy)         # segments
 
-# inum = 0;
-# dx
-# px = Float64[]
-# py = Float64[]
-# sx = Int64[]
-# sy = Int64[]
-# st = Int64[]
-# for i=1:nx+1
-#     inum+=1
-#     px   = push!(px, (i-1)*dx)
-#     py   = push!(py,    ymin)
-#     sx   = push!(sx, inum   )
-#     sy   = push!(sy, inum+1 )
-#     st   = push!(st, 1      )
-# end
+    # inum = 0;
+    # dx
+    # px = Float64[]
+    # py = Float64[]
+    # sx = Int64[]
+    # sy = Int64[]
+    # st = Int64[]
+    # for i=1:nx+1
+    #     inum+=1
+    #     px   = push!(px, (i-1)*dx)
+    #     py   = push!(py,    ymin)
+    #     sx   = push!(sx, inum   )
+    #     sy   = push!(sy, inum+1 )
+    #     st   = push!(st, 1      )
+    # end
 
-# for i=1:nx+1
-#     inum+=1
-#     px   = push!(px, (i-1)*dx)
-#     py   = push!(py,    ymax)
-#     sx   = push!(sx, inum   )
-#     sy   = push!(sy, inum+1 )
-#     st   = push!(st, 1      )
-# end
+    # for i=1:nx+1
+    #     inum+=1
+    #     px   = push!(px, (i-1)*dx)
+    #     py   = push!(py,    ymax)
+    #     sx   = push!(sx, inum   )
+    #     sy   = push!(sy, inum+1 )
+    #     st   = push!(st, 1      )
+    # end
 
-# for i=1:ny+1
-#     inum+=1
-#     py   = push!(py, (i-1)*dy)
-#     px   = push!(px,    xmin)
-#     sx   = push!(sx, inum   )
-#     sy   = push!(sy, inum+1 )
-#     st   = push!(st, 1      )
-# end
+    # for i=1:ny+1
+    #     inum+=1
+    #     py   = push!(py, (i-1)*dy)
+    #     px   = push!(px,    xmin)
+    #     sx   = push!(sx, inum   )
+    #     sy   = push!(sy, inum+1 )
+    #     st   = push!(st, 1      )
+    # end
 
-# for i=1:ny+1
-#     inum+=1
-#     py   = push!(py, (i-1)*dy)
-#     px   = push!(px,    xmax)
-#     sx   = push!(sx, inum   )
-#     sy   = push!(sy, inum+1 )
-#     st   = push!(st, 1      )
-# end
+    # for i=1:ny+1
+    #     inum+=1
+    #     py   = push!(py, (i-1)*dy)
+    #     px   = push!(px,    xmax)
+    #     sx   = push!(sx, inum   )
+    #     sy   = push!(sy, inum+1 )
+    #     st   = push!(st, 1      )
+    # end
 
-# sy[end] = 1;
+    # sy[end] = 1;
 
-# p    = hcat(px, py)         # points
-# s    = hcat(sx, sy)         # segments
+    # p    = hcat(px, py)         # points
+    # s    = hcat(sx, sy)         # segments
 
-# p = p'
-# s = s'
+    # p = p'
+    # s = s'
 
-st = st[:]
+    st = st[:]
 
-# Triangulation
-holes    = Array{Float64}(undef,2,0)
-domain   = TriangleMesh.Polygon_pslg(size(p,2), p, 0, Array{Int64}(undef,2,0), 0, Array{Float64}(undef,2,0),  size(s,2), s, st, 0, holes)
-astring = @sprintf("%0.10lf", area)
-switches = "QDpenq33o2IAa$(astring)"
+    # Triangulation
+    holes    = Array{Float64}(undef,2,0)
+    domain   = TriangleMesh.Polygon_pslg(size(p,2), p, 0, Array{Int64}(undef,2,0), 0, Array{Float64}(undef,2,0),  size(s,2), s, st, 0, holes)
+    astring = @sprintf("%0.10lf", area)
+    switches = "vQDpenq33o2IAa$(astring)"
 
-println("Arguments to Triangle: ", switches)
-trimesh  = TriangleMesh.create_mesh(domain, switches)
-nvert_el = 3 # vertices per element
+    println("Arguments to Triangle: ", switches)
+    trimesh  = TriangleMesh.create_mesh(domain, switches)
+    nvert_el = 3 # vertices per element
 
-mesh        = FCFV_Mesh()
-mesh.type   = "UnstructTriangles"
-mesh.nel    = trimesh.n_cell
-e2v         = trimesh.cell[1:3,:]
-mesh.nv     = maximum(e2v)
-e2f         = trimesh.cell[4:6,:] .- mesh.nv
-mesh.nf     = maximum(e2f)
-mesh.xv     = trimesh.point[1,1:mesh.nv]
-mesh.yv     = trimesh.point[2,1:mesh.nv]
-mesh.xf     = trimesh.point[1,mesh.nv+1:end]
-mesh.yf     = trimesh.point[2,mesh.nv+1:end]
-mesh.bc     = trimesh.point_marker[mesh.nv+1:end]
+    mesh        = FCFV_Mesh()
+    mesh.type   = "UnstructTriangles"
+    mesh.nel    = trimesh.n_cell
+    e2v         = trimesh.cell[1:3,:]
+    mesh.nv     = maximum(e2v)
+    e2f         = trimesh.cell[4:6,:] .- mesh.nv
+    mesh.nf     = maximum(e2f)
+    mesh.xv     = trimesh.point[1,1:mesh.nv]
+    mesh.yv     = trimesh.point[2,1:mesh.nv]
+    mesh.xf     = trimesh.point[1,mesh.nv+1:end]
+    mesh.yf     = trimesh.point[2,mesh.nv+1:end]
+    mesh.bc     = trimesh.point_marker[mesh.nv+1:end]
 
-nel  = trimesh.n_cell
-vole = zeros(nel)
-xc   = zeros(nel)
-yc   = zeros(nel)
+    nel  = trimesh.n_cell
+    vole = zeros(nel)
+    xc   = zeros(nel)
+    yc   = zeros(nel)
 
-@avx for iel=1:nel
-    # Compute volumes of triangles - use vertices coordinates
-    x1 = mesh.xv[e2v[1,iel]]
-    y1 = mesh.yv[e2v[1,iel]]
-    x2 = mesh.xv[e2v[2,iel]]
-    y2 = mesh.yv[e2v[2,iel]]
-    x3 = mesh.xv[e2v[3,iel]]
-    y3 = mesh.yv[e2v[3,iel]]
-    a         = sqrt((x1-x2)^2 + (y1-y2)^2)
-    b         = sqrt((x2-x3)^2 + (y2-y3)^2)
-    c         = sqrt((x1-x3)^2 + (y1-y3)^2)
-    s         = 1/2*(a+b+c)
-    vole[iel] = sqrt(s*(s-a)*(s-b)*(s-c))
-    xc[iel]   = 1.0/3.0*(x1+x2+x3)
-    yc[iel]   = 1.0/3.0*(y1+y2+y3)
-end
+    @avx for iel=1:nel
+        # Compute volumes of triangles - use vertices coordinates
+        x1 = mesh.xv[e2v[1,iel]]
+        y1 = mesh.yv[e2v[1,iel]]
+        x2 = mesh.xv[e2v[2,iel]]
+        y2 = mesh.yv[e2v[2,iel]]
+        x3 = mesh.xv[e2v[3,iel]]
+        y3 = mesh.yv[e2v[3,iel]]
+        a         = sqrt((x1-x2)^2 + (y1-y2)^2)
+        b         = sqrt((x2-x3)^2 + (y2-y3)^2)
+        c         = sqrt((x1-x3)^2 + (y1-y3)^2)
+        s         = 1/2*(a+b+c)
+        vole[iel] = sqrt(s*(s-a)*(s-b)*(s-c))
+        xc[iel]   = 1.0/3.0*(x1+x2+x3)
+        yc[iel]   = 1.0/3.0*(y1+y2+y3)
+    end
 
-mesh.e2v    = e2v'
-mesh.e2f    = e2f'
-mesh.nn_el  = 3
-mesh.nf_el  = 3
-mesh.xc     = xc
-mesh.yc     = yc
-mesh.vole   = vole
+    mesh.e2v    = e2v'
+    mesh.e2f    = e2f'
+    mesh.nn_el  = 3
+    mesh.nf_el  = 3
+    mesh.xc     = xc
+    mesh.yc     = yc
+    mesh.vole   = vole
 
-nodeA = [2 3 1]
-nodeB = [3 1 2]
-nodeC = [1 2 3]
+    # Local numbering of vertices of triangles
+    nodeA = [2 3 1]
+    nodeB = [3 1 2]
+    nodeC = [1 2 3]
 
-# Compute normal to faces
-mesh.n_x = zeros(Float64,mesh.nel,mesh.nf_el)
-mesh.n_y = zeros(Float64,mesh.nel,mesh.nf_el)
-mesh.dA  = zeros(Float64,mesh.nel,mesh.nf_el)
+    # Compute normal to faces
+    mesh.n_x = zeros(Float64,mesh.nel,mesh.nf_el)
+    mesh.n_y = zeros(Float64,mesh.nel,mesh.nf_el)
+    mesh.dA  = zeros(Float64,mesh.nel,mesh.nf_el)
 
- # Assemble FCFV elements
- @avx for iel=1:mesh.nel  
-    
-    # println("element: ",  iel)
-
-    for ifac=1:mesh.nf_el
+    # Assemble FCFV elements
+    @avx for iel=1:mesh.nel  
         
-        nodei  = mesh.e2f[iel,ifac]
+        # println("element: ",  iel)
 
-        # Vertices
-        vert1  = mesh.e2v[iel,nodeA[ifac]]
-        vert2  = mesh.e2v[iel,nodeB[ifac]]
-        vert3  = mesh.e2v[iel,nodeC[ifac]]
-        bc     = mesh.bc[nodei]
+        for ifac=1:mesh.nf_el
+            
+            nodei  = mesh.e2f[iel,ifac]
+
+            # Vertices
+            vert1  = mesh.e2v[iel,nodeA[ifac]]
+            vert2  = mesh.e2v[iel,nodeB[ifac]]
+            vert3  = mesh.e2v[iel,nodeC[ifac]]
+            bc     = mesh.bc[nodei]
+            dx     = (mesh.xv[vert1] - mesh.xv[vert2] );
+            dy     = (mesh.yv[vert1] - mesh.yv[vert2] );
+            dAi    = sqrt(dx^2 + dy^2);
+
+            # println(bc)
+            # @printf("face node, x = %2.2e y = %2.2e\n", mesh.xf[nodei], mesh.yf[nodei])
+            # @printf("vert1    , x = %2.2e y = %2.2e\n", mesh.xv[vert1], mesh.yv[vert1])
+            # @printf("vert2    , x = %2.2e y = %2.2e\n", mesh.xv[vert2], mesh.yv[vert2])
+        
+            # Face normal
+            n_x  = -dy/dAi
+            n_y  =  dx/dAi
+            
+            # Third vector
+            v_x  = mesh.xf[nodei] - mesh.xc[iel]
+            v_y  = mesh.yf[nodei] - mesh.yc[iel]
+            
+            # Check wether the normal points outwards
+            dot                 = n_x*v_x + n_y*v_y 
+            mesh.n_x[iel,ifac]  = ((dot>=0.0)*n_x - (dot<0.0)*n_x)
+            mesh.n_y[iel,ifac]  = ((dot>=0.0)*n_y - (dot<0.0)*n_y)
+            mesh.dA[iel,ifac]   = dAi
+        end
+    end
+
+    # Create face to element numbering
+    mesh.f2e    = zeros(Int,mesh.nf,2)
+    mesh.vole_f = zeros(Float64,mesh.nf,2)
+    mesh.n_x_f  = zeros(Float64,mesh.nf,2)
+    mesh.n_y_f  = zeros(Float64,mesh.nf,2)
+    mesh.dA_f   = zeros(Float64,mesh.nf,2)
+
+    # # Loop through field names and fields: standard
+    # for fname in fieldnames(typeof(trimesh))
+    #     println("Field name: ", fname)
+    #     println("Content   : ", getfield(trimesh, fname))
+    # end
+
+    # Loop over edges and uses Voronoï diagram to get adjacent cells
+    @avx for ifac=1:mesh.nf 
+        mesh.f2e[ifac,1] = trimesh.voronoi.edge[1,ifac]
+        mesh.f2e[ifac,2] = trimesh.voronoi.edge[2,ifac]
+        act1 = trimesh.voronoi.edge[1,ifac] > 0
+        act2 = trimesh.voronoi.edge[2,ifac] > 0
+        iel1 = (act1==1) * trimesh.voronoi.edge[1,ifac] + (act1==0) * 1
+        iel2 = (act2==1) * trimesh.voronoi.edge[2,ifac] + (act2==0) * 1
+        # Compute face length
+        vert1  = trimesh.edge[1,ifac]
+        vert2  = trimesh.edge[2,ifac]
+        xf     = 0.5*(mesh.xv[vert1] + mesh.xv[vert2])
+        yf     = 0.5*(mesh.yv[vert1] + mesh.yv[vert2])
         dx     = (mesh.xv[vert1] - mesh.xv[vert2] );
         dy     = (mesh.yv[vert1] - mesh.yv[vert2] );
-        dAi    = sqrt(dx^2 + dy^2);
-
-        # println(bc)
-        # @printf("face node, x = %2.2e y = %2.2e\n", mesh.xf[nodei], mesh.yf[nodei])
-        # @printf("vert1    , x = %2.2e y = %2.2e\n", mesh.xv[vert1], mesh.yv[vert1])
-        # @printf("vert2    , x = %2.2e y = %2.2e\n", mesh.xv[vert2], mesh.yv[vert2])
-       
-        # Face normal
+        dAi    = sqrt(dx^2 + dy^2);    
+        mesh.dA_f[ifac,1] =  dAi
+        mesh.dA_f[ifac,2] =  dAi
+        # Volumes
+        mesh.vole_f[ifac,1] = (act1==1) * mesh.vole[iel1]
+        mesh.vole_f[ifac,2] = (act2==2) * mesh.vole[iel2]
+        # Compute face normal
         n_x  = -dy/dAi
         n_y  =  dx/dAi
-        
-        # Third vector
-        v_x  = mesh.xf[nodei] - mesh.xc[iel]
-        v_y  = mesh.yf[nodei] - mesh.yc[iel]
-        # v_x  = mesh.xv[vert1] - mesh.xv[vert3]
-        # v_y  = mesh.yv[vert1] - mesh.yv[vert3]
-        
+        # Third vector  (w.r.t. element 1)
+        v_x  = xf - mesh.xc[iel1]
+        v_y  = yf - mesh.yc[iel1]
         # Check wether the normal points outwards
         dot                 = n_x*v_x + n_y*v_y 
-        mesh.n_x[iel,ifac]  = ((dot>=0.0)*n_x - (dot<0.0)*n_x)
-        mesh.n_y[iel,ifac]  = ((dot>=0.0)*n_y - (dot<0.0)*n_y)
-        mesh.dA[iel,ifac]   = dAi
-    end
-end
-
-# Create face to element numbering
-mesh.f2e    = zeros(Int,mesh.nf,2)
-mesh.vole_f = zeros(Float64,mesh.nf,2)
-mesh.n_x_f  = zeros(Float64,mesh.nf,2)
-mesh.n_y_f  = zeros(Float64,mesh.nf,2)
-mesh.dA_f   = zeros(Float64,mesh.nf,2)
-
-# Loop through field names and fields: standard
-for fname in fieldnames(typeof(trimesh))
-    println("Field name: ", fname)
-    println("Content   : ", getfield(trimesh, fname))
-end
-
-for iel=1:mesh.nel 
-
-    for ifac=1:mesh.nf_el
-
-        # [2 3 5 4 1 5 3 1; 
-        #  3 5 2 1 5 4 4 2]
-   
-        nodei                = mesh.e2f[iel,ifac]
-        iel1                 = iel
-        iel2                 = trimesh.cell_neighbor[ifac,iel]-1
-        mesh.f2e[nodei, 1]   = iel1
-        mesh.f2e[nodei, 2]   = iel2
-
-        mesh.vole_f[nodei,1] = mesh.vole[iel1]
-        mesh.dA_f[nodei,1]   = mesh.dA[iel1,ifac]
-        mesh.n_x_f[nodei,1]  = mesh.n_x[iel1,ifac]
-        mesh.n_y_f[nodei,1]  = mesh.n_y[iel1,ifac]
-        if iel2>0
-            mesh.vole_f[nodei,2] = mesh.vole[iel2]
-            mesh.dA_f[nodei,2]   = mesh.dA[iel1,ifac]
-            mesh.n_x_f[nodei,2]  =-mesh.n_x[iel1,ifac] 
-            mesh.n_y_f[nodei,2]  =-mesh.n_y[iel1,ifac]
-        end
-
+        mesh.n_x_f[ifac,1]  = (act1==1) * ((dot>=0.0)*n_x - (dot<0.0)*n_x)
+        mesh.n_y_f[ifac,1]  = (act1==1) * ((dot>=0.0)*n_y - (dot<0.0)*n_y)
+        # Take the negative for the second element
+        mesh.n_x_f[ifac,2]  = -mesh.n_x_f[ifac,1]
+        mesh.n_y_f[ifac,2]  = -mesh.n_y_f[ifac,1]
     end
 
-
-end
-
-println(mesh.e2f)
-println(mesh.f2e)
-
-# # Loop through field names and fields: standard
-# for fname in fieldnames(typeof(trimesh))
-#     println("Field name: ", fname)
-#     println("Content   : ", getfield(trimesh, fname))
-# end
-
-return mesh
-
+    return mesh
 end
 
 #--------------------------------------------------------------------#
@@ -385,6 +385,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
     mesh.vole   = dx*dy*ones(ncell)
     mesh.bc     = tf
 
+    # Local numbering of vertices of quadrangles
     nodeA = [2 1 3 4]
     nodeB = [3 2 4 1]
 
