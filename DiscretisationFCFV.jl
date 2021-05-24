@@ -120,3 +120,89 @@ function CreateTripletsSparse(mesh, Kv, fv)
     droptol!(K, 1e-6)
     return K, f
 end
+
+function ResidualOnFaces(mesh, Th, Te, qx, qy, tau) 
+    F = zeros(mesh.nf)
+    @avx for idof=1:mesh.nf  # ne marche pas avec avx
+
+        # Identify BC faces
+        bc = mesh.bc[idof]
+
+        # Element 1
+        yes1  = mesh.f2e[idof,1]>0
+        iel1  = (yes1==1) * mesh.f2e[idof,1]  + (yes1==0) * 1 # if the neigbouring element is out then set index to 1
+        dAi1  = (yes1==1) * mesh.dA_f[idof,1]  
+        ni_x1 = (yes1==1) * mesh.n_x_f[idof,1] 
+        ni_y1 = (yes1==1) * mesh.n_y_f[idof,1] 
+        taui1 = (yes1==1) * StabParam(tau,dAi1,mesh.vole_f[idof,1],mesh.type)  
+        Tel1  = (yes1==1) * Te[iel1] 
+        qxel1 = (yes1==1) * qx[iel1]
+        qyel1 = (yes1==1) * qy[iel1] 
+        F1    = (bc!=1) * (yes1==1) * (dAi1*ni_x1*qxel1 + dAi1*ni_y1*qyel1 + dAi1*taui1*Tel1 - dAi1*taui1*Th[idof])
+
+        # Element 2
+        yes2  = mesh.f2e[idof,2]>0
+        iel2  = (yes2==1) * mesh.f2e[idof,2]   + (yes2==0) * 1 # if the neigbouring element is out then set index to 1
+        dAi2  = (yes2==1) * mesh.dA_f[idof,2]  
+        ni_x2 = (yes2==1) * mesh.n_x_f[idof,2] 
+        ni_y2 = (yes2==1) * mesh.n_y_f[idof,2]
+        taui2 = (yes2==1) * StabParam(tau,dAi2,mesh.vole_f[idof,2],mesh.type) 
+        Tel2  = (yes2==1) * Te[iel2]
+        qxel2 = (yes2==1) * qx[iel2]
+        qyel2 = (yes2==1) * qy[iel2]
+        F2    = (bc!=1) * (yes2==1) * (dAi2*ni_x2*qxel2 + dAi2*ni_y2*qyel2 + dAi2*taui2*Tel2 - dAi2*taui2*Th[idof])
+        
+        # Contributions from the 2 elements
+        F[idof] = F1 + F2
+    end
+    return F 
+end
+
+# function ResidualOnFaces(mesh, Th, Te, qx, qy, tau) 
+#     F = zeros(mesh.nf)
+#     for idof=1:mesh.nf  # ne marche pas avec avx
+
+#         bc = mesh.bc[idof]
+
+#         # element 1
+#         iel   = mesh.f2e[idof,1]
+#         yes   = iel>0
+#         dAi   = (yes==1) * mesh.dA_f[idof,1]  + (yes==0) * 0.0
+#         ni_x  = (yes==1) * mesh.n_x_f[idof,1] + (yes==0) * 0.0
+#         ni_y  = (yes==1) * mesh.n_y_f[idof,1] + (yes==0) * 0.0
+#         tau0   = StabParam(tau,dAi,mesh.vole_f[idof,1],mesh.type) 
+#         taui  = (yes==1) * tau0 + (yes==0) * 0.0
+#         Tel   = (yes==1) * Te[iel] + (yes==0) * 0.0
+#         qxel  = (yes==1) * qx[iel] + (yes==0) * 0.0
+#         qyel  = (yes==1) * qy[iel] + (yes==0) * 0.0
+        
+#         F1 = (bc!=1) * (yes==1) * (dAi*ni_x*qxel + dAi*ni_y*qyel + dAi*taui*Tel - dAi*taui*Th[idof])
+
+#         # element 2
+#         iel   = mesh.f2e[idof,2]
+#         yes   = iel>0
+#         # if iel>0
+#         #     dAi   = (yes==1) * mesh.dA_f[idof,2]  + (yes==0) * 0.0
+#         #     ni_x  = (yes==1) * mesh.n_x_f[idof,2] + (yes==0) * 0.0
+#         #     ni_y  = (yes==1) * mesh.n_y_f[idof,2] + (yes==0) * 0.0
+#         #     tau0   = StabParam(tau,dAi,mesh.vole_f[idof,2],mesh.type) 
+#         #     taui  = (yes==1) * tau0 + (yes==0) * 0.0
+#         #     Tel   = (yes==1) * Te[iel] + (yes==0) * 0.0
+#         #     qxel  = (yes==1) * qx[iel] + (yes==0) * 0.0
+#         #     qyel  = (yes==1) * qy[iel] + (yes==0) * 0.0
+#         #     F[idof] += (bc!=1) * (yes==1) * (dAi*ni_x*qxel + dAi*ni_y*qyel + dAi*taui*Tel - dAi*taui*Th[idof])
+#         # end
+#         iel   = (yes==1) * iel  + (yes==0) * 1
+#         dAi   = (yes==1) * mesh.dA_f[idof,2]  + (yes==0) * 0.0
+#         ni_x  = (yes==1) * mesh.n_x_f[idof,2] + (yes==0) * 0.0
+#         ni_y  = (yes==1) * mesh.n_y_f[idof,2] + (yes==0) * 0.0
+#         tau0  = StabParam(tau,dAi,mesh.vole_f[idof,2],mesh.type) 
+#         taui  = (yes==1) * tau0 + (yes==0) * 0.0
+#         Tel   = (yes==1) * Te[iel] + (yes==0) * 0.0
+#         qxel  = (yes==1) * qx[iel] + (yes==0) * 0.0
+#         qyel  = (yes==1) * qy[iel] + (yes==0) * 0.0
+#         F2      = (bc!=1) * (yes==1) * (dAi*ni_x*qxel + dAi*ni_y*qyel + dAi*taui*Tel - dAi*taui*Th[idof])
+#         F[idof] = F1 + F2
+#     end
+#     return F 
+# end

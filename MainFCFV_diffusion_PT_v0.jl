@@ -117,46 +117,36 @@ end
         Th  .+= dTh[:]
     end
 
-    # Compute residual on faces
+    # Compute residual on faces -  This is check
     @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
-    F = zeros(mesh.nf)
-    for idof=1:mesh.nf
-
-        bc = mesh.bc[idof]
-        # F[idof] = (bc!=1) * 1.0
-
-        # element 1
-        iel   = mesh.f2e[idof,1]
-        yes   = iel>0
-        dAi   = (yes==1) * mesh.dA_f[idof,1]  + (yes==0) * 0.0
-        ni_x  = (yes==1) * mesh.n_x_f[idof,1] + (yes==0) * 0.0
-        ni_y  = (yes==1) * mesh.n_y_f[idof,1] + (yes==0) * 0.0
-        tau0   = StabParam(tau,dAi,mesh.vole_f[idof,1],mesh.type) 
-        taui  = (yes==1) * tau0 + (yes==0) * 0.0
-        Tel   = (yes==1) * Te[iel] + (yes==0) * 0.0
-        qxel  = (yes==1) * qx[iel] + (yes==0) * 0.0
-        qyel  = (yes==1) * qy[iel] + (yes==0) * 0.0
-        
-        F[idof] += (bc!=1) * (yes==1) * (dAi*ni_x*qxel + dAi*ni_y*qyel + dAi*taui*Tel - dAi*taui*Th[idof])
-
-        # element 2
-        iel   = mesh.f2e[idof,2]
-        yes   = iel>0
-        if iel>0
-        dAi   = (yes==1) * mesh.dA_f[idof,2]  + (yes==0) * 0.0
-        ni_x  = (yes==1) * mesh.n_x_f[idof,2] + (yes==0) * 0.0
-        ni_y  = (yes==1) * mesh.n_y_f[idof,2] + (yes==0) * 0.0
-        tau0   = StabParam(tau,dAi,mesh.vole_f[idof,2],mesh.type) 
-        taui  = (yes==1) * tau0 + (yes==0) * 0.0
-        Tel   = (yes==1) * Te[iel] + (yes==0) * 0.0
-        qxel  = (yes==1) * qx[iel] + (yes==0) * 0.0
-        qyel  = (yes==1) * qy[iel] + (yes==0) * 0.0
-        F[idof] += (bc!=1) * (yes==1) * (dAi*ni_x*qxel + dAi*ni_y*qyel + dAi*taui*Tel - dAi*taui*Th[idof])
-        end
-        
-    end
+    @time F = ResidualOnFaces(mesh, Th, Te, qx, qy, tau)
     println(F)
     println("Norm of matrix-free residual: ", norm(F)/length(F))
+
+    # >>>>>>>>>>>>> LUDO, for you:
+
+    # Now a PT solve
+    dmp    = 0.24;
+    dTdtau = 0.02
+    nout   = 500
+    F0     = zeros(mesh.nf)
+    Th_PT  = zeros(mesh.nf)
+    for iter=1:10000
+        Te, qx, qy = ComputeElementValues(mesh, Th_PT, ae, be, ze, Tdir, tau) # @avx inside ;) ---> DiscretisationFCFV.jl
+        F          = ResidualOnFaces(mesh, Th_PT, Te, qx, qy, tau)            # @avx inside ;) ---> DiscretisationFCFV.jl
+        F         .= (1 - dmp).*F0 .+ F                                       # to be updated with @avx
+        Th_PT    .+= dTtau.*F                                                 # to be updated with @avx
+        F0        .= F                                                        # to be updated with @avx
+        if mod(iter,nout) == 0
+            println("PT Iter. ", iter, " --- Norm of matrix-free residual: ", norm(F)/length(F))
+            if norm(F)/length(F) < 1e-6
+                println("PT solve converged")
+                break
+            end
+        end
+    end
+
+    # >>>>>>>>>>>>> LUDO, for you:
 
     # Reconstruct element values
     println("Compute element values:")

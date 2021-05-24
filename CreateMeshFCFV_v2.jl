@@ -208,32 +208,21 @@ mesh.n_x_f  = zeros(Float64,mesh.nf,2)
 mesh.n_y_f  = zeros(Float64,mesh.nf,2)
 mesh.dA_f   = zeros(Float64,mesh.nf,2)
 
-# idof = 1:mesh.nf_el  
-# ii   = repeat(idof, 1, length(idof))'
-# ij   = repeat(idof, 1, length(idof))
-# Ki   = mesh.e2f[:,ii]
-# Kj   = mesh.e2f[:,ij]
-
-# println("Ki")
-# println(Ki)
-# println("Kj")
-# println(Kj)
-
-
-# println(size(trimesh.cell_neighbor))
+# Loop through field names and fields: standard
+for fname in fieldnames(typeof(trimesh))
+    println("Field name: ", fname)
+    println("Content   : ", getfield(trimesh, fname))
+end
 
 for iel=1:mesh.nel 
 
-    # println(iel)
-    # println(trimesh.cell_neighbor[:,iel].-1)
-
     for ifac=1:mesh.nf_el
-
-        nodei              = mesh.e2f[iel,ifac]
-        iel1               = iel
-        iel2               = trimesh.cell_neighbor[ifac,iel]-1
-        mesh.f2e[nodei, 1] = iel1
-        mesh.f2e[nodei, 2] = iel2
+   
+        nodei                = mesh.e2f[iel,ifac]
+        iel1                 = iel
+        iel2                 = trimesh.cell_neighbor[ifac,iel]-1
+        mesh.f2e[nodei, 1]   = iel1
+        mesh.f2e[nodei, 2]   = iel2
 
         mesh.vole_f[nodei,1] = mesh.vole[iel1]
         mesh.dA_f[nodei,1]   = mesh.dA[iel1,ifac]
@@ -242,7 +231,7 @@ for iel=1:mesh.nel
         if iel2>0
             mesh.vole_f[nodei,2] = mesh.vole[iel2]
             mesh.dA_f[nodei,2]   = mesh.dA[iel1,ifac]
-            mesh.n_x_f[nodei,2]  =-mesh.n_x[iel1,ifac]
+            mesh.n_x_f[nodei,2]  =-mesh.n_x[iel1,ifac] 
             mesh.n_y_f[nodei,2]  =-mesh.n_y[iel1,ifac]
         end
 
