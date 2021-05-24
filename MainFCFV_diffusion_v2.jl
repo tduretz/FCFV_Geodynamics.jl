@@ -56,7 +56,7 @@ end
     
 @views function main()
 
-    println("\n******** FCFV POISSON********")
+    println("\n******** FCFV POISSON ********")
 
     # Create sides of mesh
     xmin, xmax = 0, 1
@@ -119,7 +119,8 @@ end
 
     # Reconstruct element values
     println("Compute element values:")
-    @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
+    # @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
+    @time Te, qx, qy = ComputeElementValuesFaces(mesh, Th, ae, be, ze, Tdir, tau)
 
     # Compute discretisation errors
     err_T, err_qx, err_qy = ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )

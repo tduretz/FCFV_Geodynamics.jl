@@ -63,7 +63,7 @@ end
     
 @views function main()
 
-    println("\n******** FCFV POISSON********")
+    println("\n******** FCFV POISSON ********")
 
     # Create sides of mesh
     xmin, xmax = 0, 1
@@ -140,9 +140,10 @@ end
     Th_PT  = zeros(mesh.nf)
     for iter=1:10000
         Te, qx, qy = ComputeElementValues(mesh, Th_PT, ae, be, ze, Tdir, tau) # @avx inside ;) ---> DiscretisationFCFV.jl
-        F          = ResidualOnFaces(mesh, Th_PT, Te, qx, qy, tau)            # @avx inside ;) ---> DiscretisationFCFV.jl
+        # F          = ResidualOnFaces(mesh, Th_PT, Te, qx, qy, tau)            # @avx inside ;) ---> DiscretisationFCFV.jl
+        F          = ResidualOnFaces_v2(mesh, Th_PT, Te, qx, qy, ae, be, ze, tau)
         F         .= (1 - dmp).*F0 .+ F                                       # to be updated with @avx
-        Th_PT    .+= dTdtau.*F                                                 # to be updated with @avx
+        Th_PT    .+= dTdtau.*F                                                # to be updated with @avx
         F0        .= F                                                        # to be updated with @avx
         if mod(iter,nout) == 0
             println("PT Iter. ", iter, " --- Norm of matrix-free residual: ", norm(F)/length(F))
@@ -160,6 +161,13 @@ end
     # Reconstruct element values
     println("Compute element values:")
     @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
+    @time Te1, qx1, qy1 = ComputeElementValuesFaces(mesh, Th, ae, be, ze, Tdir, tau)
+    println(norm(Te.-Te1)/length(Te[:]))
+    println(norm(qx.-qx1)/length(qx[:]))
+    println(norm(qy.-qy1)/length(qy[:]))
+
+    # println(Te)
+    # println(Te1)
 
     # Compute discretisation errors
     err_T, err_qx, err_qy = ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
@@ -169,7 +177,7 @@ end
 
     # Visualise
     println("Visualisation:")
-    @time PlotMakie( mesh, Te )
+    @time PlotMakie( mesh, Te1 )
     # PlotElements( mesh )
 
 end
