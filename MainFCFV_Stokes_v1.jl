@@ -1,6 +1,6 @@
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
-include("DiscretisationFCFV.jl")
+include("DiscretisationFCFV_Stokes.jl")
 using LoopVectorization
 using SparseArrays, LinearAlgebra
 import UnicodePlots 
@@ -23,7 +23,6 @@ function SetUpProblem!(mesh, P, Vx, Vy, VxDir, VxNeu, VyDir, VyNeu, sx, sy)
         Vy[iel] = -y^2*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)
         sx[iel] = -p^2*(24*y - 12) - 4*x^2*(4*y^3 - 6*y^2 + 2*y) - 8*x*(2*x - 2)*(4*y^3 - 6*y^2 + 2*y) - 2*x + 1.0*y^2*(2*y - 2)*(12*x^2 - 12*x + 2) + 2.0*y*(1 - y)^2*(12*x^2 - 12*x + 2) - 4*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y) + 1
         sy[iel] = -2*p*(1 - x)*(12*y^2 - 12*y + 2) - x^2*(2*x - 2)*(12*y^2 - 12*y + 2) + 1.0*y^2*(1 - y)^2*(24*x - 12) + 4*y^2*(4*x^3 - 6*x^2 + 2*x) + 8*y*(2*y - 2)*(4*x^3 - 6*x^2 + 2*x) + 4*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)
-
     end
     return
 end
@@ -93,9 +92,9 @@ end
     println("Model configuration :")
     @time SetUpProblem!(mesh, Pa, Vxa, Vya, VxDir, VxNeu, VyDir, VyNeu, sex, sey)
 
-    # # Compute some mesh vectors 
-    # println("Compute FCFV vectors:")
-    # @time ae, be, ze = ComputeFCFV(mesh, se, Tdir, tau)
+    # Compute some mesh vectors 
+    println("Compute FCFV vectors:")
+    @time ae, be, ze = ComputeFCFV(mesh, sex, sey, VxDir, VxNeu, VyDir, VyNeu, tau)
 
     # # Assemble element matrices and RHS
     # println("Compute element matrices:")
