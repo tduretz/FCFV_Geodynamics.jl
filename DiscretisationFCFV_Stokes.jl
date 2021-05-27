@@ -6,8 +6,8 @@ function ComputeFCFV(mesh, sex, sey, VxDir, VxNeu, VyDir, VyNeu, tau)
     # Assemble FCFV elements
     @avx for iel=1:mesh.nel  
 
-        be[iel,1] = be[iel,1]   + mesh.vole[iel]*sex[iel]
-        be[iel,2] = be[iel,2]   + mesh.vole[iel]*sey[iel]
+        be[iel,1] += mesh.vole[iel]*sex[iel]
+        be[iel,2] += mesh.vole[iel]*sey[iel]
         
         for ifac=1:mesh.nf_el
             
@@ -66,11 +66,15 @@ end
 
 #--------------------------------------------------------------------#
 
-function ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
+function ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VxNeu, VyDir, VyNeu, tau)
     # Assemble element matrices and rhs
-    f    = zeros(mesh.nf);
-    Kv   = zeros(mesh.nel, mesh.nf_el, mesh.nf_el)
-    fv   = zeros(mesh.nel, mesh.nf_el)
+    f   = zeros(mesh.nf);
+    Kuu = zeros(mesh.nel, 2*mesh.nf_el, 2*mesh.nf_el)
+    fu  = zeros(mesh.nel, 2*mesh.nf_el)
+    Kup = zeros(mesh.nel, 2*mesh.nf_el);
+    fp  = zeros(mesh.nel)
+    I11 = 1.0
+    I22 = 1.0
 
     @avx for iel=1:mesh.nel 
 
@@ -97,38 +101,62 @@ function ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
                         
                 # Element matrix
                 nitnj = ni_x*nj_x + ni_y*nj_y;
-                Ke_ij =-dAi * (1.0/ae[iel] * dAj * taui*tauj - 1.0/mesh.vole[iel]*dAj*nitnj - taui*del);
-                Kv[iel,ifac,jfac] = (bci!=1) * (bcj!=1) * Ke_ij
+                Ke_ij =-dAi * (1.0/ae[iel] * dAj * taui*tauj - 1.0/mesh.vole[iel]*dAj*nitnj - taui*del)
+                Kuu[iel,ifac,           jfac           ] = (bci!=1) * (bcj!=1) * Ke_ij
+                Kuu[iel,ifac+mesh.nf_el,jfac+mesh.nf_el] = (bci!=1) * (bcj!=1) * Ke_ij
             end
             # RHS
-            Xi     = 0.0 + (bci==2)*1.0;
-            ti     = Tneu[nodei]
-            nitze  = ni_x*ze[iel,1] + ni_y*ze[iel,2]
-            fe_i   = (bci!=1) * -dAi * (1.0/mesh.vole[iel]*nitze - ti*Xi - 1.0/ae[iel]*be[iel]*taui)
-            fv[iel,ifac] += (bci!=1) * fe_i
-            # Dirichlet nodes
-            Kv[iel,ifac,ifac] += (bci==1) * 1.0
-            fv[iel,ifac]      += (bci==1) * Tdir[nodei]
+            Xi      = 0.0 + (bci==2)*1.0;
+            tix     = VxNeu[nodei]
+            tiy     = VyNeu[nodei]
+            nitze_x = ni_x*ze[iel,1,1] + ni_y*ze[iel,2,1]
+            nitze_y = ni_x*ze[iel,1,2] + ni_y*ze[iel,2,2]
+            feix    = (bci!=1) * -dAi * (1.0/mesh.vole[iel]*nitze_x - tix*Xi - 1.0/ae[iel]*be[iel,1]*taui)
+            feix    = (bci!=1) * -dAi * (1.0/mesh.vole[iel]*nitze_y - tiy*Xi - 1.0/ae[iel]*be[iel,2]*taui)
+            # velocity RHS
+            fu[iel,ifac           ]                  += (bci!=1) * feix
+            fu[iel,ifac+mesh.nf_el]                  += (bci!=1) * feix
+            # up block
+            Kup[iel,ifac]                            -= (bci!=1) * dAi*ni_x;
+            Kup[iel,ifac+mesh.nf_el]                 -= (bci!=1) * dAi*ni_y;
+            # Dirichlet nodes - uu block
+            Kuu[iel,ifac,ifac]                       += (bci==1) * 1.0
+            Kuu[iel,ifac+mesh.nf_el,ifac+mesh.nf_el] += (bci==1) * 1.0
+            fu[iel,ifac]                             += (bci==1) * VxDir[nodei]
+            fu[iel,ifac+mesh.nf_el]                  += (bci==1) * VyDir[nodei]
+            # Dirichlet nodes - pressure RHS
+            fp[iel]                                  += (bci==1) * dAi*(VxDir[nodei]*ni_x + VyDir[nodei]*ni_y)
         end
     end
-    return Kv, fv
+    return Kuu, fu, Kup, fp
 end
 
 #--------------------------------------------------------------------#
 
-function CreateTripletsSparse(mesh, Kv, fv)
+function CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
     # Create triplets and assemble sparse matrix
-    idof = 1:mesh.nf_el  
+    e2fu = mesh.e2f
+    e2fv = mesh.e2f .+ mesh.nf 
+    e2f  = hcat(e2fu, e2fv)
+    println(size(e2f))
+    idof = 1:mesh.nf_el*2  
     ii   = repeat(idof, 1, length(idof))'
     ij   = repeat(idof, 1, length(idof))
-    Ki   = mesh.e2f[:,ii]
-    Kif  = mesh.e2f[:,ii[1,:]]
-    Kj   = mesh.e2f[:,ij]
-    K    = sparse(Ki[:], Kj[:], Kv[:], mesh.nf, mesh.nf)
-    f    = sparse(Kif[:], ones(size(Kif[:])), fv[:], mesh.nf, 1)
-    f    = Array(f)
-    droptol!(K, 1e-6)
-    return K, f
+    Ki   = e2f[:,ii]
+    Kif  = e2f[:,ii[1,:]]
+    Kj   = e2f[:,ij]
+    Kuu  = sparse(Ki[:], Kj[:], Kuu_v[:], mesh.nf*2, mesh.nf*2)
+    fu   = sparse(Kif[:], ones(size(Kif[:])), fu_v[:], mesh.nf*2, 1)
+    fu   = Array(fu)
+    droptol!(Kuu, 1e-6)
+
+    idof = 1:mesh.nf_el*2  
+    ii   = repeat(idof, 1, mesh.nel)'
+    ij   = repeat(1:mesh.nel, 1, length(idof))
+    Ki   = e2f
+    Kj   = ij
+    Kup  = sparse(Ki[:], Kj[:], Kup_v[:], mesh.nf*2, mesh.nel  )
+    return Kuu, fu, Kup
 end
 
 #--------------------------------------------------------------------#

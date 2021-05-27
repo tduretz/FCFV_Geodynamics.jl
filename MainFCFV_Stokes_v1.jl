@@ -58,7 +58,7 @@ function StabParam(tau, dA, Vol, mesh_type)
     return taui
 end
     
-@views function main()
+# @views function main()
 
     println("\n******** FCFV STOKES ********")
 
@@ -67,14 +67,14 @@ end
     ymin, ymax = 0, 1
     nx, ny     = 8, 8
     mesh_type  = "Quadrangles"
-    mesh_type  = "UnstructTriangles"
+    # mesh_type  = "UnstructTriangles"
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
-        tau  = 1
+        tau  = 20
         mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax )
     elseif mesh_type=="UnstructTriangles"  
-        tau  = 100
+        tau  = 20
         mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax ) 
     end
     println("Number of elements: ", mesh.nel)
@@ -96,18 +96,26 @@ end
     println("Compute FCFV vectors:")
     @time ae, be, ze = ComputeFCFV(mesh, sex, sey, VxDir, VxNeu, VyDir, VyNeu, tau)
 
-    # # Assemble element matrices and RHS
-    # println("Compute element matrices:")
-    # @time Kv, fv = ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
+    # Assemble element matrices and RHS
+    println("Compute element matrices:")
+    @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VxNeu, VyDir, VyNeu, tau)
 
-    # # Assemble triplets and sparse
-    # println("Assemble triplets and sparse:")
-    # @time K, f = CreateTripletsSparse(mesh, Kv, fv)
-    # # display(UnicodePlots.spy(K))
+    # Assemble triplets and sparse
+    println("Assemble triplets and sparse:")
+    @time Kuu, fu, Kup = CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
+    # display(UnicodePlots.spy(Kuu))
+    # display(UnicodePlots.spy(Kup))
 
-    # # Solve for hybrid variable
-    # println("Direct solve:")
-    # # @time Th   = K\f
+    # Solve for hybrid variable
+    println("Direct solve:")
+    zero_p = spdiagm(mesh.nel, mesh.nel) 
+    K = [Kuu Kup; Kup' zero_p]
+    display(UnicodePlots.spy(K))
+    f = [fu; fp]
+    println(-sum(f))
+    @time xh   = K\f
+    Pe = xh[2*mesh.nf+1:end]
+
     # PC  = 0.5.*(K.+K')
     # PCc = cholesky(PC)
     # Th  = zeros(mesh.nf)
@@ -137,9 +145,10 @@ end
 
     # Visualise
     println("Visualisation:")
-    @time PlotMakie( mesh, Pa )
+    # @time PlotMakie( mesh, sey )
+    @time PlotMakie( mesh, Pe )
     # PlotElements( mesh )
 
-end
+# end
 
-main()
+# main()
