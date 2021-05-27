@@ -1,4 +1,4 @@
-function ComputeFCFV(mesh, sex, sey, VxDir, VxNeu, VyDir, VyNeu, tau)
+function ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, tau)
     ae = zeros(mesh.nel)
     be = zeros(mesh.nel,2)
     ze = zeros(mesh.nel,2,2)
@@ -34,16 +34,20 @@ end
 
 #--------------------------------------------------------------------#
 
-function ComputeElementValues(mesh, uh, ae, be, ze, Tdir, tau)
-    ue          = zeros(mesh.nel);
-    qx          = zeros(mesh.nel);
-    qy          = zeros(mesh.nel);
+function ComputeElementValues(mesh, Vxh, Vyh, ae, be, ze, VxDir, VyDir, tau)
+    Vxe         = zeros(mesh.nel);
+    Vye         = zeros(mesh.nel);
+    Sxxe        = zeros(mesh.nel);
+    Syye        = zeros(mesh.nel);
+    Sxye        = zeros(mesh.nel);
 
-    @avx for iel=1:mesh.nel
+    for iel=1:mesh.nel
     
-        ue[iel]  =  be[iel]/ae[iel]
-        qx[iel]  = -1.0/mesh.vole[iel]*ze[iel,1]
-        qy[iel]  = -1.0/mesh.vole[iel]*ze[iel,2]
+        Vxe[iel]  =  be[iel,1]/ae[iel]
+        Vye[iel]  =  be[iel,2]/ae[iel]
+        Sxxe[iel] = -1.0/mesh.vole[iel]*ze[iel,1,1]
+        Syye[iel] = -1.0/mesh.vole[iel]*ze[iel,1,2] 
+        Sxye[iel] = -1.0/mesh.vole[iel]*ze[iel,2,2]
         
         for ifac=1:mesh.nf_el
             
@@ -56,25 +60,25 @@ function ComputeElementValues(mesh, uh, ae, be, ze, Tdir, tau)
             taui  = StabParam(tau,dAi,mesh.vole[iel],mesh.type)      # Stabilisation parameter for the face
 
             # Assemble
-            ue[iel] += (bc!=1) *  dAi*taui*uh[mesh.e2f[iel, ifac]]/ae[iel]
-            qx[iel] -= (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_x*uh[mesh.e2f[iel, ifac]]
-            qy[iel] -= (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_y*uh[mesh.e2f[iel, ifac]]
+            Vxe[iel]  += (bc!=1) *  dAi*taui*Vxh[nodei]/ae[iel]
+            Vye[iel]  += (bc!=1) *  dAi*taui*Vyh[nodei]/ae[iel]
+            Sxxe[iel] -= (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_x*Vxh[nodei]
+            Syye[iel] -= (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_y*Vyh[nodei]
+            Sxye[iel] -= (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_x*Vyh[nodei]
          end
     end
-    return ue, qx, qy
+    return Vxe, Vye, Sxxe, Syye, Sxye
 end
 
 #--------------------------------------------------------------------#
 
-function ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VxNeu, VyDir, VyNeu, tau)
+function ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, tau)
     # Assemble element matrices and rhs
     f   = zeros(mesh.nf);
     Kuu = zeros(mesh.nel, 2*mesh.nf_el, 2*mesh.nf_el)
     fu  = zeros(mesh.nel, 2*mesh.nf_el)
     Kup = zeros(mesh.nel, 2*mesh.nf_el);
     fp  = zeros(mesh.nel)
-    I11 = 1.0
-    I22 = 1.0
 
     @avx for iel=1:mesh.nel 
 
@@ -107,23 +111,20 @@ function ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VxNeu, VyDir, VyNeu, tau)
             end
             # RHS
             Xi      = 0.0 + (bci==2)*1.0;
-            tix     = VxNeu[nodei]
-            tiy     = VyNeu[nodei]
+            tix     = ni_x*SxxNeu[nodei] + ni_y*SxyNeu[nodei]
+            tiy     = ni_x*SxyNeu[nodei] + ni_y*SyyNeu[nodei]
             nitze_x = ni_x*ze[iel,1,1] + ni_y*ze[iel,2,1]
             nitze_y = ni_x*ze[iel,1,2] + ni_y*ze[iel,2,2]
             feix    = (bci!=1) * -dAi * (1.0/mesh.vole[iel]*nitze_x - tix*Xi - 1.0/ae[iel]*be[iel,1]*taui)
-            feix    = (bci!=1) * -dAi * (1.0/mesh.vole[iel]*nitze_y - tiy*Xi - 1.0/ae[iel]*be[iel,2]*taui)
-            # velocity RHS
-            fu[iel,ifac           ]                  += (bci!=1) * feix
-            fu[iel,ifac+mesh.nf_el]                  += (bci!=1) * feix
+            feiy    = (bci!=1) * -dAi * (1.0/mesh.vole[iel]*nitze_y - tiy*Xi - 1.0/ae[iel]*be[iel,2]*taui)
             # up block
             Kup[iel,ifac]                            -= (bci!=1) * dAi*ni_x;
             Kup[iel,ifac+mesh.nf_el]                 -= (bci!=1) * dAi*ni_y;
             # Dirichlet nodes - uu block
             Kuu[iel,ifac,ifac]                       += (bci==1) * 1.0
             Kuu[iel,ifac+mesh.nf_el,ifac+mesh.nf_el] += (bci==1) * 1.0
-            fu[iel,ifac]                             += (bci==1) * VxDir[nodei]
-            fu[iel,ifac+mesh.nf_el]                  += (bci==1) * VyDir[nodei]
+            fu[iel,ifac]                             += (bci!=1) * feix + (bci==1) * VxDir[nodei]
+            fu[iel,ifac+mesh.nf_el]                  += (bci!=1) * feiy + (bci==1) * VyDir[nodei]
             # Dirichlet nodes - pressure RHS
             fp[iel]                                  += (bci==1) * dAi*(VxDir[nodei]*ni_x + VyDir[nodei]*ni_y)
         end
@@ -134,11 +135,10 @@ end
 #--------------------------------------------------------------------#
 
 function CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
-    # Create triplets and assemble sparse matrix
+    # Create triplets and assemble sparse matrix fo Kuu
     e2fu = mesh.e2f
     e2fv = mesh.e2f .+ mesh.nf 
     e2f  = hcat(e2fu, e2fv)
-    println(size(e2f))
     idof = 1:mesh.nf_el*2  
     ii   = repeat(idof, 1, length(idof))'
     ij   = repeat(idof, 1, length(idof))
@@ -149,7 +149,7 @@ function CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
     fu   = sparse(Kif[:], ones(size(Kif[:])), fu_v[:], mesh.nf*2, 1)
     fu   = Array(fu)
     droptol!(Kuu, 1e-6)
-
+    # Create triplets and assemble sparse matrix fo Kup
     idof = 1:mesh.nf_el*2  
     ii   = repeat(idof, 1, mesh.nel)'
     ij   = repeat(1:mesh.nel, 1, length(idof))

@@ -257,6 +257,9 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
                 if (i==1 || i==nx2 || j==1 || j==ny2)
                     tf[nodes[i,j]] = 1
                 end
+                if ( j==1 )
+                    tf[nodes[i,j]] = 2 # set Neumann at the South
+                end
             end
         end
     end
@@ -382,7 +385,5 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
             mesh.dA[iel,ifac]   = dAi
         end
     end
-
-
     return mesh
 end
