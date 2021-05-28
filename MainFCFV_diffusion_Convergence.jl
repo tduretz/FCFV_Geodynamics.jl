@@ -57,7 +57,7 @@ end
     
 @views function main( N, mesh_type )  
 
-    println("\n******** FCFV POISSON********")
+    println("\n******** FCFV POISSON ********")
 
     # Create sides of mesh
     xmin, xmax = 0, 1

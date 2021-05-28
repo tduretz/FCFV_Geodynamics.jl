@@ -13,9 +13,10 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
         coef  = 1e5*ones(mesh.nel)
         Kppi  = spdiagm(coef)
         Kpu   = -Kup'
-        Kuusc = Kuu .- Kup*(Kppi*Kpu)
-        PC    =  0.5.*(Kuusc.+Kuusc') 
-        Kf    = cholesky(PC)
+        Kuusc = Kuu - Kup*(Kppi*Kpu)
+        PC    =  0.5*(Kuusc + Kuusc') 
+        t = @elapsed Kf    = cholesky(Symmetric(triu!(PC)))
+        @printf("Cholesky took = %02.2e s\n", t)
         u     = zeros(2*mesh.nf,1)
         ru    = zeros(2*mesh.nf, 1)
         fusc  = zeros(2*mesh.nf,1)
@@ -26,7 +27,7 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
             ru   .= fu - Kuu*u - Kup*p;
             rp   .= fp - Kpu*u;
             @printf("  --> Powell-Hestenes Iteration %02d\n  Momentum res.   = %2.2e\n  Continuity res. = %2.2e\n", rit, norm(ru)/length(ru), norm(rp)/length(rp))
-            if norm(ru)/length(ru) < 1e-10 && norm(rp)/length(rp) < 1e-10
+            if norm(ru)/length(ru) < 1e-10 && norm(rp)/length(rp) < 1e-9
                 break
             end
             fusc .=  fu  - Kup*(Kppi*fp + p)
