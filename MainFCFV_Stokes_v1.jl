@@ -1,7 +1,8 @@
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
 include("DiscretisationFCFV_Stokes.jl")
-using LoopVectorization
+include("SolversFCFV_Stokes.jl")
+using LoopVectorization, Printf
 using SparseArrays, LinearAlgebra
 import UnicodePlots 
 
@@ -35,30 +36,44 @@ function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, Syy
     return
 end
 
-function ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
-    eT  = zeros(mesh.nel)
-    eqx = zeros(mesh.nel)
-    eqy = zeros(mesh.nel)
-    Ta  = zeros(mesh.nel)
-    qxa = zeros(mesh.nel)
-    qya = zeros(mesh.nel)
+function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
+    eVx  = zeros(mesh.nel)
+    eVy  = zeros(mesh.nel)
+    eTxx = zeros(mesh.nel)
+    eTyy = zeros(mesh.nel)
+    eTxy = zeros(mesh.nel)
+    eP   = zeros(mesh.nel)
+    Vxa  = zeros(mesh.nel)
+    Vya  = zeros(mesh.nel)
+    Txxa = zeros(mesh.nel)
+    Tyya = zeros(mesh.nel)
+    Txya = zeros(mesh.nel)
+    Pa   = zeros(mesh.nel)
     @avx for iel=1:mesh.nel
-        x        = mesh.xc[iel]
-        y        = mesh.yc[iel]
-        Ta[iel]       = exp(alp*sin(a*x + c*y) + bet*cos(b*x + d*y))
-        qxa[iel]      = -Ta[iel] * (a*alp*cos(a*x + c*y) - b*bet*sin(b*x + d*y))
-        qya[iel]      = -Ta[iel] * (alp*c*cos(a*x + c*y) - bet*d*sin(b*x + d*y))
-        eT[iel]  = Te[iel] - Ta[iel]
-        eqx[iel] = qx[iel] - qxa[iel]
-        eqy[iel] = qy[iel] - qya[iel]
+        x         = mesh.xc[iel]
+        y         = mesh.yc[iel]
+        Pa[iel]   =  x*(1-x)
+        Vxa[iel]  =  x^2*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y)
+        Vya[iel]  = -y^2*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)
+        Txxa[iel] = -8*Pa[iel]*y*(x - 1)*(2*y^2 - 3*y + 1) + 8*x^2*y*(x - 1)*(2*y^2 - 3*y + 1)
+        Tyya[iel] = -8*x*y^2*(y - 1)*(2*x^2 - 3*x + 1) - 8*x*y*(y - 1)^2*(2*x^2 - 3*x + 1)
+        Txya[iel] = Pa[iel]^2*(12*y^2 - 12*y + 2) + y^2*(y - 1)^2*(-12.0*x^2 + 12.0*x - 2.0)
+        eVx[iel]  = Vxe[iel]  - Vxa[iel]
+        eVy[iel]  = Vye[iel]  - Vya[iel]
+        eTxx[iel] = Txxe[iel] - Txxa[iel]
+        eTyy[iel] = Tyye[iel] - Tyya[iel]
+        eTxy[iel] = Txye[iel] - Txya[iel]
+        eP[iel]   = Pe[iel]   - Pa[iel]
     end
-    errT  = norm(eT)/norm(Ta)
-    errqx = norm(eqx)/norm(qxa)
-    errqy = norm(eqy)/norm(qya)
-    return errT, errqx, errqy
+    errVx  = norm(eVx) /norm(Vxa)
+    errVy  = norm(eVy) /norm(Vya)
+    errTxx = norm(eTxx)/norm(Txxa)
+    errTyy = norm(eTyy)/norm(Tyya)
+    errTxy = norm(eTxy)/norm(Txya)
+    errP   = norm(eP)  /norm(Pa)
+    return errVx, errVy, errTxx, errTyy, errTxy, errP
 end
     
-
 function StabParam(tau, dA, Vol, mesh_type)
     if mesh_type=="Quadrangles";        taui = tau;    end
     # if mesh_type=="UnstructTriangles";  taui = tau*dA; end
@@ -66,14 +81,16 @@ function StabParam(tau, dA, Vol, mesh_type)
     return taui
 end
     
-# @views function main()
+@views function main()
 
     println("\n******** FCFV STOKES ********")
 
     # Create sides of mesh
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    nx, ny     = 20, 20
+    n          = 1
+    nx, ny     = 8*n, 8*n
+    solver     = 1
     mesh_type  = "Quadrangles"
     # mesh_type  = "UnstructTriangles"
   
@@ -119,49 +136,28 @@ end
     # display(UnicodePlots.spy(Kup))
 
     # Solve for hybrid variable
-    println("Direct solve:")
-    zero_p = spdiagm(mesh.nel, mesh.nel) 
-    K = [Kuu Kup; Kup' zero_p]
-    display(UnicodePlots.spy(K))
-    f = [fu; fp]
-    @time xh   = K\f
-    Vxh = xh[1:mesh.nf]
-    Vyh = xh[mesh.nf+1:2*mesh.nf]
-    Pe  = xh[2*mesh.nf+1:end]
-
-    # PC  = 0.5.*(K.+K')
-    # PCc = cholesky(PC)
-    # Th  = zeros(mesh.nf)
-    # dTh = zeros(mesh.nf,1)
-    # r   = zeros(mesh.nf,1)
-    # r  .= f - K*Th
-    # # @time Th   = K\f
-    # for rit=1:5
-    #     r    .= f - K*Th
-    #     println("It. ", rit, " - Norm of residual: ", norm(r)/length(r))
-    #     if norm(r)/length(r) < 1e-10
-    #         break
-    #     end
-    #     dTh  .= PCc\r
-    #     Th  .+= dTh[:]
-    # end
+    println("Linear solve:")
+    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
 
     # # Reconstruct element values
-    # println("Compute element values:")
-    @time Vxe, Vye, Sxxe, Syye, Sxye = ComputeElementValues(mesh, Vxh, Vyh, ae, be, ze, VxDir, VyDir, tau)
+    println("Compute element values:")
+    @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
 
     # # Compute discretisation errors
-    # err_T, err_qx, err_qy = ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
-    # println("Error in T:  ", err_T )
-    # println("Error in qx: ", err_qx)
-    # println("Error in qy: ", err_qy)
+    err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
+    @printf("Error in Vx : %2.2e\n", err_Vx )
+    @printf("Error in Vy : %2.2e\n", err_Vy )
+    @printf("Error in Txx: %2.2e\n", err_Txx)
+    @printf("Error in Tyy: %2.2e\n", err_Tyy)
+    @printf("Error in Txy: %2.2e\n", err_Txy)
+    @printf("Error in P  : %2.2e\n", err_P  )
 
     # Visualise
     println("Visualisation:")
     # @time PlotMakie( mesh, sex )
-    @time PlotMakie( mesh, Sxya )
+    @time PlotMakie( mesh, Pe )
     # PlotElements( mesh )
 
-# end
+end
 
-# main()
+main()

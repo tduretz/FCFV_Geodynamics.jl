@@ -34,20 +34,20 @@ end
 
 #--------------------------------------------------------------------#
 
-function ComputeElementValues(mesh, Vxh, Vyh, ae, be, ze, VxDir, VyDir, tau)
+function ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
     Vxe         = zeros(mesh.nel);
     Vye         = zeros(mesh.nel);
-    Sxxe        = zeros(mesh.nel);
-    Syye        = zeros(mesh.nel);
-    Sxye        = zeros(mesh.nel);
+    Txxe        = zeros(mesh.nel);
+    Tyye        = zeros(mesh.nel);
+    Txye        = zeros(mesh.nel);
 
-    for iel=1:mesh.nel
+    @avx for iel=1:mesh.nel
     
         Vxe[iel]  =  be[iel,1]/ae[iel]
         Vye[iel]  =  be[iel,2]/ae[iel]
-        Sxxe[iel] = -1.0/mesh.vole[iel]*ze[iel,1,1]
-        Syye[iel] = -1.0/mesh.vole[iel]*ze[iel,1,2] 
-        Sxye[iel] = -1.0/mesh.vole[iel]*ze[iel,2,2]
+        Txxe[iel] =  1.0/mesh.vole[iel]*ze[iel,1,1]
+        Tyye[iel] =  1.0/mesh.vole[iel]*ze[iel,1,2] 
+        Txye[iel] =  1.0/mesh.vole[iel]*ze[iel,2,2]
         
         for ifac=1:mesh.nf_el
             
@@ -62,12 +62,12 @@ function ComputeElementValues(mesh, Vxh, Vyh, ae, be, ze, VxDir, VyDir, tau)
             # Assemble
             Vxe[iel]  += (bc!=1) *  dAi*taui*Vxh[nodei]/ae[iel]
             Vye[iel]  += (bc!=1) *  dAi*taui*Vyh[nodei]/ae[iel]
-            Sxxe[iel] -= (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_x*Vxh[nodei]
-            Syye[iel] -= (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_y*Vyh[nodei]
-            Sxye[iel] -= (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_x*Vyh[nodei]
+            Txxe[iel] += (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_x*Vxh[nodei]
+            Tyye[iel] += (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_y*Vyh[nodei]
+            Txye[iel] += (bc!=1) *  0.5*( 1.0/mesh.vole[iel]*dAi*ni_x*Vyh[nodei] + 1.0/mesh.vole[iel]*dAi*ni_y*Vxh[nodei] )
          end
     end
-    return Vxe, Vye, Sxxe, Syye, Sxye
+    return Vxe, Vye, Txxe, Tyye, Txye
 end
 
 #--------------------------------------------------------------------#
