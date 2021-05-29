@@ -90,15 +90,13 @@ end
     ymin, ymax = 0, 1
     nx, ny     = N, N
     solver     = 1
-    mesh_type  = "Quadrangles"
-    # mesh_type  = "UnstructTriangles"
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
-        tau  = 20
+        tau  = 1
         mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax )
     elseif mesh_type=="UnstructTriangles"  
-        tau  = 20
+        tau  = 1
         mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax ) 
     end
     println("Number of elements: ", mesh.nel, " number of dofs: ", mesh.nf)
@@ -156,11 +154,11 @@ end
     # # @time PlotMakie( mesh, sex )
     # @time PlotMakie( mesh, Pe )
     # # PlotElements( mesh )
-
-    return mesh.nf, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P
+    ndof = 2*mesh.nf+mesh.nel
+    return ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P
 end
 
-N          = [8, 16, 32, 64, 128, 256, 512] 
+N          = [8, 16, 32, 64, 128, 256, 512, 1024] 
 mesh_type  = "Quadrangles"
 eVx_quad   = zeros(size(N))
 eqx_quad   = zeros(size(N))
@@ -175,22 +173,22 @@ for k=1:length(N)
     ndof_quad[k] = ndof
 end
 
-# mesh_type  = "UnstructTriangles"
-# eVx_tri    = zeros(size(N))
-# eqx_tri    = zeros(size(N))
-# eqy_tri    = zeros(size(N))
-# t_tri      = zeros(size(N))
-# ndof_tri   = zeros(size(N))
-# for k=1:length(N)
-#     t_tri[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P = main( N[k], mesh_type )
-#     eVx_tri[k]   = err_Vx
-#     # eqx_tri[k]   = err_qx
-#     # eqy_tri[k]   = err_qy
-#     ndof_tri[k]  = ndof
-# end
+mesh_type  = "UnstructTriangles"
+eVx_tri    = zeros(size(N))
+eqx_tri    = zeros(size(N))
+eqy_tri    = zeros(size(N))
+t_tri      = zeros(size(N))
+ndof_tri   = zeros(size(N))
+for k=1:length(N)
+    t_tri[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P = main( N[k], mesh_type )
+    eVx_tri[k]   = err_Vx
+    # eqx_tri[k]   = err_qx
+    # eqy_tri[k]   = err_qy
+    ndof_tri[k]  = ndof
+end
 
 # p = Plots.plot(  log10.(1.0 ./ N) , log10.(eVx_quad), markershape=:rect,      label="Quads"                          )
 # p = Plots.plot!( log10.(1.0 ./ N) , log10.(eVx_tri),  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
-# # p = Plots.plot(  ndof_quad[2:end], t_quad[2:end], markershape=:rect,      label="Quads"                          )
-# # p = Plots.plot!( ndof_tri[2:end],  t_tri[2:end],  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "ndof", ylabel = "time" )
-# display(p)
+p = Plots.plot(  ndof_quad[2:end], t_quad[2:end], markershape=:rect,      label="Quads"                          )
+p = Plots.plot!( ndof_tri[2:end],  t_tri[2:end],  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "ndof", ylabel = "time" )
+display(p)

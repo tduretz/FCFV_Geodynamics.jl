@@ -107,7 +107,9 @@ end
     println("Direct solve:")
     # @time Th   = K\f
     PC  = 0.5.*(K.+K')
-    PCc = cholesky(PC)
+    t = @elapsed PCc = cholesky(PC)
+    @printf("Cholesky took = %02.2e s\n", t)
+    println(PCc)
     Th  = zeros(mesh.nf)
     dTh = zeros(mesh.nf,1)
     r   = zeros(mesh.nf,1)
@@ -140,8 +142,8 @@ end
     return mesh.nf, err_T, err_qx, err_qy
 end
 
-# N          = [256, 512, 1024]
-N          = [8, 16, 32, 64, 128, 256, 512, 1024] 
+N          = [1024]
+# N          = [8, 16, 32, 64, 128, 256, 512, 1024] 
 mesh_type  = "Quadrangles"
 eT_quad    = zeros(size(N))
 eqx_quad   = zeros(size(N))
@@ -156,19 +158,19 @@ for k=1:length(N)
     ndof_quad[k] = ndof
 end
 
-mesh_type  = "UnstructTriangles"
-eT_tri     = zeros(size(N))
-eqx_tri    = zeros(size(N))
-eqy_tri    = zeros(size(N))
-t_tri      = zeros(size(N))
-ndof_tri   = zeros(size(N))
-for k=1:length(N)
-    t_tri[k]     = @elapsed ndof, err_T, err_qx, err_qy = main( N[k], mesh_type )
-    eT_tri[k]    = err_T
-    eqx_tri[k]   = err_qx
-    eqy_tri[k]   = err_qy
-    ndof_tri[k]  = ndof
-end
+# mesh_type  = "UnstructTriangles"
+# eT_tri     = zeros(size(N))
+# eqx_tri    = zeros(size(N))
+# eqy_tri    = zeros(size(N))
+# t_tri      = zeros(size(N))
+# ndof_tri   = zeros(size(N))
+# for k=1:length(N)
+#     t_tri[k]     = @elapsed ndof, err_T, err_qx, err_qy = main( N[k], mesh_type )
+#     eT_tri[k]    = err_T
+#     eqx_tri[k]   = err_qx
+#     eqy_tri[k]   = err_qy
+#     ndof_tri[k]  = ndof
+# end
 
 p = Plots.plot(  log10.(1.0 ./ N) , log10.(eT_quad), markershape=:rect,      label="Quads"                          )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_tri),  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
