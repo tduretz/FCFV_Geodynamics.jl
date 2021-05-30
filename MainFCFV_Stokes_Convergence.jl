@@ -43,12 +43,16 @@ function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
     eTyy = zeros(mesh.nel)
     eTxy = zeros(mesh.nel)
     eP   = zeros(mesh.nel)
+    eV   = zeros(mesh.nel)
+    eTii = zeros(mesh.nel)
     Vxa  = zeros(mesh.nel)
     Vya  = zeros(mesh.nel)
     Txxa = zeros(mesh.nel)
     Tyya = zeros(mesh.nel)
     Txya = zeros(mesh.nel)
     Pa   = zeros(mesh.nel)
+    Tiia = zeros(mesh.nel)
+    Va   = zeros(mesh.nel)
     @avx for iel=1:mesh.nel
         x         = mesh.xc[iel]
         y         = mesh.yc[iel]
@@ -64,6 +68,12 @@ function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
         eTyy[iel] = Tyye[iel] - Tyya[iel]
         eTxy[iel] = Txye[iel] - Txya[iel]
         eP[iel]   = Pe[iel]   - Pa[iel]
+        Va[iel]   = sqrt(Vxa[iel]^2 + Vya[iel]^2) 
+        Ve        = sqrt(Vxe[iel]^2 + Vye[iel]^2)
+        Tiia[iel] = sqrt(0.5*(Txxa[iel]^2 + Tyya[iel]^2) + Txya[iel]^2)
+        Tiie      = sqrt(0.5*(Txxe[iel]^2 + Tyye[iel]^2) + Txye[iel]^2)
+        eV[iel]   = Ve   - Va[iel]
+        eTii[iel] = Tiie - Tiia[iel] 
     end
     errVx  = norm(eVx) /norm(Vxa)
     errVy  = norm(eVy) /norm(Vya)
@@ -71,7 +81,9 @@ function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
     errTyy = norm(eTyy)/norm(Tyya)
     errTxy = norm(eTxy)/norm(Txya)
     errP   = norm(eP)  /norm(Pa)
-    return errVx, errVy, errTxx, errTyy, errTxy, errP
+    errV   = norm(eV)  /norm(Va)
+    errTii = norm(eTii)/norm(Tiia)
+    return errVx, errVy, errTxx, errTyy, errTxy, errP, errV, errTii
 end
     
 function StabParam(tau, dA, Vol, mesh_type)
@@ -141,7 +153,7 @@ end
     @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
 
     # # Compute discretisation errors
-    err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
+    err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
     @printf("Error in Vx : %2.2e\n", err_Vx )
     @printf("Error in Vy : %2.2e\n", err_Vy )
     @printf("Error in Txx: %2.2e\n", err_Txx)
@@ -155,40 +167,44 @@ end
     # @time PlotMakie( mesh, Pe )
     # # PlotElements( mesh )
     ndof = 2*mesh.nf+mesh.nel
-    return ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P
+    return ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii
 end
 
-N          = [8, 16, 32, 64, 128, 256, 512, 1024] 
+N          = [8, 16, 32, 64, 128, 256, 512, 1024]
 mesh_type  = "Quadrangles"
-eVx_quad   = zeros(size(N))
-eqx_quad   = zeros(size(N))
-eqy_quad   = zeros(size(N))
+eV_quad    = zeros(size(N))
+eP_quad    = zeros(size(N))
+eTau_quad  = zeros(size(N))
 t_quad     = zeros(size(N))
 ndof_quad  = zeros(size(N))
 for k=1:length(N)
-    t_quad[k]    = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P = main( N[k], mesh_type )
-    eVx_quad[k]   = err_Vx
-    # eqx_quad[k]  = err_qx
-    # eqy_quad[k]  = err_qy
+    t_quad[k]    = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = main( N[k], mesh_type )
+    eV_quad[k]   = err_V
+    eP_quad[k]   = err_P
+    eTau_quad[k] = err_Tii
     ndof_quad[k] = ndof
 end
 
 mesh_type  = "UnstructTriangles"
-eVx_tri    = zeros(size(N))
-eqx_tri    = zeros(size(N))
-eqy_tri    = zeros(size(N))
+eV_tri     = zeros(size(N))
+eP_tri     = zeros(size(N))
+eTau_tri   = zeros(size(N))
 t_tri      = zeros(size(N))
 ndof_tri   = zeros(size(N))
 for k=1:length(N)
-    t_tri[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P = main( N[k], mesh_type )
-    eVx_tri[k]   = err_Vx
-    # eqx_tri[k]   = err_qx
-    # eqy_tri[k]   = err_qy
+    t_tri[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N[k], mesh_type )
+    eV_tri[k]    = err_V
+    eP_tri[k]    = err_P
+    eTau_tri[k]  = err_Tii
     ndof_tri[k]  = ndof
 end
 
-# p = Plots.plot(  log10.(1.0 ./ N) , log10.(eVx_quad), markershape=:rect,      label="Quads"                          )
-# p = Plots.plot!( log10.(1.0 ./ N) , log10.(eVx_tri),  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
-p = Plots.plot(  ndof_quad[2:end], t_quad[2:end], markershape=:rect,      label="Quads"                          )
-p = Plots.plot!( ndof_tri[2:end],  t_tri[2:end],  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "ndof", ylabel = "time" )
+p = Plots.plot(  log10.(1.0 ./ N) , log10.(eV_quad), markershape=:rect,      label="Quads V"                          )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_quad), markershape=:rect,      label="Quads P"                          )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eTau_quad), markershape=:rect,      label="Quads Tau"                        )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eV_tri),  markershape=:dtriangle, label="Triangles V"                     )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_tri),  markershape=:dtriangle, label="Triangles P"                     )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eTau_tri),  markershape=:dtriangle, label="Triangles Tau", legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
+# p = Plots.plot(  ndof_quad[2:end], t_quad[2:end], markershape=:rect,      label="Quads"                          )
+# p = Plots.plot!( ndof_tri[2:end],  t_tri[2:end],  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "ndof", ylabel = "time" )
 display(p)

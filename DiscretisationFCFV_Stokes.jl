@@ -66,6 +66,9 @@ function ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
             Tyye[iel] += (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_y*Vyh[nodei]
             Txye[iel] += (bc!=1) *  0.5*( 1.0/mesh.vole[iel]*dAi*ni_x*Vyh[nodei] + 1.0/mesh.vole[iel]*dAi*ni_y*Vxh[nodei] )
          end
+         Txxe[iel] *= 2.0
+         Tyye[iel] *= 2.0
+         Txye[iel] *= 2.0
     end
     return Vxe, Vye, Txxe, Tyye, Txye
 end

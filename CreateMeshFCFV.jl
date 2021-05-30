@@ -40,7 +40,7 @@ px   = [xmin xmax xmax xmin]
 py   = [ymin ymin ymax ymax]
 sx   = [ 1 2 3 4 ] 
 sy   = [ 2 3 4 1 ]
-st   = [ 1 1 1 1 ]          # segment markers
+st   = [ 2 1 1 1 ]          # segment markers
 
 p    = vcat(px, py)         # points
 s    = vcat(sx, sy)         # segments

@@ -71,7 +71,7 @@ function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
     errTyy = norm(eTyy)/norm(Tyya)
     errTxy = norm(eTxy)/norm(Txya)
     errP   = norm(eP)  /norm(Pa)
-    return errVx, errVy, errTxx, errTyy, errTxy, errP
+    return errVx, errVy, errTxx, errTyy, errTxy, errP, Txxa, Tyya, Txya
 end
     
 function StabParam(tau, dA, Vol, mesh_type)
@@ -88,11 +88,11 @@ end
     # Create sides of mesh
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    n          = 1
+    n          = 4
     nx, ny     = 8*n, 8*n
     solver     = 1
-    mesh_type  = "Quadrangles"
-    # mesh_type  = "UnstructTriangles"
+    # mesh_type  = "Quadrangles"
+    mesh_type  = "UnstructTriangles"
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
@@ -144,13 +144,19 @@ end
     @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
 
     # # Compute discretisation errors
-    err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
+    err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, Txxa, Tyya, Txya = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
     @printf("Error in Vx : %2.2e\n", err_Vx )
     @printf("Error in Vy : %2.2e\n", err_Vy )
     @printf("Error in Txx: %2.2e\n", err_Txx)
     @printf("Error in Tyy: %2.2e\n", err_Tyy)
     @printf("Error in Txy: %2.2e\n", err_Txy)
     @printf("Error in P  : %2.2e\n", err_P  )
+
+    println(minimum(Pa))
+    println(minimum(Pe))
+    println(maximum(Pa))
+    println(maximum(Pe))
+
 
     # Visualise
     println("Visualisation:")
