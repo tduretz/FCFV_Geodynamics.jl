@@ -1,4 +1,4 @@
-using CairoMakie
+import CairoMakie
 import AbstractPlotting.GeometryBasics
 import Plots
 
@@ -6,8 +6,8 @@ import Plots
     ``` Create patch plots for either Quadrangles or Triangles
     ```
     p   = [AbstractPlotting.GeometryBasics.Polygon( Point2f0[ (mesh.xv[mesh.e2v[i,j]], mesh.yv[mesh.e2v[i,j]]) for j=1:mesh.nf_el] ) for i in 1:mesh.nel]
-    scene = poly(p, color = v, colormap = :jet1, strokewidth = 0, strokecolor = :black, markerstrokewidth=0, markerstrokecolor = (0, 0, 0, 0), aspect_ratio=:equal, clims=[0.7 1.4])
-    display(scene)
+    scene = CairoMakie.poly(p, color = v, colormap = :jet1, strokewidth = 0, strokecolor = :black, markerstrokewidth=0, markerstrokecolor = (0, 0, 0, 0), aspect_ratio=:equal, clims=[0.7 1.4])
+    CairoMakie.display(scene)
     return 
 end
 
