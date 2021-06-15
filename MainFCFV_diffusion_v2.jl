@@ -4,6 +4,7 @@ include("DiscretisationFCFV.jl")
 using LoopVectorization
 using SparseArrays, LinearAlgebra
 import UnicodePlots 
+using AbstractPlotting # this is not really good since it induces a warning
 
 function SetUpProblem!( mesh, T, Tdir, Tneu, se, a, b, c, d, alp, bet )
     # Evaluate T analytic on cell faces
@@ -62,8 +63,8 @@ end
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
     nx, ny     = 8, 8
-    mesh_type  = "Quadrangles"
-    # mesh_type  = "UnstructTriangles"
+    # mesh_type  = "Quadrangles"
+    mesh_type  = "UnstructTriangles"
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
@@ -119,8 +120,8 @@ end
 
     # Reconstruct element values
     println("Compute element values:")
-    # @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
-    @time Te, qx, qy = ComputeElementValuesFaces(mesh, Th, ae, be, ze, Tdir, tau)
+    @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
+    # @time Te, qx, qy = ComputeElementValuesFaces(mesh, Th, ae, be, ze, Tdir, tau)
 
     # Compute discretisation errors
     err_T, err_qx, err_qy = ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
