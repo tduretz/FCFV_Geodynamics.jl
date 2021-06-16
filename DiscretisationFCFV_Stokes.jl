@@ -16,7 +16,7 @@ function ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, tau)
             dAi   = mesh.dA[iel,ifac]
             ni_x  = mesh.n_x[iel,ifac]
             ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau,dAi,mesh.vole[iel],mesh.type)                              # Stabilisation parameter for the face
+            taui  = StabParam(tau*mesh.ke[iel],dAi,mesh.vole[iel],mesh.type)                              # Stabilisation parameter for the face
 
             # Assemble
             ze[iel,1,1] += (bc==1) * dAi*ni_x*VxDir[nodei] # Dirichlet
@@ -45,9 +45,9 @@ function ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
     
         Vxe[iel]  =  be[iel,1]/ae[iel]
         Vye[iel]  =  be[iel,2]/ae[iel]
-        Txxe[iel] =  1.0/mesh.vole[iel]*ze[iel,1,1]
-        Tyye[iel] =  1.0/mesh.vole[iel]*ze[iel,1,2] 
-        Txye[iel] =  1.0/mesh.vole[iel]*ze[iel,2,2]
+        Txxe[iel] =  mesh.ke[iel]/mesh.vole[iel]*ze[iel,1,1]
+        Tyye[iel] =  mesh.ke[iel]/mesh.vole[iel]*ze[iel,2,2] 
+        Txye[iel] =  mesh.ke[iel]/mesh.vole[iel]*0.5*(ze[iel,1,2]+ze[iel,2,1])
         
         for ifac=1:mesh.nf_el
             
@@ -57,14 +57,14 @@ function ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
             dAi   = mesh.dA[iel,ifac]
             ni_x  = mesh.n_x[iel,ifac]
             ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau,dAi,mesh.vole[iel],mesh.type)      # Stabilisation parameter for the face
+            taui  = StabParam(tau*mesh.ke[iel],dAi,mesh.vole[iel],mesh.type)      # Stabilisation parameter for the face
 
             # Assemble
             Vxe[iel]  += (bc!=1) *  dAi*taui*Vxh[nodei]/ae[iel]
             Vye[iel]  += (bc!=1) *  dAi*taui*Vyh[nodei]/ae[iel]
-            Txxe[iel] += (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_x*Vxh[nodei]
-            Tyye[iel] += (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_y*Vyh[nodei]
-            Txye[iel] += (bc!=1) *  0.5*( 1.0/mesh.vole[iel]*dAi*ni_x*Vyh[nodei] + 1.0/mesh.vole[iel]*dAi*ni_y*Vxh[nodei] )
+            Txxe[iel] += (bc!=1) *  mesh.ke[iel]/mesh.vole[iel]*dAi*ni_x*Vxh[nodei]
+            Tyye[iel] += (bc!=1) *  mesh.ke[iel]/mesh.vole[iel]*dAi*ni_y*Vyh[nodei]
+            Txye[iel] += (bc!=1) *  0.5*( mesh.ke[iel]/mesh.vole[iel]*dAi*( ni_x*Vyh[nodei] + ni_y*Vxh[nodei] ) )
          end
          Txxe[iel] *= 2.0
          Tyye[iel] *= 2.0
@@ -92,7 +92,7 @@ function ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, Sxy
             dAi   = mesh.dA[iel,ifac]
             ni_x  = mesh.n_x[iel,ifac]
             ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau,dAi,mesh.vole[iel], mesh.type)  
+            taui  = StabParam(tau*mesh.ke[iel],dAi,mesh.vole[iel], mesh.type)  
                 
             for jfac=1:mesh.nf_el
 
@@ -101,14 +101,14 @@ function ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, Sxy
                 dAj   = mesh.dA[iel,jfac]
                 nj_x  = mesh.n_x[iel,jfac]
                 nj_y  = mesh.n_y[iel,jfac]
-                tauj  = StabParam(tau,dAj,mesh.vole[iel], mesh.type)  
+                tauj  = StabParam(tau*mesh.ke[iel],dAj,mesh.vole[iel], mesh.type)  
                         
                 # Delta
                 del = 0.0 + (ifac==jfac)*1.0
                         
                 # Element matrix
                 nitnj = ni_x*nj_x + ni_y*nj_y;
-                Ke_ij =-dAi * (1.0/ae[iel] * dAj * taui*tauj - 1.0/mesh.vole[iel]*dAj*nitnj - taui*del)
+                Ke_ij =-dAi * (1.0/ae[iel] * dAj * taui*tauj - mesh.ke[iel]/mesh.vole[iel]*dAj*nitnj - taui*del)
                 Kuu[iel,ifac,           jfac           ] = (bci!=1) * (bcj!=1) * Ke_ij
                 Kuu[iel,ifac+mesh.nf_el,jfac+mesh.nf_el] = (bci!=1) * (bcj!=1) * Ke_ij
             end
@@ -118,8 +118,8 @@ function ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, Sxy
             tiy     = ni_x*SxyNeu[nodei] + ni_y*SyyNeu[nodei]
             nitze_x = ni_x*ze[iel,1,1] + ni_y*ze[iel,2,1]
             nitze_y = ni_x*ze[iel,1,2] + ni_y*ze[iel,2,2]
-            feix    = (bci!=1) * -dAi * (1.0/mesh.vole[iel]*nitze_x - tix*Xi - 1.0/ae[iel]*be[iel,1]*taui)
-            feiy    = (bci!=1) * -dAi * (1.0/mesh.vole[iel]*nitze_y - tiy*Xi - 1.0/ae[iel]*be[iel,2]*taui)
+            feix    = (bci!=1) * -dAi * (mesh.ke[iel]/mesh.vole[iel]*nitze_x - tix*Xi - 1.0/ae[iel]*be[iel,1]*taui)
+            feiy    = (bci!=1) * -dAi * (mesh.ke[iel]/mesh.vole[iel]*nitze_y - tiy*Xi - 1.0/ae[iel]*be[iel,2]*taui)
             # up block
             Kup[iel,ifac]                            -= (bci!=1) * dAi*ni_x;
             Kup[iel,ifac+mesh.nf_el]                 -= (bci!=1) * dAi*ni_y;

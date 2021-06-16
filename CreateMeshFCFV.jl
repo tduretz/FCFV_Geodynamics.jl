@@ -51,7 +51,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R )
     py     = [ymin; ymin; ymax; ymax]
     sx     = [ 1; 2; 3; 4; ] 
     sy     = [ 2; 3; 4; 1; ]
-    st     = [ 2; 1; 1; 1; ]          # segment markers
+    st     = [ 1; 1; 1; 1; ]          # segment markers
     no_pts = size(px,1);
     pts_l  = pts_l+no_pts;
     pts_u  = pts_u+no_pts;
@@ -308,9 +308,9 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R)
                 if (i==1 || i==nx2 || j==1 || j==ny2)
                     tf[nodes[i,j]] = 1
                 end
-                if ( i==1 ) # south
-                    tf[nodes[i,j]] = 2 # set Neumann at the South
-                end
+                # if ( i==1 ) # south
+                #     tf[nodes[i,j]] = 2 # set Neumann at the South
+                # end
             end
         end
     end
