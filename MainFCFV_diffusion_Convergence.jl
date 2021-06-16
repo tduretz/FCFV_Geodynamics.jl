@@ -6,12 +6,17 @@ using SparseArrays, LinearAlgebra
 import UnicodePlots 
 import Plots
 
+#--------------------------------------------------------------------#
+
 function SetUpProblem!( mesh, T, Tdir, Tneu, se, a, b, c, d, alp, bet )
     # Evaluate T analytic on cell faces
     @avx for in=1:mesh.nf
         x        = mesh.xf[in]
         y        = mesh.yf[in]
         Tdir[in] = exp(alp*sin(a*x + c*y) + bet*cos(b*x + d*y))
+        dTdx     = Tdir[in] * (a*alp*cos(a*x + c*y) - b*bet*sin(b*x + d*y))
+        dTdy     = Tdir[in] * (alp*c*cos(a*x + c*y) - bet*d*sin(b*x + d*y))
+        Tneu[in] = -dTdy # nx*dTdx + nt*dTdy on SOUTH face
     end
     # Evaluate T analytic on barycentres
     @avx for iel=1:mesh.nel
@@ -24,6 +29,8 @@ function SetUpProblem!( mesh, T, Tdir, Tneu, se, a, b, c, d, alp, bet )
     return
 end
 
+#--------------------------------------------------------------------#
+
 function ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
     eT  = zeros(mesh.nel)
     eqx = zeros(mesh.nel)
@@ -34,9 +41,9 @@ function ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
     @avx for iel=1:mesh.nel
         x        = mesh.xc[iel]
         y        = mesh.yc[iel]
-        Ta[iel]       = exp(alp*sin(a*x + c*y) + bet*cos(b*x + d*y))
-        qxa[iel]      = -Ta[iel] * (a*alp*cos(a*x + c*y) - b*bet*sin(b*x + d*y))
-        qya[iel]      = -Ta[iel] * (alp*c*cos(a*x + c*y) - bet*d*sin(b*x + d*y))
+        Ta[iel]  = exp(alp*sin(a*x + c*y) + bet*cos(b*x + d*y))
+        qxa[iel] = -Ta[iel] * (a*alp*cos(a*x + c*y) - b*bet*sin(b*x + d*y))
+        qya[iel] = -Ta[iel] * (alp*c*cos(a*x + c*y) - bet*d*sin(b*x + d*y))
         eT[iel]  = Te[iel] - Ta[iel]
         eqx[iel] = qx[iel] - qxa[iel]
         eqy[iel] = qy[iel] - qya[iel]
@@ -46,14 +53,16 @@ function ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
     errqy = norm(eqy)/norm(qya)
     return errT, errqx, errqy
 end
-    
 
+#--------------------------------------------------------------------#
+    
 function StabParam(tau, dA, Vol, mesh_type)
-    if mesh_type=="Quadrangles";        taui = tau;    end
-    # if mesh_type=="UnstructTriangles";  taui = tau*dA; end
-    if mesh_type=="UnstructTriangles";  taui = tau end
+    if mesh_type=="Quadrangles";        taui = tau; end
+    if mesh_type=="UnstructTriangles";  taui = tau; end
     return taui
 end
+
+#--------------------------------------------------------------------#
     
 @views function main( N, mesh_type )  
 
@@ -63,15 +72,17 @@ end
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
     nx, ny     = N, N
+    R          = 0.5
+    inclusion  = 0
   
     # Generate mesh
     println("Mesh generation :")
     if mesh_type=="Quadrangles" 
         tau  = 1
-        @time mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax )
+        @time mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R )
     elseif mesh_type=="UnstructTriangles"  
         tau  = 1
-        @time  mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax ) 
+        @time  mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R ) 
     end
     println("Number of elements: ", mesh.nel, " number of dofs: ", mesh.nf)
 
@@ -95,13 +106,6 @@ end
     # Assemble triplets and sparse
     println("Assemble triplets and sparse:")
     @time K, f = CreateTripletsSparse(mesh, Kv, fv)
-    
-    # Kchk = K .- K'
-    # droptol!(Kchk, 1e-10)
-    # display(UnicodePlots.spy(Kchk))
-    # # println(diag(K))
-    # println(minimum(diag(K)))
-    # println(maximum(diag(K)))
 
     # Solve for hybrid variable
     println("Direct solve:")
@@ -109,7 +113,6 @@ end
     PC  = 0.5.*(K.+K')
     t = @elapsed PCc = cholesky(PC)
     @printf("Cholesky took = %02.2e s\n", t)
-    println(PCc)
     Th  = zeros(mesh.nf)
     dTh = zeros(mesh.nf,1)
     r   = zeros(mesh.nf,1)
@@ -139,11 +142,11 @@ end
     # println("Visualisation:")
     # @time PlotMakie( mesh, Te )
     # PlotElements( mesh )
+    
     return mesh.nf, err_T, err_qx, err_qy
 end
 
-N          = [1024]
-# N          = [8, 16, 32, 64, 128, 256, 512, 1024] 
+N          = [8, 16, 32, 64, ]#, 128, 256, 512, 1024] 
 mesh_type  = "Quadrangles"
 eT_quad    = zeros(size(N))
 eqx_quad   = zeros(size(N))
@@ -158,19 +161,19 @@ for k=1:length(N)
     ndof_quad[k] = ndof
 end
 
-# mesh_type  = "UnstructTriangles"
-# eT_tri     = zeros(size(N))
-# eqx_tri    = zeros(size(N))
-# eqy_tri    = zeros(size(N))
-# t_tri      = zeros(size(N))
-# ndof_tri   = zeros(size(N))
-# for k=1:length(N)
-#     t_tri[k]     = @elapsed ndof, err_T, err_qx, err_qy = main( N[k], mesh_type )
-#     eT_tri[k]    = err_T
-#     eqx_tri[k]   = err_qx
-#     eqy_tri[k]   = err_qy
-#     ndof_tri[k]  = ndof
-# end
+mesh_type  = "UnstructTriangles"
+eT_tri     = zeros(size(N))
+eqx_tri    = zeros(size(N))
+eqy_tri    = zeros(size(N))
+t_tri      = zeros(size(N))
+ndof_tri   = zeros(size(N))
+for k=1:length(N)
+    t_tri[k]     = @elapsed ndof, err_T, err_qx, err_qy = main( N[k], mesh_type )
+    eT_tri[k]    = err_T
+    eqx_tri[k]   = err_qx
+    eqy_tri[k]   = err_qy
+    ndof_tri[k]  = ndof
+end
 
 p = Plots.plot(  log10.(1.0 ./ N) , log10.(eT_quad), markershape=:rect,      label="Quads"                          )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_tri),  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )

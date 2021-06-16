@@ -6,6 +6,8 @@ using LoopVectorization, Printf
 using SparseArrays, LinearAlgebra
 import UnicodePlots 
 
+#--------------------------------------------------------------------#
+
 function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, sx, sy)
     # Evaluate T analytic on cell faces
     @avx for in=1:mesh.nf
@@ -35,6 +37,8 @@ function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, Syy
     end
     return
 end
+
+#--------------------------------------------------------------------#
 
 function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
     eVx  = zeros(mesh.nel)
@@ -85,6 +89,8 @@ function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
     errTii = norm(eTii)/norm(Tiia)
     return errVx, errVy, errTxx, errTyy, errTxy, errP, errV, errTii
 end
+
+#--------------------------------------------------------------------#
     
 function StabParam(tau, dA, Vol, mesh_type)
     if mesh_type=="Quadrangles";        taui = tau;    end
@@ -92,6 +98,8 @@ function StabParam(tau, dA, Vol, mesh_type)
     if mesh_type=="UnstructTriangles";  taui = tau end
     return taui
 end
+
+#--------------------------------------------------------------------#
     
 @views function main( N, mesh_type )
 
@@ -102,14 +110,16 @@ end
     ymin, ymax = 0, 1
     nx, ny     = N, N
     solver     = 1
+    R          = 0.5
+    inclusion  = 0
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
         tau  = 1
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax )
+        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R )
     elseif mesh_type=="UnstructTriangles"  
         tau  = 1
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax ) 
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R ) 
     end
     println("Number of elements: ", mesh.nel, " number of dofs: ", mesh.nf)
 
@@ -170,7 +180,7 @@ end
     return ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii
 end
 
-N          = [8, 16, 32, 64, 128, 256, 512, 1024]
+N          = [8, 16, 32, 64, 128, 256]#, 512, 1024]
 mesh_type  = "Quadrangles"
 eV_quad    = zeros(size(N))
 eP_quad    = zeros(size(N))

@@ -85,15 +85,14 @@ end
 
 #--------------------------------------------------------------------#
 
-@views function main()
+@views function main( N, mesh_type )
 
     println("\n******** FCFV POISSON ********")
 
     # Create sides of mesh
     xmin, xmax = -1.0, 1.0
     ymin, ymax = -1.0, 1.0
-    n          = 4
-    nx, ny     = n*8, n*8
+    nx, ny     = N, N
     k          = [1.0 100]
     R          = 0.5
     inclusion  = 1
@@ -162,10 +161,44 @@ end
     println("Error in qx: ", err_qx)
     println("Error in qy: ", err_qy)
 
-    # Visualise
-    println("Visualisation:")
-    @time PlotMakie( mesh,  mesh.ke )
+    # # Visualise
+    # println("Visualisation:")
+    # @time PlotMakie( mesh,  mesh.ke )
 
+    return mesh.nf, err_T, err_qx, err_qy
 end
 
-main()
+N          = [8, 16, 32, 64, ]#, 128, 256, 512, 1024] 
+mesh_type  = "Quadrangles"
+eT_quad    = zeros(size(N))
+eqx_quad   = zeros(size(N))
+eqy_quad   = zeros(size(N))
+t_quad     = zeros(size(N))
+ndof_quad  = zeros(size(N))
+for k=1:length(N)
+    t_quad[k]    = @elapsed ndof, err_T, err_qx, err_qy = main( N[k], mesh_type )
+    eT_quad[k]   = err_T
+    eqx_quad[k]  = err_qx
+    eqy_quad[k]  = err_qy
+    ndof_quad[k] = ndof
+end
+
+mesh_type  = "UnstructTriangles"
+eT_tri     = zeros(size(N))
+eqx_tri    = zeros(size(N))
+eqy_tri    = zeros(size(N))
+t_tri      = zeros(size(N))
+ndof_tri   = zeros(size(N))
+for k=1:length(N)
+    t_tri[k]     = @elapsed ndof, err_T, err_qx, err_qy = main( N[k], mesh_type )
+    eT_tri[k]    = err_T
+    eqx_tri[k]   = err_qx
+    eqy_tri[k]   = err_qy
+    ndof_tri[k]  = ndof
+end
+
+p = Plots.plot(  log10.(1.0 ./ N) , log10.(eT_quad), markershape=:rect,      label="Quads"                          )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_tri),  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
+# p = Plots.plot(  ndof_quad[2:end], t_quad[2:end], markershape=:rect,      label="Quads"                          )
+# p = Plots.plot!( ndof_tri[2:end],  t_tri[2:end],  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "ndof", ylabel = "time" )
+display(p)

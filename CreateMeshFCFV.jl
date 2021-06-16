@@ -2,6 +2,8 @@ import TriangleMesh
 using Printf
 using LoopVectorization
 
+#--------------------------------------------------------------------#
+
 Base.@kwdef mutable struct FCFV_Mesh
     type   ::Union{String, Missing}          = missing
     nel    ::Union{Int64,  Missing}          = missing
@@ -32,102 +34,77 @@ Base.@kwdef mutable struct FCFV_Mesh
     phase  ::Union{Vector{Float64}, Missing} = missing # phase
 end
 
-function MakeTriangleMeshInclusion( nx, ny, xmin, xmax, ymin, ymax, R )
+#--------------------------------------------------------------------#
 
-    dx   = (xmax-xmin)/nx
-    dy   = (ymax-ymin)/ny
-    area = dx*dy
-    pts_l = 1;
-    pts_u = 0;
-    
-    # Four corners of the domain
-    px   = [xmin; xmax; xmax; xmin]
-    py   = [ymin; ymin; ymax; ymax]
-    sx   = [ 1; 2; 3; 4; ] 
-    sy   = [ 2; 3; 4; 1; ]
-    st   = [ 2; 1; 1; 1; ]          # segment markers
-    no_pts       = size(px,2);
-    pts_l        = pts_l+no_pts;
-    pts_u        = pts_u+no_pts;
+function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R )
 
     regions  = Array{Float64}(undef,4,0)
-    h1        = [xmin+1e-13 ymin+1e-13 1.0 0.0] # Region 1
-
-    # Inclusion
-
-    # CREATE CIRCLE
-    no_pts_incl  = 20
-    theta0       = collect(LinRange(0,2*pi,no_pts_incl+1));
-    theta        = theta0[1:end-1];
-    # println(theta)
-
-    xx           = cos.(theta);
-    yy           = sin.(theta);
-    center_x     = 0;
-    center_y     = 0;
-    X            = center_x .+ R*xx;
-    Y            = center_y .+ R*yy;
-    no_pts       = length(X);
-    st1         = 100*ones(1,no_pts);
-    # type(X< x_min | Y< y_min) = 1;
-    # X(X< x_min) = x_min +1e-4;
-    # Y(Y< y_min) = y_min +1e-4;
-    # INCLUSION    = [X; Y];
-   
-    pts_u         = pts_u + no_pts;
-    # println(collect(pts_l:pts_u))
-    # println(type)
-    # INCLUSION_s        = [; collect(pts_l+1:pts_u+1); type];
-    # INCLUSION_s[2,end] = pts_l;
+    holes    = Array{Float64}(undef,2,0)
+    dx       = (xmax-xmin)/nx
+    dy       = (ymax-ymin)/ny
+    area     = dx*dy
+    pts_l    = 1;
+    pts_u    = 0;
     
-    sx1 = collect(pts_l:pts_u)
-    sy1 = collect(pts_l+1:pts_u+1)
-    sy1[end] = pts_l
+    # 1. Four corners of the domain
+    px     = [xmin; xmax; xmax; xmin]
+    py     = [ymin; ymin; ymax; ymax]
+    sx     = [ 1; 2; 3; 4; ] 
+    sy     = [ 2; 3; 4; 1; ]
+    st     = [ 2; 1; 1; 1; ]          # segment markers
+    no_pts = size(px,1);
+    pts_l  = pts_l+no_pts;
+    pts_u  = pts_u+no_pts;
+    # Region 1
+    h1     = [xmin+1e-13; ymin+1e-13; 1.0; 0.0] 
 
-    # println(X)
-    # println(Y)
-    # println(sx1)
-    # println(sy1)
-    # println(st1)
-
-    for i=1:no_pts_incl
-        px   = push!(px, X[i])
-        py   = push!(py, Y[i])
-        sx   = push!(sx, sx1[i])
-        sy   = push!(sy, sy1[i])
-        st   = push!(st, st1[i])
+    if inclusion==1
+        # 2. Inclusion
+        no_pts_incl  = Int64(floor(1.0*pi*R/sqrt(dx^2+dy^2)))
+        theta0       = collect(LinRange(0,2*pi,no_pts_incl+1));
+        theta        = theta0[1:end-1] # do not include last point (periodic 0 == 2pi)
+        xx           = cos.(theta);
+        yy           = sin.(theta);
+        center_x     = (xmax + xmin)/2.0
+        center_y     = (ymax + ymin)/2.0
+        X            = center_x .+ R*xx;
+        Y            = center_y .+ R*yy;
+        no_pts       = length(X);
+        st1          = 100*ones(1,no_pts);
+        pts_u        = pts_u + no_pts;
+        sx1          = collect(pts_l:pts_u)
+        sy1          = collect(pts_l+1:pts_u+1)
+        sy1[end]     = pts_l # Periodic
+        h2           = [0.0; 0.0; 2.0; 0.0] # Region 2
+        # println(X)
+        # println(Y)
+        # println(sx1)
+        # println(sy1)
+        # println(st1)
+        for i=1:no_pts_incl
+            px   = push!(px, X[i])
+            py   = push!(py, Y[i])
+            sx   = push!(sx, sx1[i])
+            sy   = push!(sy, sy1[i])
+            st   = push!(st, st1[i])
+        end
+        regions = hcat(h1,h2)
     end
 
-
-    # h2       = [0.0 0.0 2.0 0.0] # Region 2
-    # regions  = vcat(h1,h2)
-    regions = h1
-
-    println(regions)
-
-    
-    p    = hcat(px, py)         # points
-    s    = hcat(sx, sy)         # segments
-    
-    p = p'
-    s = s'
-    # p    = vcat(px, py)         # points
-    # s    = vcat(sx, sy)         # segments
-    st = st[:]
+    p       = hcat(px, py)         # points
+    s       = hcat(sx, sy)         # segments
+    p       = p'
+    s       = s'
+    st      = st[:]
     
     # Triangulation
-    holes    = Array{Float64}(undef,2,0)
-    println(size(regions,2))
     domain   = TriangleMesh.Polygon_pslg(size(p,2), p, 0, Array{Int64}(undef,2,0), 0, Array{Float64}(undef,2,0),  size(s,2), s, st, 0, holes, size(regions,2), regions, 1.0)
     astring  = @sprintf("%0.10lf", area)
-    switches = "Dpenq33o2IAa$(astring)"  #QDpeq33o2Aa0.01
+    switches = "vQDpenq33o2IAa$(astring)"  #QDpeq33o2Aa0.01
     
     println("Arguments to Triangle: ", switches)
     trimesh  = TriangleMesh.create_mesh(domain, switches)
     nvert_el = 3 # vertices per element
-
-    println(minimum(trimesh.triangle_attribute))
-    println(maximum(trimesh.triangle_attribute))
     
     mesh        = FCFV_Mesh()
     mesh.type   = "UnstructTriangles"
@@ -141,7 +118,16 @@ function MakeTriangleMeshInclusion( nx, ny, xmin, xmax, ymin, ymax, R )
     mesh.xf     = trimesh.point[1,mesh.nv+1:end]
     mesh.yf     = trimesh.point[2,mesh.nv+1:end]
     mesh.bc     = trimesh.point_marker[mesh.nv+1:end]
-    mesh.phase  = trimesh.triangle_attribute
+    mesh.ke     = ones(Float64,mesh.nel)
+
+    if length(trimesh.triangle_attribute)>0
+        println(minimum(trimesh.triangle_attribute))
+        println(maximum(trimesh.triangle_attribute))
+        mesh.phase  = trimesh.triangle_attribute
+    else
+        mesh.phase  = ones(trimesh.n_cell)
+    end
+    
     
     nel  = trimesh.n_cell
     vole = zeros(nel)
@@ -214,130 +200,66 @@ function MakeTriangleMeshInclusion( nx, ny, xmin, xmax, ymin, ymax, R )
             mesh.dA[iel,ifac]   = dAi
         end
     end
+
+    ############# FOR THE PSEUDO-TRANSIENT PURPOSES ONLY #############
+
+    # Create face to element numbering
+    mesh.f2e    = zeros(Int,mesh.nf,2)
+    mesh.vole_f = zeros(Float64,mesh.nf,2)
+    mesh.n_x_f  = zeros(Float64,mesh.nf,2)
+    mesh.n_y_f  = zeros(Float64,mesh.nf,2)
+    mesh.dA_f   = zeros(Float64,mesh.nf,2)
+
+    # # Loop through field names and fields: standard
+    # for fname in fieldnames(typeof(trimesh))
+    #     println("Field name: ", fname)
+    #     println("Content   : ", getfield(trimesh, fname))
+    # end
+
+    # Loop over edges and uses Voronoï diagram to get adjacent cells
+    @avx for ifac=1:mesh.nf 
+        mesh.f2e[ifac,1] = trimesh.voronoi.edge[1,ifac]
+        mesh.f2e[ifac,2] = trimesh.voronoi.edge[2,ifac]
+        act1 = trimesh.voronoi.edge[1,ifac] > 0
+        act2 = trimesh.voronoi.edge[2,ifac] > 0
+        iel1 = (act1==1) * trimesh.voronoi.edge[1,ifac] + (act1==0) * 1
+        iel2 = (act2==1) * trimesh.voronoi.edge[2,ifac] + (act2==0) * 1
+        # Compute face length
+        vert1  = trimesh.edge[1,ifac]
+        vert2  = trimesh.edge[2,ifac]
+        xf     = 0.5*(mesh.xv[vert1] + mesh.xv[vert2])
+        yf     = 0.5*(mesh.yv[vert1] + mesh.yv[vert2])
+        dx     = (mesh.xv[vert1] - mesh.xv[vert2] );
+        dy     = (mesh.yv[vert1] - mesh.yv[vert2] );
+        dAi    = sqrt(dx^2 + dy^2);    
+        mesh.dA_f[ifac,1] =  dAi
+        mesh.dA_f[ifac,2] =  dAi
+        # Volumes
+        mesh.vole_f[ifac,1] = (act1==1) * mesh.vole[iel1]
+        mesh.vole_f[ifac,2] = (act2==2) * mesh.vole[iel2]
+        # Compute face normal
+        n_x  = -dy/dAi
+        n_y  =  dx/dAi
+        # Third vector  (w.r.t. element 1)
+        v_x  = xf - mesh.xc[iel1]
+        v_y  = yf - mesh.yc[iel1]
+        # Check wether the normal points outwards
+        dot                 = n_x*v_x + n_y*v_y 
+        mesh.n_x_f[ifac,1]  = (act1==1) * ((dot>=0.0)*n_x - (dot<0.0)*n_x)
+        mesh.n_y_f[ifac,1]  = (act1==1) * ((dot>=0.0)*n_y - (dot<0.0)*n_y)
+        # Take the negative for the second element
+        mesh.n_x_f[ifac,2]  = -mesh.n_x_f[ifac,1]
+        mesh.n_y_f[ifac,2]  = -mesh.n_y_f[ifac,1]
+    end
+    ############# FOR THE PSEUDO-TRANSIENT PURPOSES ONLY #############
     
     return mesh
     
     end
 
-function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax )
-
-dx   = (xmax-xmin)/nx
-dy   = (ymax-ymin)/ny
-area = dx*dy
-
-# Four corners of the domain
-px   = [xmin xmax xmax xmin]
-py   = [ymin ymin ymax ymax]
-sx   = [ 1 2 3 4 ] 
-sy   = [ 2 3 4 1 ]
-st   = [ 2 1 1 1 ]          # segment markers
-p    = vcat(px, py)         # points
-s    = vcat(sx, sy)         # segments
-st = st[:]
-
-# Triangulation
-holes    = Array{Float64}(undef,2,0)
-regions  = Array{Float64}(undef,2,0)
-domain   = TriangleMesh.Polygon_pslg(size(p,2), p, 0, Array{Int64}(undef,2,0), 0, Array{Float64}(undef,2,0),  size(s,2), s, st, 0, holes, 0, regions, 0.0)
-astring  = @sprintf("%0.10lf", area)
-switches = "QDpenq33o2IAa$(astring)"
-
-println("Arguments to Triangle: ", switches)
-trimesh  = TriangleMesh.create_mesh(domain, switches)
-nvert_el = 3 # vertices per element
-
-mesh        = FCFV_Mesh()
-mesh.type   = "UnstructTriangles"
-mesh.nel    = trimesh.n_cell
-e2v         = trimesh.cell[1:3,:]
-mesh.nv     = maximum(e2v)
-e2f         = trimesh.cell[4:6,:] .- mesh.nv
-mesh.nf     = maximum(e2f)
-mesh.xv     = trimesh.point[1,1:mesh.nv]
-mesh.yv     = trimesh.point[2,1:mesh.nv]
-mesh.xf     = trimesh.point[1,mesh.nv+1:end]
-mesh.yf     = trimesh.point[2,mesh.nv+1:end]
-mesh.bc     = trimesh.point_marker[mesh.nv+1:end]
-
-nel  = trimesh.n_cell
-vole = zeros(nel)
-xc   = zeros(nel)
-yc   = zeros(nel)
-
-@avx for iel=1:nel
-    # Compute volumes of triangles - use vertices coordinates
-    x1 = mesh.xv[e2v[1,iel]]
-    y1 = mesh.yv[e2v[1,iel]]
-    x2 = mesh.xv[e2v[2,iel]]
-    y2 = mesh.yv[e2v[2,iel]]
-    x3 = mesh.xv[e2v[3,iel]]
-    y3 = mesh.yv[e2v[3,iel]]
-    a         = sqrt((x1-x2)^2 + (y1-y2)^2)
-    b         = sqrt((x2-x3)^2 + (y2-y3)^2)
-    c         = sqrt((x1-x3)^2 + (y1-y3)^2)
-    s         = 1/2*(a+b+c)
-    vole[iel] = sqrt(s*(s-a)*(s-b)*(s-c))
-    xc[iel]   = 1.0/3.0*(x1+x2+x3)
-    yc[iel]   = 1.0/3.0*(y1+y2+y3)
-end
-
-mesh.e2v    = e2v'
-mesh.e2f    = e2f'
-mesh.nn_el  = 3
-mesh.nf_el  = 3
-mesh.xc     = xc
-mesh.yc     = yc
-mesh.vole   = vole
-
-nodeA = [2 3 1]
-nodeB = [3 1 2]
-nodeC = [1 2 3]
-
-# Compute normal to faces
-mesh.n_x = zeros(Float64,mesh.nel,mesh.nf_el)
-mesh.n_y = zeros(Float64,mesh.nel,mesh.nf_el)
-mesh.dA  = zeros(Float64,mesh.nel,mesh.nf_el)
-mesh.ke  =  ones(Float64,mesh.nel)
-
- # Assemble FCFV elements
- @avx for iel=1:mesh.nel  
-    
-    for ifac=1:mesh.nf_el
-        
-        nodei  = mesh.e2f[iel,ifac]
-
-        # Vertices
-        vert1  = mesh.e2v[iel,nodeA[ifac]]
-        vert2  = mesh.e2v[iel,nodeB[ifac]]
-        vert3  = mesh.e2v[iel,nodeC[ifac]]
-        bc     = mesh.bc[nodei]
-        dx     = (mesh.xv[vert1] - mesh.xv[vert2] );
-        dy     = (mesh.yv[vert1] - mesh.yv[vert2] );
-        dAi    = sqrt(dx^2 + dy^2);
-
-        # Face normal
-        n_x  = -dy/dAi
-        n_y  =  dx/dAi
-        
-        # Third vector
-        v_x  = mesh.xf[nodei] - mesh.xc[iel]
-        v_y  = mesh.yf[nodei] - mesh.yc[iel]
-        
-        # Check wether the normal points outwards
-        dot                 = n_x*v_x + n_y*v_y 
-        mesh.n_x[iel,ifac]  = ((dot>=0.0)*n_x - (dot<0.0)*n_x)
-        mesh.n_y[iel,ifac]  = ((dot>=0.0)*n_y - (dot<0.0)*n_y)
-        mesh.dA[iel,ifac]   = dAi
-    end
-end
-
-return mesh
-
-end
-
 #--------------------------------------------------------------------#
 
-function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
+function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R)
     # Generates a 2D rectangular mesh of nx*ny cells
     ncell      = nx*ny
     # Twice resolution mesh
@@ -471,6 +393,18 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
     nodeA = [2 1 3 4]
     nodeB = [3 2 4 1]
 
+    # phase
+    mesh.phase = ones(mesh.nel)
+    if inclusion==1 
+        @avx for iel=1:mesh.nel
+            x               = mesh.xc[iel]
+            y               = mesh.yc[iel]
+            out             = (x^2 + y^2)>R^2
+            mesh.phase[iel] = (out==1)*1.0 + (out!=1)*2.0
+        end
+
+    end
+
     # Compute normal to faces
     mesh.n_x = zeros(Float64,mesh.nel,mesh.nf_el)
     mesh.n_y = zeros(Float64,mesh.nel,mesh.nf_el)
@@ -515,5 +449,9 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
             mesh.dA[iel,ifac]   = dAi
         end
     end
+
+    # Create face to element numbering
+    mesh.f2e = zeros(Int,mesh.nel,2)
+
     return mesh
 end

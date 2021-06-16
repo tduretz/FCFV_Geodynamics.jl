@@ -5,6 +5,9 @@ include("SolversFCFV_Stokes.jl")
 using LoopVectorization, Printf
 using SparseArrays, LinearAlgebra
 import UnicodePlots 
+using AbstractPlotting # this is not really good since it induces a warning
+
+#--------------------------------------------------------------------#
 
 function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, sx, sy)
     # Evaluate T analytic on cell faces
@@ -35,6 +38,8 @@ function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, Syy
     end
     return
 end
+
+#--------------------------------------------------------------------#
 
 function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
     eVx  = zeros(mesh.nel)
@@ -73,6 +78,8 @@ function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
     errP   = norm(eP)  /norm(Pa)
     return errVx, errVy, errTxx, errTyy, errTxy, errP, Txxa, Tyya, Txya
 end
+
+#--------------------------------------------------------------------#
     
 function StabParam(tau, dA, Vol, mesh_type)
     if mesh_type=="Quadrangles";        taui = tau;    end
@@ -80,7 +87,9 @@ function StabParam(tau, dA, Vol, mesh_type)
     if mesh_type=="UnstructTriangles";  taui = tau end
     return taui
 end
-    
+
+#--------------------------------------------------------------------#
+
 @views function main()
 
     println("\n******** FCFV STOKES ********")
@@ -91,16 +100,18 @@ end
     n          = 4
     nx, ny     = 8*n, 8*n
     solver     = 1
+    R          = 0.5
+    inclusion  = 0
     # mesh_type  = "Quadrangles"
     mesh_type  = "UnstructTriangles"
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
         tau  = 20
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax )
+        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R )
     elseif mesh_type=="UnstructTriangles"  
         tau  = 20
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax ) 
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R ) 
     end
     println("Number of elements: ", mesh.nel)
 

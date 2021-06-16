@@ -12,6 +12,9 @@ function SetUpProblem!( mesh, T, Tdir, Tneu, se, a, b, c, d, alp, bet )
         x        = mesh.xf[in]
         y        = mesh.yf[in]
         Tdir[in] = exp(alp*sin(a*x + c*y) + bet*cos(b*x + d*y))
+        dTdx     = Tdir[in] * (a*alp*cos(a*x + c*y) - b*bet*sin(b*x + d*y))
+        dTdy     = Tdir[in] * (alp*c*cos(a*x + c*y) - bet*d*sin(b*x + d*y))
+        Tneu[in] = -dTdy # nx*dTdx + nt*dTdy on SOUTH face
     end
     # Evaluate T analytic on barycentres
     @avx for iel=1:mesh.nel
@@ -62,17 +65,19 @@ end
     # Create sides of mesh
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    nx, ny     = 8, 8
+    nx, ny     = 16, 16
+    R          = 0.5
+    inclusion  = 0
     mesh_type  = "Quadrangles"
     # mesh_type  = "UnstructTriangles"
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
         tau  = 1
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax )
+        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R )
     elseif mesh_type=="UnstructTriangles"  
         tau  = 100
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax ) 
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R ) 
     end
     println("Number of elements: ", mesh.nel)
 
