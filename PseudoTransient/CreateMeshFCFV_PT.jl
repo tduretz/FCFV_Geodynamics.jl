@@ -29,6 +29,9 @@ Base.@kwdef mutable struct FCFV_Mesh
     vole_f ::Union{Matrix{Float64}, Missing} = missing # volume of element
     n_x_f  ::Union{Matrix{Float64}, Missing} = missing # normal 2 face x
     n_y_f  ::Union{Matrix{Float64}, Missing} = missing # normal 2 face y
+    # ---- mat props ---- #
+    ke     ::Union{Vector{Float64}, Missing} = missing # diffusion coefficient
+    phase  ::Union{Vector{Float64}, Missing} = missing # phase
 end
 
 #--------------------------------------------------------------------#
@@ -155,6 +158,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax )
     mesh.xc     = xc
     mesh.yc     = yc
     mesh.vole   = vole
+    mesh.ke     = ones(Float64,mesh.nel)
 
     # Local numbering of vertices of triangles
     nodeA = [2 3 1]
@@ -385,6 +389,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
     mesh.yc     = yc
     mesh.vole   = dx*dy*ones(ncell)
     mesh.bc     = tf
+    mesh.ke     = ones(Float64,mesh.nel)
 
     # Local numbering of vertices of quadrangles
     nodeA = [2 1 3 4]
@@ -437,7 +442,6 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax)
 
     # Create face to element numbering
     mesh.f2e = zeros(Int,mesh.nel,2)
-    # for 
 
     return mesh
 end

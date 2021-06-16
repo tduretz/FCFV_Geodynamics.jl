@@ -5,6 +5,8 @@ include("ResidualEvalFCFV_PT.jl")
 using LoopVectorization
 using SparseArrays, LinearAlgebra
 import UnicodePlots 
+using AbstractPlotting # this is not really good since it induces a warning
+
 
 #--------------------------------------------------------------------#
 
