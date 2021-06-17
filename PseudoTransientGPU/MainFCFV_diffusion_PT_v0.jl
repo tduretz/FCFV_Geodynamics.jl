@@ -1,4 +1,4 @@
-const USE_GPU = true
+const USE_GPU = false
 const USE_DIRECT = true
 
 import TriangleMesh
@@ -197,21 +197,21 @@ end
 
     # PT loop
     @time for iter=1:iterMax
-        if USE_GPU
-             @cuda blocks=cublocks threads=cuthreads ResidualOnFaces_v2_GPU!(F, Mesh_bc, Mesh_f2e, Mesh_dA_f, Mesh_n_x_f, Mesh_n_y_f, Mesh_vole_f, Mesh_vole, Mesh_e2f, Mesh_dA, Mesh_n_x, Mesh_n_y, Th_PT, Te, qx, qy, ae, be, ze, tau, mesh_nf, mesh_nf_el) #mesh_type not ok because string
-             synchronize()
-             @cuda blocks=cublocks threads=cuthreads Update_F_GPU!(F, Th_PT, F0, dTdtau, dmp, mesh_nf)
-             synchronize()
-        else
-            ResidualOnFaces_v2!(F, mesh, Th_PT, Te, qx, qy, ae, be, ze, tau)
+        # if USE_GPU
+        #      @cuda blocks=cublocks threads=cuthreads ResidualOnFaces_v2_GPU!(F, Mesh_bc, Mesh_f2e, Mesh_dA_f, Mesh_n_x_f, Mesh_n_y_f, Mesh_vole_f, Mesh_vole, Mesh_e2f, Mesh_dA, Mesh_n_x, Mesh_n_y, Th_PT, Te, qx, qy, ae, be, ze, tau, mesh_nf, mesh_nf_el) #mesh_type not ok because string
+        #      synchronize()
+        #      @cuda blocks=cublocks threads=cuthreads Update_F_GPU!(F, Th_PT, F0, dTdtau, dmp, mesh_nf)
+        #      synchronize()
+        # else
+            ResidualOnFaces_v2!(F, mesh, Th_PT, Te, qx, qy, ae, be, ze, tau, Tneu)
             F      .= (1 - dmp).*F0 .+ F                                       # to be updated with @avx
             Th_PT  .+= dTdtau.*F                                               # to be updated with @avx
             F0     .= F                                                        # to be updated with @avx
-        end
+        # end
 
         if iter % nout == 0
             println("PT Iter. ", iter, " --- Norm of matrix-free residual: ", norm(F)/length(F))
-            if norm(F)/length(F) < 1e-6
+            if norm(F)/length(F) < 1e-9
                 print("PT solve converged in")
                 break
             end
@@ -224,6 +224,7 @@ end
     println("Compute element values:")
     @time Te, qx, qy = ComputeElementValues(mesh, Array(Th), Array(ae), Array(be), Array(ze), Array(Tdir), tau)
     @time Te1, qx1, qy1 = ComputeElementValuesFaces(mesh, Array(Th), Array(ae), Array(be), Array(ze), Array(Tdir), tau)
+    println(norm(Te.-Te2)/length(Te[:]))
     println(norm(Te.-Te1)/length(Te[:]))
     println(norm(qx.-qx1)/length(qx[:]))
     println(norm(qy.-qy1)/length(qy[:]))

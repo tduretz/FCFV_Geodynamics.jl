@@ -56,12 +56,14 @@ end
 #     return
 # end
 
-function ResidualOnFaces_v2!(F, mesh, Th, Te, qx, qy, ae, be, ze, tau) 
+function ResidualOnFaces_v2!(F, mesh, Th, Te, qx, qy, ae, be, ze, tau, Tneu) 
     # F  = zeros(mesh.nf)
-    # Threads.@threads for idof=1:mesh.nf 
-    for idof=1:mesh.nf 
+    Threads.@threads for idof=1:mesh.nf 
+    # for idof=1:mesh.nf 
         # Identify BC faces
-        bc = mesh.bc[idof]
+        bc   = mesh.bc[idof]
+        Xi   = 0.0 + (bc==2)*1.0;  # Neumann
+        ti   = Tneu[idof]          # Neumann
 
         # Element 1
         yes1  = mesh.f2e[idof,1]>0
@@ -76,8 +78,8 @@ function ResidualOnFaces_v2!(F, mesh, Th, Te, qx, qy, ae, be, ze, tau)
         # qyel1 = (yes1==1) * qy[iel1] 
         # >>>>>>>> Here they are computed on the fly
         Tel1   = (yes1==1) * be[iel1]/ae[iel1]
-        qxel1  = (yes1==1) * -1.0/mesh.vole[iel1]*ze[iel1,1]
-        qyel1  = (yes1==1) * -1.0/mesh.vole[iel1]*ze[iel1,2]
+        qxel1  = (yes1==1) * -ze[iel1,1]/mesh.vole[iel1]
+        qyel1  = (yes1==1) * -ze[iel1,2]/mesh.vole[iel1]
         for ifac=1:mesh.nf_el
             # Face
             nodei = mesh.e2f[iel1,ifac]
@@ -88,11 +90,11 @@ function ResidualOnFaces_v2!(F, mesh, Th, Te, qx, qy, ae, be, ze, tau)
             taui  = StabParam(tau,dAi,mesh.vole[iel1],mesh.type)      # Stabilisation parameter for the face
             # Assemble
             Tel1  += (yes1==1) * (bcf!=1) *  dAi*taui*Th[mesh.e2f[iel1, ifac]]/ae[iel1]
-            qxel1 -= (yes1==1) * (bcf!=1) *  1.0/mesh.vole[iel1]*dAi*ni_x*Th[mesh.e2f[iel1, ifac]]
-            qyel1 -= (yes1==1) * (bcf!=1) *  1.0/mesh.vole[iel1]*dAi*ni_y*Th[mesh.e2f[iel1, ifac]]
+            qxel1 -= (yes1==1) * (bcf!=1) *  dAi*ni_x*Th[mesh.e2f[iel1, ifac]]/mesh.vole[iel1]
+            qyel1 -= (yes1==1) * (bcf!=1) *  dAi*ni_y*Th[mesh.e2f[iel1, ifac]]/mesh.vole[iel1]
         end
 
-        F1 = (bc!=1) * (yes1==1) * (dAi1*ni_x1*qxel1 + dAi1*ni_y1*qyel1 + dAi1*taui1*Tel1 - dAi1*taui1*Th[idof])
+        F1 = (bc!=1) * (yes1==1) * (dAi1*ni_x1*qxel1 + dAi1*ni_y1*qyel1 + dAi1*taui1*Tel1 - dAi1*taui1*Th[idof] + dAi1*Xi*ti)
         #######################################################
 
         # Element 2
@@ -108,8 +110,8 @@ function ResidualOnFaces_v2!(F, mesh, Th, Te, qx, qy, ae, be, ze, tau)
         # qyel2 = (yes2==1) * qy[iel2]
         # >>>>>>>> Here they are computed on the fly
         Tel2   = (yes2==1) * be[iel2]/ae[iel2]
-        qxel2  = (yes2==1) * -1.0/mesh.vole[iel2]*ze[iel2,1]
-        qyel2  = (yes2==1) * -1.0/mesh.vole[iel2]*ze[iel2,2]
+        qxel2  = (yes2==1) * -ze[iel2,1]/mesh.vole[iel2]
+        qyel2  = (yes2==1) * -ze[iel2,2]/mesh.vole[iel2]
         for ifac=1:mesh.nf_el
             # Face
             nodei = mesh.e2f[iel2,ifac]
@@ -120,11 +122,14 @@ function ResidualOnFaces_v2!(F, mesh, Th, Te, qx, qy, ae, be, ze, tau)
             taui  = StabParam(tau,dAi,mesh.vole[iel2],mesh.type)      # Stabilisation parameter for the face
             # Assemble
             Tel2  += (yes2==1) * (bcf!=1) *  dAi*taui*Th[mesh.e2f[iel2, ifac]]/ae[iel2]
-            qxel2 -= (yes2==1) * (bcf!=1) *  1.0/mesh.vole[iel2]*dAi*ni_x*Th[mesh.e2f[iel2, ifac]]
-            qyel2 -= (yes2==1) * (bcf!=1) *  1.0/mesh.vole[iel2]*dAi*ni_y*Th[mesh.e2f[iel2, ifac]]
+            qxel2 -= (yes2==1) * (bcf!=1) *  dAi*ni_x*Th[mesh.e2f[iel2, ifac]]/mesh.vole[iel2]
+            qyel2 -= (yes2==1) * (bcf!=1) *  dAi*ni_y*Th[mesh.e2f[iel2, ifac]]/mesh.vole[iel2]
         end
 
-        F2 = (bc!=1) * (yes2==1) * (dAi2*ni_x2*qxel2 + dAi2*ni_y2*qyel2 + dAi2*taui2*Tel2 - dAi2*taui2*Th[idof])
+        # nitze  = ni_x*ze[iel,1] + ni_y*ze[iel,2]
+        # fe_i   = (bci!=1) * -dAi * (mesh.ke[iel]/mesh.vole[iel]*nitze - ti*Xi - 1.0/ae[iel]*be[iel]*taui)
+
+        F2 = (bc!=1) * (yes2==1) * (dAi2*ni_x2*qxel2 + dAi2*ni_y2*qyel2 + dAi2*taui2*Tel2 - dAi2*taui2*Th[idof] + dAi2*Xi*ti)
 
         #######################################################
         
