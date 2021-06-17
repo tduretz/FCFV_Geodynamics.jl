@@ -1,4 +1,5 @@
 const USE_GPU = true
+const USE_DIRECT = true
 
 import TriangleMesh
 using Printf, LoopVectorization, LinearAlgebra, SparseArrays
@@ -79,7 +80,7 @@ end
     # Create sides of mesh
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    nx, ny     = 200, 200
+    nx, ny     = 20, 20
     R          = 0.5
     inclusion  = 0
     # mesh_type  = "Quadrangles"
@@ -108,40 +109,43 @@ end
     println("Compute FCFV vectors:")
     @time ae, be, ze = ComputeFCFV(mesh, se, Tdir, tau)
 
-    # # Assemble element matrices and RHS
-    # println("Compute element matrices:")
-    # @time Kv, fv = ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
+    if USE_DIRECT
+        # Assemble element matrices and RHS
+        println("Compute element matrices:")
+        @time Kv, fv = ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
 
-    # # Assemble triplets and sparse
-    # println("Assemble triplets and sparse:")
-    # @time K, f = CreateTripletsSparse(mesh, Kv, fv)
-    # # display(UnicodePlots.spy(K))
+        # Assemble triplets and sparse
+        println("Assemble triplets and sparse:")
+        @time K, f = CreateTripletsSparse(mesh, Kv, fv)
+        # display(UnicodePlots.spy(K))
 
-    # # Solve for hybrid variable
-    # println("Direct solve:")
-    # # @time Th   = K\f
-    # PC  = 0.5.*(K.+K')
-    # PCc = cholesky(PC)
-    # Th  = zeros(mesh.nf)
-    # dTh = zeros(mesh.nf,1)
-    # r   = zeros(mesh.nf,1)
-    # r  .= f - K*Th
-    # # @time Th   = K\f
-    # for rit=1:5
-    #     r    .= f - K*Th
-    #     println("It. ", rit, " - Norm of residual: ", norm(r)/length(r))
-    #     if norm(r)/length(r) < 1e-10
-    #         break
-    #     end
-    #     dTh  .= PCc\r
-    #     Th  .+= dTh[:]
-    # end
+        # Solve for hybrid variable
+        println("Direct solve:")
+        @time Th   = K\f
+        PC  = 0.5 .* (K .+ transpose(K))
+        PCc = cholesky(PC)
+        Th  = zeros(mesh.nf)
+        dTh = zeros(mesh.nf,1)
+        r   = zeros(mesh.nf,1)
+        r  .= f - K*Th
+        # @time Th   = K\f
+        for rit=1:5
+            r    .= f - K*Th
+            println("It. ", rit, " - Norm of residual: ", norm(r)/length(r))
+            if norm(r)/length(r) < 1e-10
+                break
+            end
+            dTh  .= PCc\r
+            Th  .+= dTh[:]
+        end
 
-    # # Compute residual on faces -  This is check
-    # @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
-    # @time F = ResidualOnFaces(mesh, Th, Te, qx, qy, tau)
-    # # println(F)
-    # println("Norm of matrix-free residual: ", norm(F)/length(F))
+        # Compute residual on faces -  This is check
+        @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
+        @time F = ResidualOnFaces(mesh, Th, Te, qx, qy, tau)
+        # println(F)
+        println("Norm of matrix-free residual: ", norm(F)/length(F))
+        Te2 = copy(Te)
+    end
 
     if USE_GPU
         @show maxthreads = mesh.nf
@@ -230,9 +234,11 @@ end
     println("Error in qx: ", err_qx)
     println("Error in qy: ", err_qy)
 
+    Err = Te2 .- Te1
     # Visualise
     println("Visualisation:")
-    @time PlotMakie( mesh, Te1 )
+    #@time PlotMakie( mesh, Te1 )
+    @time PlotMakie( mesh, Err )
     # PlotElements( mesh )
 
 end
