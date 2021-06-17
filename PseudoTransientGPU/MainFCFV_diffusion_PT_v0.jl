@@ -1,4 +1,4 @@
-const USE_GPU = false
+const USE_GPU = false # ACHTUNG -> uncomment PT loop !!
 const USE_DIRECT = true
 
 import TriangleMesh
@@ -197,10 +197,10 @@ end
     # PT loop
     @time for iter=1:iterMax
          if USE_GPU
-              @cuda blocks=cublocks threads=cuthreads ResidualOnFaces_v2_GPU!(F, Mesh_bc, Mesh_f2e, Mesh_dA_f, Mesh_n_x_f, Mesh_n_y_f, Mesh_vole_f, Mesh_vole, Mesh_e2f, Mesh_dA, Mesh_n_x, Mesh_n_y, Th_PT, Te, Tneu, qx, qy, ae, be, ze, tau, mesh_nf, mesh_nf_el) #mesh_type not ok because string
-              synchronize()
-              @cuda blocks=cublocks threads=cuthreads Update_F_GPU!(F, Th_PT, F0, dTdtau, dmp, mesh_nf)
-              synchronize()
+              # @cuda blocks=cublocks threads=cuthreads ResidualOnFaces_v2_GPU!(F, Mesh_bc, Mesh_f2e, Mesh_dA_f, Mesh_n_x_f, Mesh_n_y_f, Mesh_vole_f, Mesh_vole, Mesh_e2f, Mesh_dA, Mesh_n_x, Mesh_n_y, Th_PT, Te, Tneu, qx, qy, ae, be, ze, tau, mesh_nf, mesh_nf_el) #mesh_type not ok because string
+              # synchronize()
+              # @cuda blocks=cublocks threads=cuthreads Update_F_GPU!(F, Th_PT, F0, dTdtau, dmp, mesh_nf)
+              # synchronize()
          else
             ResidualOnFaces_v2!(F, mesh, Th_PT, Te, qx, qy, ae, be, ze, tau, Tneu)
             F     .= (1 - dmp).*F0 .+ F
