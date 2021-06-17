@@ -38,7 +38,7 @@ function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, Syy
         sx[iel]  = 0.0
         sy[iel]  = 0.0
         out          = mesh.phase[iel] == 1.0
-        mesh.ke[iel] = (out==1) * 0.5*etam + (out!=1) * 0.5*etai
+        mesh.ke[iel] = (out==1) * 1.0*etam + (out!=1) * 1.0*etai
     end
     return
 end
@@ -169,16 +169,14 @@ end
     @printf("Error in Txy: %2.2e\n", err_Txy)
     @printf("Error in P  : %2.2e\n", err_P  )
 
-    println(minimum(Txxa))
-    println(minimum(Txxe))
-    println(maximum(Txxa))
-    println(maximum(Txxe))
+    println(minimum(Txya))
+    println(minimum(Txye))
+    println(maximum(Txya))
+    println(maximum(Txye))
 
     # Visualise
     println("Visualisation:")
-    # @time PlotMakie( mesh, sex )
-    @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1 )
-    # PlotElements( mesh )
+    @time PlotMakie( mesh, Txye, xmin, xmax, ymin, ymax, :jet1, [-0.5 0.5] )
 
 end
 

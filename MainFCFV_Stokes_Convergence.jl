@@ -8,7 +8,7 @@ include("SolversFCFV_Stokes.jl")
 
 #--------------------------------------------------------------------#
 
-function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, sx, sy)
+function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, sx, sy, eta)
     # Evaluate T analytic on cell faces
     @avx for in=1:mesh.nf
         x        = mesh.xf[in]
@@ -17,68 +17,79 @@ function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, Syy
         VyDir[in] =-y^2*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)
         # Stress at faces
         p          =  x*(1-x)
-        SxxNeu[in] = -8*p*y*(x - 1)*(2*y^2 - 3*y + 1) - p + 8*x^2*y*(x - 1)*(2*y^2 - 3*y + 1)
-        SyyNeu[in] = -p - 8*x*y^2*(y - 1)*(2*x^2 - 3*x + 1) - 8*x*y*(y - 1)^2*(2*x^2 - 3*x + 1)
-        SxyNeu[in] = p^2*(12*y^2 - 12*y + 2) + y^2*(y - 1)^2*(-12.0*x^2 + 12.0*x - 2.0)
+        SxxNeu[in] = 2*eta*(x^2*(2*x - 2)*(4*y^3 - 6*y^2 + 2*y) + 2*x*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y)) - x*(1 - x)
+        SyyNeu[in] = 2*eta*(-y^2*(2*y - 2)*(4*x^3 - 6*x^2 + 2*x) - 2*y*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)) - x*(1 - x)
+        SxyNeu[in] = 2*eta*(0.5*x^2*(1 - x)^2*(12*y^2 - 12*y + 2) - 0.5*y^2*(1 - y)^2*(12*x^2 - 12*x + 2))
+        # SxxNeu[in] = -8*p*y*(x - 1)*(2*y^2 - 3*y + 1) - p + 8*x^2*y*(x - 1)*(2*y^2 - 3*y + 1)
+        # SyyNeu[in] = -p - 8*x*y^2*(y - 1)*(2*x^2 - 3*x + 1) - 8*x*y*(y - 1)^2*(2*x^2 - 3*x + 1)
+        # SxyNeu[in] = p^2*(12*y^2 - 12*y + 2) + y^2*(y - 1)^2*(-12.0*x^2 + 12.0*x - 2.0)
     end
     # Evaluate T analytic on barycentres
-    @avx for iel=1:mesh.nel
+    @avx for iel=1:mesh.nel 
         x        = mesh.xc[iel]
         y        = mesh.yc[iel]
         p        =  x*(1-x)
         P[iel]   =  p
+        mesh.ke[iel] = eta
         Vx[iel]  =  x^2*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y)
         Vy[iel]  = -y^2*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)
-        Sxx[iel] = -8*p*y*(x - 1)*(2*y^2 - 3*y + 1) - p + 8*x^2*y*(x - 1)*(2*y^2 - 3*y + 1)
-        Syy[iel] = -p - 8*x*y^2*(y - 1)*(2*x^2 - 3*x + 1) - 8*x*y*(y - 1)^2*(2*x^2 - 3*x + 1)
-        Sxy[iel] = p^2*(12*y^2 - 12*y + 2) + y^2*(y - 1)^2*(-12.0*x^2 + 12.0*x - 2.0)
-        sx[iel]  = -p^2*(24*y - 12) - 4*x^2*(4*y^3 - 6*y^2 + 2*y) - 8*x*(2*x - 2)*(4*y^3 - 6*y^2 + 2*y) - 2*x + 1.0*y^2*(2*y - 2)*(12*x^2 - 12*x + 2) + 2.0*y*(1 - y)^2*(12*x^2 - 12*x + 2) - 4*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y) + 1
-        sy[iel]  = -2*p*(1 - x)*(12*y^2 - 12*y + 2) - x^2*(2*x - 2)*(12*y^2 - 12*y + 2) + 1.0*y^2*(1 - y)^2*(24*x - 12) + 4*y^2*(4*x^3 - 6*x^2 + 2*x) + 8*y*(2*y - 2)*(4*x^3 - 6*x^2 + 2*x) + 4*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)
-    end
-    return
-end
+        Sxx[iel] = 2*eta*(x^2*(2*x - 2)*(4*y^3 - 6*y^2 + 2*y) + 2*x*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y)) - x*(1 - x)
+        Syy[iel] = 2*eta*(-y^2*(2*y - 2)*(4*x^3 - 6*x^2 + 2*x) - 2*y*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)) - x*(1 - x)
+        Sxy[iel] = 2*eta*(0.5*x^2*(1 - x)^2*(12*y^2 - 12*y + 2) - 0.5*y^2*(1 - y)^2*(12*x^2 - 12*x + 2))
+        sx[iel] = -2*eta*(0.5*p^2*(24*y - 12) - 0.5*y^2*(2*y - 2)*(12*x^2 - 12*x + 2) - 1.0*y*(1 - y)^2*(12*x^2 - 12*x + 2)) - 2*eta*(2*x^2*(4*y^3 - 6*y^2 + 2*y) + 4*x*(2*x - 2)*(4*y^3 - 6*y^2 + 2*y) + 2*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y)) - 2*x + 1
+        sy[iel] = -2*eta*(-2*y^2*(4*x^3 - 6*x^2 + 2*x) - 4*y*(2*y - 2)*(4*x^3 - 6*x^2 + 2*x) - 2*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)) - 2*eta*(1.0*p*(1 - x)*(12*y^2 - 12*y + 2) + 0.5*x^2*(2*x - 2)*(12*y^2 - 12*y + 2) - 0.5*y^2*(1 - y)^2*(24*x - 12))
 
-#--------------------------------------------------------------------#
-
-function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
-    eVx  = zeros(mesh.nel)
-    eVy  = zeros(mesh.nel)
-    eTxx = zeros(mesh.nel)
-    eTyy = zeros(mesh.nel)
-    eTxy = zeros(mesh.nel)
-    eP   = zeros(mesh.nel)
-    eV   = zeros(mesh.nel)
-    eTii = zeros(mesh.nel)
-    Vxa  = zeros(mesh.nel)
-    Vya  = zeros(mesh.nel)
-    Txxa = zeros(mesh.nel)
-    Tyya = zeros(mesh.nel)
-    Txya = zeros(mesh.nel)
-    Pa   = zeros(mesh.nel)
-    Tiia = zeros(mesh.nel)
-    Va   = zeros(mesh.nel)
-    @avx for iel=1:mesh.nel
-        x         = mesh.xc[iel]
-        y         = mesh.yc[iel]
-        Pa[iel]   =  x*(1-x)
-        Vxa[iel]  =  x^2*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y)
-        Vya[iel]  = -y^2*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)
-        Txxa[iel] = -8*Pa[iel]*y*(x - 1)*(2*y^2 - 3*y + 1) + 8*x^2*y*(x - 1)*(2*y^2 - 3*y + 1)
-        Tyya[iel] = -8*x*y^2*(y - 1)*(2*x^2 - 3*x + 1) - 8*x*y*(y - 1)^2*(2*x^2 - 3*x + 1)
-        Txya[iel] = Pa[iel]^2*(12*y^2 - 12*y + 2) + y^2*(y - 1)^2*(-12.0*x^2 + 12.0*x - 2.0)
-        eVx[iel]  = Vxe[iel]  - Vxa[iel]
-        eVy[iel]  = Vye[iel]  - Vya[iel]
-        eTxx[iel] = Txxe[iel] - Txxa[iel]
-        eTyy[iel] = Tyye[iel] - Tyya[iel]
-        eTxy[iel] = Txye[iel] - Txya[iel]
-        eP[iel]   = Pe[iel]   - Pa[iel]
-        Va[iel]   = sqrt(Vxa[iel]^2 + Vya[iel]^2) 
-        Ve        = sqrt(Vxe[iel]^2 + Vye[iel]^2)
-        Tiia[iel] = sqrt(0.5*(Txxa[iel]^2 + Tyya[iel]^2) + Txya[iel]^2)
-        Tiie      = sqrt(0.5*(Txxe[iel]^2 + Tyye[iel]^2) + Txye[iel]^2)
-        eV[iel]   = Ve   - Va[iel]
-        eTii[iel] = Tiie - Tiia[iel] 
+        # Sxx[iel] = -8*p*y*(x - 1)*(2*y^2 - 3*y + 1) - p + 8*x^2*y*(x - 1)*(2*y^2 - 3*y + 1)
+        # Syy[iel] = -p - 8*x*y^2*(y - 1)*(2*x^2 - 3*x + 1) - 8*x*y*(y - 1)^2*(2*x^2 - 3*x + 1)
+        # Sxy[iel] = p^2*(12*y^2 - 12*y + 2) + y^2*(y - 1)^2*(-12.0*x^2 + 12.0*x - 2.0)
+        # sx[iel]  = -p^2*(24*y - 12) - 4*x^2*(4*y^3 - 6*y^2 + 2*y) - 8*x*(2*x - 2)*(4*y^3 - 6*y^2 + 2*y) - 2*x + 1.0*y^2*(2*y - 2)*(12*x^2 - 12*x + 2) + 2.0*y*(1 - y)^2*(12*x^2 - 12*x + 2) - 4*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y) + 1
+        # sy[iel]  = -2*p*(1 - x)*(12*y^2 - 12*y + 2) - x^2*(2*x - 2)*(12*y^2 - 12*y + 2) + 1.0*y^2*(1 - y)^2*(24*x - 12) + 4*y^2*(4*x^3 - 6*x^2 + 2*x) + 8*y*(2*y - 2)*(4*x^3 - 6*x^2 + 2*x) + 4*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)
+            
+        end
+        return
     end
+
+    #--------------------------------------------------------------------#
+
+    function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
+        eVx  = zeros(mesh.nel)
+        eVy  = zeros(mesh.nel)
+        eTxx = zeros(mesh.nel)
+        eTyy = zeros(mesh.nel)
+        eTxy = zeros(mesh.nel)
+        eP   = zeros(mesh.nel)
+        eV   = zeros(mesh.nel)
+        eTii = zeros(mesh.nel)
+        Vxa  = zeros(mesh.nel)
+        Vya  = zeros(mesh.nel)
+        Txxa = zeros(mesh.nel)
+        Tyya = zeros(mesh.nel)
+        Txya = zeros(mesh.nel)
+        Pa   = zeros(mesh.nel)
+        Tiia = zeros(mesh.nel)
+        Va   = zeros(mesh.nel)
+        @avx for iel=1:mesh.nel
+            x         = mesh.xc[iel]
+            y         = mesh.yc[iel]
+            Pa[iel]   =  x*(1-x)
+            Vxa[iel]  =  x^2*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y)
+            Vya[iel]  = -y^2*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)
+            Txxa[iel] = -8*Pa[iel]*y*(x - 1)*(2*y^2 - 3*y + 1) + 8*x^2*y*(x - 1)*(2*y^2 - 3*y + 1)
+            Tyya[iel] = -8*x*y^2*(y - 1)*(2*x^2 - 3*x + 1) - 8*x*y*(y - 1)^2*(2*x^2 - 3*x + 1)
+            Txya[iel] = Pa[iel]^2*(12*y^2 - 12*y + 2) + y^2*(y - 1)^2*(-12.0*x^2 + 12.0*x - 2.0)
+            eVx[iel]  = Vxe[iel]  - Vxa[iel]
+            eVy[iel]  = Vye[iel]  - Vya[iel]
+            eTxx[iel] = Txxe[iel] - Txxa[iel]
+            eTyy[iel] = Tyye[iel] - Tyya[iel]
+            eTxy[iel] = Txye[iel] - Txya[iel]
+            eP[iel]   = Pe[iel]   - Pa[iel]
+            Va[iel]   = sqrt(Vxa[iel]^2 + Vya[iel]^2) 
+            Ve        = sqrt(Vxe[iel]^2 + Vye[iel]^2)
+            Tiia[iel] = sqrt(0.5*(Txxa[iel]^2 + Tyya[iel]^2) + Txya[iel]^2)
+            Tiie      = sqrt(0.5*(Txxe[iel]^2 + Tyye[iel]^2) + Txye[iel]^2)
+            eV[iel]   = Ve   - Va[iel]
+            eTii[iel] = Tiie - Tiia[iel] 
+        end
     errVx  = norm(eVx) /norm(Vxa)
     errVy  = norm(eVy) /norm(Vya)
     errTxx = norm(eTxx)/norm(Txxa)
@@ -94,7 +105,6 @@ end
     
 function StabParam(tau, dA, Vol, mesh_type)
     if mesh_type=="Quadrangles";        taui = tau;    end
-    # if mesh_type=="UnstructTriangles";  taui = tau*dA; end
     if mesh_type=="UnstructTriangles";  taui = tau end
     return taui
 end
@@ -110,6 +120,7 @@ end
     ymin, ymax = 0, 1
     nx, ny     = N, N
     solver     = 1
+    eta        = 1.0
     R          = 0.5
     inclusion  = 0
   
@@ -138,7 +149,7 @@ end
     SyyNeu = zeros(mesh.nf)
     SxyNeu = zeros(mesh.nf)
     println("Model configuration :")
-    @time SetUpProblem!(mesh, Pa, Vxa, Vya, Sxxa, Syya, Sxya, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, sex, sey)
+    @time SetUpProblem!(mesh, Pa, Vxa, Vya, Sxxa, Syya, Sxya, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, sex, sey, eta)
 
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
