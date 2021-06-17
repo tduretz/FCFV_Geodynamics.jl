@@ -1,10 +1,9 @@
+import TriangleMesh, UnicodePlots, Plots
+using Printf, LoopVectorization, LinearAlgebra, SparseArrays
+
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
 include("DiscretisationFCFV.jl")
-using LoopVectorization
-using SparseArrays, LinearAlgebra
-import UnicodePlots 
-using AbstractPlotting # this is not really good since it induces a warning
 
 #--------------------------------------------------------------------#
 
@@ -164,7 +163,7 @@ end
 
     # Visualise
     println("Visualisation:")
-    @time PlotMakie( mesh,  mesh.ke )
+    @time PlotMakie( mesh, Te, xmin, xmax, ymin, ymax, :viridis )
 
 end
 

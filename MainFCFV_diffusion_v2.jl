@@ -1,10 +1,9 @@
+import TriangleMesh, UnicodePlots, Plots
+using Printf, LoopVectorization, LinearAlgebra, SparseArrays
+
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
 include("DiscretisationFCFV.jl")
-using LoopVectorization
-using SparseArrays, LinearAlgebra
-import UnicodePlots 
-using AbstractPlotting # this is not really good since it induces a warning
 
 function SetUpProblem!( mesh, T, Tdir, Tneu, se, a, b, c, d, alp, bet )
     # Evaluate T analytic on cell faces
@@ -136,8 +135,7 @@ end
 
     # Visualise
     println("Visualisation:")
-    @time PlotMakie( mesh, Te )
-    # PlotElements( mesh )
+    @time PlotMakie( mesh, Te, xmin, xmax, ymin, ymax, :viridis )
 
 end
 

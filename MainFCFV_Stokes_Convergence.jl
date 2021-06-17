@@ -1,10 +1,10 @@
+import TriangleMesh, UnicodePlots, Plots
+using Printf, LoopVectorization, LinearAlgebra, SparseArrays
+
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
 include("DiscretisationFCFV_Stokes.jl")
 include("SolversFCFV_Stokes.jl")
-using LoopVectorization, Printf
-using SparseArrays, LinearAlgebra
-import UnicodePlots 
 
 #--------------------------------------------------------------------#
 
@@ -174,7 +174,7 @@ end
     # # Visualise
     # println("Visualisation:")
     # # @time PlotMakie( mesh, sex )
-    # @time PlotMakie( mesh, Pe )
+    # @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :jet1 )
     # # PlotElements( mesh )
     ndof = 2*mesh.nf+mesh.nel
     return ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii

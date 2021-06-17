@@ -1,10 +1,9 @@
+import TriangleMesh, UnicodePlots, Plots
+using Printf, LoopVectorization, LinearAlgebra, SparseArrays
+
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
 include("DiscretisationFCFV.jl")
-using LoopVectorization
-using SparseArrays, LinearAlgebra
-import UnicodePlots 
-import Plots
 
 #--------------------------------------------------------------------#
 
@@ -137,16 +136,11 @@ end
     println("Error in T:  ", err_T )
     println("Error in qx: ", err_qx)
     println("Error in qy: ", err_qy)
-
-    # Visualise
-    # println("Visualisation:")
-    # @time PlotMakie( mesh, Te )
-    # PlotElements( mesh )
     
     return mesh.nf, err_T, err_qx, err_qy
 end
 
-N          = [8, 16, 32, 64, ]#, 128, 256, 512, 1024] 
+N          = [8, 16, 32, 64 ]#, 128, 256, 512, 1024] 
 mesh_type  = "Quadrangles"
 eT_quad    = zeros(size(N))
 eqx_quad   = zeros(size(N))

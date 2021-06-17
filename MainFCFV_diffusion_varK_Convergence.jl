@@ -1,10 +1,9 @@
+import TriangleMesh, UnicodePlots, Plots
+using Printf, LoopVectorization, LinearAlgebra, SparseArrays
+
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
 include("DiscretisationFCFV.jl")
-using LoopVectorization
-using SparseArrays, LinearAlgebra
-import UnicodePlots 
-using AbstractPlotting # this is not really good since it induces a warning
 
 #--------------------------------------------------------------------#
 
@@ -160,10 +159,6 @@ end
     println("Error in T:  ", err_T )
     println("Error in qx: ", err_qx)
     println("Error in qy: ", err_qy)
-
-    # # Visualise
-    # println("Visualisation:")
-    # @time PlotMakie( mesh,  mesh.ke )
 
     return mesh.nf, err_T, err_qx, err_qy
 end

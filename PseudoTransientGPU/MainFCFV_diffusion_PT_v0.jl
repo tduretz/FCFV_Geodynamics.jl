@@ -238,9 +238,7 @@ end
     Err = Te2 .- Te1
     # Visualise
     println("Visualisation:")
-    #@time PlotMakie( mesh, Te1 )
-    @time PlotMakie( mesh, Err )
-    # PlotElements( mesh )
+    @time PlotMakie( mesh, Err, xmin, xmax, ymin, ymax, :viridis )
 
 end
 

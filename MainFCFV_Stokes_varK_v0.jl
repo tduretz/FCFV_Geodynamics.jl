@@ -1,12 +1,11 @@
+import TriangleMesh, UnicodePlots, Plots
+using Printf, LoopVectorization, LinearAlgebra, SparseArrays
+
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
 include("DiscretisationFCFV_Stokes.jl")
 include("SolversFCFV_Stokes.jl")
 include("EvalAnalDani.jl")
-using LoopVectorization, Printf
-using SparseArrays, LinearAlgebra
-import UnicodePlots 
-using AbstractPlotting # this is not really good since it induces a warning
 
 #--------------------------------------------------------------------#
 
@@ -178,7 +177,7 @@ end
     # Visualise
     println("Visualisation:")
     # @time PlotMakie( mesh, sex )
-    @time PlotMakie( mesh, Txxe )
+    @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1 )
     # PlotElements( mesh )
 
 end
