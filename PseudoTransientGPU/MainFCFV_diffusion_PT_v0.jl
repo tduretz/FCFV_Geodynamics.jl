@@ -4,7 +4,7 @@ import TriangleMesh
 using Printf, LoopVectorization, LinearAlgebra, SparseArrays
 
 include("../CreateMeshFCFV.jl")
-include("VisuFCFV.jl")
+include("../VisuFCFV.jl")
 include("../DiscretisationFCFV.jl")
 if USE_GPU
     using CUDA
