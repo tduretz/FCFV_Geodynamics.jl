@@ -64,7 +64,7 @@ end
 
 #--------------------------------------------------------------------#    
 
-function StabParam(tau, dA, Vol, mesh_type)
+function StabParam(tau, dA, Vol, mesh_type) # ACHTUNG does not work on GPU (called from woithin kernel !)
     if mesh_type=="Quadrangles";        taui = tau;    end
     # if mesh_type=="UnstructTriangles";  taui = tau*dA; end
     if mesh_type=="UnstructTriangles";  taui = tau end
@@ -76,7 +76,6 @@ end
 @views function main()
 
     println("\n******** FCFV POISSON ********")
-
     # Create sides of mesh
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
@@ -121,14 +120,13 @@ end
 
         # Solve for hybrid variable
         println("Direct solve:")
-        @time Th   = K\f
+        # @time Th = K\f
         PC  = 0.5 .* (K .+ transpose(K))
         PCc = cholesky(PC)
         Th  = zeros(mesh.nf)
         dTh = zeros(mesh.nf,1)
         r   = zeros(mesh.nf,1)
         r  .= f - K*Th
-        # @time Th   = K\f
         for rit=1:5
             r    .= f - K*Th
             println("It. ", rit, " - Norm of residual: ", norm(r)/length(r))
@@ -138,7 +136,6 @@ end
             dTh  .= PCc\r
             Th  .+= dTh[:]
         end
-
         # Compute residual on faces -  This is check
         @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
         @time F = ResidualOnFaces(mesh, Th, Te, qx, qy, tau)
@@ -154,16 +151,17 @@ end
         @show cuthreads = BLOC
         @show cublocks  = GRID
 
-        Th    = CUDA.zeros(mesh.nf)
-        Te    = CUDA.zeros(mesh.nel)
-        qx    = CUDA.zeros(mesh.nel)
-        qy    = CUDA.zeros(mesh.nel)
-        F     = CUDA.zeros(mesh.nf)
-        F0    = CUDA.zeros(mesh.nf)
-        Th_PT = CUDA.zeros(mesh.nf)
+        Th    = CUDA.zeros(Float64, mesh.nf)
+        Te    = CUDA.zeros(Float64, mesh.nel)
+        qx    = CUDA.zeros(Float64, mesh.nel)
+        qy    = CUDA.zeros(Float64, mesh.nel)
+        F     = CUDA.zeros(Float64, mesh.nf)
+        F0    = CUDA.zeros(Float64, mesh.nf)
+        Th_PT = CUDA.zeros(Float64, mesh.nf)
         ae    = CuArray(ae)
         be    = CuArray(be)
         ze    = CuArray(ze)
+        Tneu  = CuArray(Tneu)
 
         mesh_nf     = mesh.nf
         mesh_type   = mesh.type
@@ -190,30 +188,33 @@ end
     end
 
     # Now a PT solve
-    dmp     = 0.7 # 0.24
-    dTdtau  = 0.02
+    dmp     = 0.8
+    dTdtau  = 0.05
     nout    = 1e3
-    iterMax = 1e6
+    iterMax = 1e5
+    ϵ_PT    = 1e-7
 
     # PT loop
     @time for iter=1:iterMax
-        # if USE_GPU
-        #      @cuda blocks=cublocks threads=cuthreads ResidualOnFaces_v2_GPU!(F, Mesh_bc, Mesh_f2e, Mesh_dA_f, Mesh_n_x_f, Mesh_n_y_f, Mesh_vole_f, Mesh_vole, Mesh_e2f, Mesh_dA, Mesh_n_x, Mesh_n_y, Th_PT, Te, qx, qy, ae, be, ze, tau, mesh_nf, mesh_nf_el) #mesh_type not ok because string
-        #      synchronize()
-        #      @cuda blocks=cublocks threads=cuthreads Update_F_GPU!(F, Th_PT, F0, dTdtau, dmp, mesh_nf)
-        #      synchronize()
-        # else
+         if USE_GPU
+              @cuda blocks=cublocks threads=cuthreads ResidualOnFaces_v2_GPU!(F, Mesh_bc, Mesh_f2e, Mesh_dA_f, Mesh_n_x_f, Mesh_n_y_f, Mesh_vole_f, Mesh_vole, Mesh_e2f, Mesh_dA, Mesh_n_x, Mesh_n_y, Th_PT, Te, Tneu, qx, qy, ae, be, ze, tau, mesh_nf, mesh_nf_el) #mesh_type not ok because string
+              synchronize()
+              @cuda blocks=cublocks threads=cuthreads Update_F_GPU!(F, Th_PT, F0, dTdtau, dmp, mesh_nf)
+              synchronize()
+         else
             ResidualOnFaces_v2!(F, mesh, Th_PT, Te, qx, qy, ae, be, ze, tau, Tneu)
-            F      .= (1 - dmp).*F0 .+ F                                       # to be updated with @avx
-            Th_PT  .+= dTdtau.*F                                               # to be updated with @avx
-            F0     .= F                                                        # to be updated with @avx
-        # end
-
+            F     .= (1 - dmp).*F0 .+ F
+            Th_PT .= Th_PT .+ dTdtau.*F
+            F0    .= F
+         end
         if iter % nout == 0
-            println("PT Iter. ", iter, " --- Norm of matrix-free residual: ", norm(F)/length(F))
-            if norm(F)/length(F) < 1e-9
+            err = norm(F)/length(F)
+            println("PT Iter. ", iter, " --- Norm of matrix-free residual: ", err)
+            if err < ϵ_PT
                 print("PT solve converged in")
                 break
+            elseif isnan(err)
+                error("NaN !")
             end
         end
     end
@@ -224,7 +225,9 @@ end
     println("Compute element values:")
     @time Te, qx, qy = ComputeElementValues(mesh, Array(Th), Array(ae), Array(be), Array(ze), Array(Tdir), tau)
     @time Te1, qx1, qy1 = ComputeElementValuesFaces(mesh, Array(Th), Array(ae), Array(be), Array(ze), Array(Tdir), tau)
-    println(norm(Te.-Te2)/length(Te[:]))
+    if USE_DIRECT
+        println(norm(Te.-Te2)/length(Te[:]))
+    end
     println(norm(Te.-Te1)/length(Te[:]))
     println(norm(qx.-qx1)/length(qx[:]))
     println(norm(qy.-qy1)/length(qy[:]))
@@ -235,11 +238,16 @@ end
     println("Error in qx: ", err_qx)
     println("Error in qy: ", err_qy)
 
-    Err = Te2 .- Te1
     # Visualise
-    println("Visualisation:")
-    @time PlotMakie( mesh, Err, xmin, xmax, ymin, ymax, :viridis )
-
+    print("Visualisation:")
+    if USE_DIRECT
+        @time PlotMakie(mesh, Err, xmin, xmax, ymin, ymax; cmap = :batlow)
+    else
+        @time PlotMakie(mesh, Te1, xmin, xmax, ymin, ymax; cmap = :batlow)
+        # @time PlotMakie(mesh, Te1, xmin, xmax, ymin, ymax; cmap = :batlow, min_v = 0.9, max_v = 1.2)
+    end
+    print("Done! Total runtime:")
+    return
 end
 
-main()
+@time main()
