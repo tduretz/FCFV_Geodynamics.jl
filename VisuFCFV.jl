@@ -1,7 +1,7 @@
 using GLMakie
 using Makie.GeometryBasics
 
-@views function PlotMakie(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
+@views function PlotMakie(mesh, v, xmin, xmax, ymin, ymax, cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
     ``` Create patch plots for either Quadrangles or Triangles
     ```
 

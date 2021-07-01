@@ -10,6 +10,7 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
         Vxh    = xh[1:mesh.nf]
         Vyh    = xh[mesh.nf+1:2*mesh.nf]
         Pe     = xh[2*mesh.nf+1:end] 
+        Pe     = Pe .- Statistics.mean(Pe)
     elseif solver==1
         # Decoupled solve
         coef  = 1e8*ones(mesh.nel)

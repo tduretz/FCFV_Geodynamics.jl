@@ -94,7 +94,8 @@ function ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
                 # Element matrix
                 nitnj = ni_x*nj_x + ni_y*nj_y;
                 Ke_ij =-dAi * (1.0/ae[iel] * dAj * taui*tauj - mesh.ke[iel]/mesh.vole[iel]*dAj*nitnj - taui*del);
-                Kv[iel,ifac,jfac] = (bci!=1) * (bcj!=1) * Ke_ij
+                yes   = (bci!=1) & (bcj!=1)
+                Kv[iel,ifac,jfac] = yes * Ke_ij
             end
             # RHS
             Xi     = 0.0 + (bci==2)*1.0;

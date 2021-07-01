@@ -8,7 +8,7 @@ include("SolversFCFV_Stokes.jl")
 
 #--------------------------------------------------------------------#
 
-function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, sx, sy, eta)
+function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sx, sy, eta)
     # Evaluate T analytic on cell faces
     @avx for in=1:mesh.nf
         x        = mesh.xf[in]
@@ -17,12 +17,19 @@ function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, Syy
         VyDir[in] =-y^2*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)
         # Stress at faces
         p          =  x*(1-x)
-        SxxNeu[in] = 2*eta*(x^2*(2*x - 2)*(4*y^3 - 6*y^2 + 2*y) + 2*x*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y)) - x*(1 - x)
-        SyyNeu[in] = 2*eta*(-y^2*(2*y - 2)*(4*x^3 - 6*x^2 + 2*x) - 2*y*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)) - x*(1 - x)
-        SxyNeu[in] = 2*eta*(0.5*x^2*(1 - x)^2*(12*y^2 - 12*y + 2) - 0.5*y^2*(1 - y)^2*(12*x^2 - 12*x + 2))
+        # Using pseudo-tractions
+        dVxdx = x^2*(2*x - 2)*(4*y^3 - 6*y^2 + 2*y) + 2*x*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y);
+        dVxdy = x^2*(1 - x)^2*(12*y^2 - 12*y + 2);
+        dVydx = -y^2*(1 - y)^2*(12*x^2 - 12*x + 2);
+        dVydy = -y^2*(2*y - 2)*(4*x^3 - 6*x^2 + 2*x) - 2*y*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x);
+        SxxNeu[in] = - p + eta*dVxdx 
+        SyyNeu[in] = - p + eta*dVydy 
+        SxyNeu[in] =       eta*dVxdy
+        SyxNeu[in] =       eta*dVydx
         # SxxNeu[in] = -8*p*y*(x - 1)*(2*y^2 - 3*y + 1) - p + 8*x^2*y*(x - 1)*(2*y^2 - 3*y + 1)
         # SyyNeu[in] = -p - 8*x*y^2*(y - 1)*(2*x^2 - 3*x + 1) - 8*x*y*(y - 1)^2*(2*x^2 - 3*x + 1)
         # SxyNeu[in] = p^2*(12*y^2 - 12*y + 2) + y^2*(y - 1)^2*(-12.0*x^2 + 12.0*x - 2.0)
+        # SyxNeu[in] = SxyNeu[in]
     end
     # Evaluate T analytic on barycentres
     @avx for iel=1:mesh.nel 
@@ -120,7 +127,7 @@ end
     ymin, ymax = 0, 1
     nx, ny     = N, N
     solver     = 1
-    eta        = 1.0
+    eta        = 10.0
     R          = 0.5
     inclusion  = 0
   
@@ -148,16 +155,18 @@ end
     SxxNeu = zeros(mesh.nf)
     SyyNeu = zeros(mesh.nf)
     SxyNeu = zeros(mesh.nf)
+    SyxNeu = zeros(mesh.nf)
+    gbar   = zeros(mesh.nel,mesh.nf_el,2)
     println("Model configuration :")
-    @time SetUpProblem!(mesh, Pa, Vxa, Vya, Sxxa, Syya, Sxya, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, sex, sey, eta)
+    @time SetUpProblem!(mesh, Pa, Vxa, Vya, Sxxa, Syya, Sxya, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sex, sey, eta)
 
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
-    @time ae, be, ze = ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, tau)
+    @time ae, be, ze = ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, tau)
 
     # Assemble element matrices and RHS
     println("Compute element matrices:")
-    @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, tau)
+    @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau)
 
     # Assemble triplets and sparse
     println("Assemble triplets and sparse:")
