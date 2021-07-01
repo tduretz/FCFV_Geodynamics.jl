@@ -69,6 +69,24 @@ function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, Syy
             gbar[iel,ifac,2] = 0.5 * (tL_y - tR_y)
         end          
     end
+
+    # # detect cells at interface and set to geometric mean
+    # for iel=1:mesh.nel
+
+    #     for ifac=1:mesh.nf_el
+    #         nodei  = mesh.e2f[iel,ifac]
+    #         if mesh.bc[nodei] == 3
+    #             # mesh.ke[iel] = (etam*etai)^(1/2)
+    #             if Int64(mesh.phase[iel]) == 1
+    #                 mesh.ke[iel] = 2.0/(1.0/etam+1.0/etai)
+    #             else
+    #                 mesh.ke[iel] = 0.5*(etam+etai)
+    #             end
+    #         end
+    #     end
+    # end
+
+
     return
 end
 
@@ -92,12 +110,13 @@ function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R, eta )
         x         = mesh.xc[iel]
         y         = mesh.yc[iel]
         vx, vy, pre, sxx, syy, sxy = EvalAnalDani( x, y, R, etam, etai )
+        pre, dVxdx, dVxdy, dVydx, dVydy = Tractions( x, y, R, etam, etai, mesh.phase[iel] )
         Pa[iel]   = pre
         Vxa[iel]  = vx
         Vya[iel]  = vy
-        Txxa[iel] = pre + sxx 
-        Tyya[iel] = pre + syy 
-        Txya[iel] = sxy
+        Txxa[iel] = 2.0*mesh.ke[iel]*dVxdx
+        Tyya[iel] = 2.0*mesh.ke[iel]*dVydy 
+        Txya[iel] = 1.0*mesh.ke[iel]*(dVxdy+dVydx) 
         eVx[iel]  = Vxe[iel]  - Vxa[iel]
         eVy[iel]  = Vye[iel]  - Vya[iel]
         eTxx[iel] = Txxe[iel] - Txxa[iel]
@@ -142,23 +161,23 @@ end
     ymin, ymax = -3.0, 3.0
     n          = 1
     nx, ny     = 30*n, 30*n
-    solver     = 0
+    solver     = 1
     R          = 1.0
     inclusion  = 1
     eta        = [1.0 100.0]
     mesh_type  = "Quadrangles"
     # mesh_type  = "UnstructTriangles"
-    BC         = [2; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
+    BC         = [1; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
 
     # Generate mesh
     if mesh_type=="Quadrangles" 
-        tau  = 2.0   
+        tau  = 4.0   
         mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles"  
         tau  = 1.0/5.0
-        area = 1.0 # area factor: SETTING REPRODUCE THE RESULTS OF MATLAB CODE USING TRIANGLE
-        ninc = 29  # number of points that mesh the inclusion: SETTING REPRODUCE THE RESULTS OF MATLAB CODE USING TRIANGLE
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC, area, ninc ) 
+        # area = 1.0 # area factor: SETTING REPRODUCE THE RESULTS OF MATLAB CODE USING TRIANGLE
+        # ninc = 29  # number of points that mesh the inclusion: SETTING REPRODUCE THE RESULTS OF MATLAB CODE USING TRIANGLE
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC ) 
     end
     println("Number of elements: ", mesh.nel)
 
@@ -218,12 +237,13 @@ end
 
     # Visualise
     println("Visualisation:")
-    # PlotMakie(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
+    # @time PlotMakie(mesh, Vxe, xmin, xmax, ymin, ymax, :jet1)
     # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
-    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :jet1, minimum(Pa), maximum(Pa) )
+    # @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :jet1, minimum(Pa), maximum(Pa) )
     # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
     # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
-    # @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax, :jet1 )
+    @time PlotMakie( mesh, Tyya, xmin, xmax, ymin, ymax, :jet1, -2.0, 6.0 )
+    # @time PlotMakie( mesh, log10.(mesh.ke), xmin, xmax, ymin, ymax, :jet1 )
     # @time PlotMakie( mesh, mesh.phase, xmin, xmax, ymin, ymax, :jet1)
 
 end

@@ -62,13 +62,13 @@ function ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
             # Assemble
             Vxe[iel]  += (bc!=1) *  dAi*taui*Vxh[nodei]/ae[iel]
             Vye[iel]  += (bc!=1) *  dAi*taui*Vyh[nodei]/ae[iel]
-            Txxe[iel] += (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_x*Vxh[nodei]
-            Tyye[iel] += (bc!=1) *  1.0/mesh.vole[iel]*dAi*ni_y*Vyh[nodei]
-            Txye[iel] += (bc!=1) *  0.5*( 1.0/mesh.vole[iel]*dAi*( ni_x*Vyh[nodei] + ni_y*Vxh[nodei] ) )
+            Txxe[iel] += (bc!=1) *  mesh.ke[iel]/mesh.vole[iel]*dAi*ni_x*Vxh[nodei]
+            Tyye[iel] += (bc!=1) *  mesh.ke[iel]/mesh.vole[iel]*dAi*ni_y*Vyh[nodei]
+            Txye[iel] += (bc!=1) *  mesh.ke[iel]*0.5*( 1.0/mesh.vole[iel]*dAi*( ni_x*Vyh[nodei] + ni_y*Vxh[nodei] ) )
          end
-        Txxe[iel] *= 2.0#*mesh.ke[iel]
-        Tyye[iel] *= 2.0#*mesh.ke[iel]
-        Txye[iel] *= 2.0#*mesh.ke[iel]
+        Txxe[iel] *= 2.0
+        Tyye[iel] *= 2.0
+        Txye[iel] *= 2.0
     end
     return Vxe, Vye, Txxe, Tyye, Txye
 end
@@ -128,12 +128,12 @@ function ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, Sxy
             Kup[iel,ifac]                            -= (bci!=1) * dAi*ni_x;
             Kup[iel,ifac+mesh.nf_el]                 -= (bci!=1) * dAi*ni_y;
             # Dirichlet nodes - uu block
-            Kuu[iel,ifac,ifac]                       += (bci==1) * 1.0
-            Kuu[iel,ifac+mesh.nf_el,ifac+mesh.nf_el] += (bci==1) * 1.0
-            fu[iel,ifac]                             += (bci!=1) * feix + (bci==1) * VxDir[nodei]
-            fu[iel,ifac+mesh.nf_el]                  += (bci!=1) * feiy + (bci==1) * VyDir[nodei]
+            Kuu[iel,ifac,ifac]                       += (bci==1) * 1e6
+            Kuu[iel,ifac+mesh.nf_el,ifac+mesh.nf_el] += (bci==1) * 1e6
+            fu[iel,ifac]                             += (bci!=1) * feix + (bci==1) * VxDir[nodei] * 1e6
+            fu[iel,ifac+mesh.nf_el]                  += (bci!=1) * feiy + (bci==1) * VyDir[nodei] * 1e6
             # Dirichlet nodes - pressure RHS
-            fp[iel]                                  += (bci==1) * dAi*(VxDir[nodei]*ni_x + VyDir[nodei]*ni_y)
+            fp[iel]                                  += (bci==1) * -dAi*(VxDir[nodei]*ni_x + VyDir[nodei]*ni_y)
         end
     end
     return Kuu, fu, Kup, fp

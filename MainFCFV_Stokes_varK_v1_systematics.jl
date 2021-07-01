@@ -124,7 +124,7 @@ end
 
 #--------------------------------------------------------------------#
 
-@views function main()
+@views function main(n, tau)
     # ```This version include the jump condition derived from the analytical solution
     # The great thing is that pressure converges in L_infinity norm evem with quadrangles - this rocks
     # # Test #1: For a contrast of:  eta        = [10.0 1.0] (weak inclusion), tau = 20.0
@@ -140,7 +140,7 @@ end
     # Create sides of mesh
     xmin, xmax = -3.0, 3.0
     ymin, ymax = -3.0, 3.0
-    n          = 1
+    # n          = 1
     nx, ny     = 30*n, 30*n
     solver     = 0
     R          = 1.0
@@ -152,7 +152,7 @@ end
 
     # Generate mesh
     if mesh_type=="Quadrangles" 
-        tau  = 2.0   
+        # tau  = 2.0   
         mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles"  
         tau  = 1.0/5.0
@@ -216,16 +216,31 @@ end
     Verr = sqrt.( (Vxe.-Vxa).^2 .+ (Vye.-Vya).^2 ) 
     println("L_inf P error: ", maximum(Perr), " --- L_inf V error: ", maximum(Verr))
 
-    # Visualise
-    println("Visualisation:")
-    # PlotMakie(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
-    # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
-    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :jet1, minimum(Pa), maximum(Pa) )
-    # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
-    # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
-    # @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax, :jet1 )
-    # @time PlotMakie( mesh, mesh.phase, xmin, xmax, ymin, ymax, :jet1)
+    # # Visualise
+    # println("Visualisation:")
+    # # PlotMakie(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
+    # # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
+    # @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :jet1, minimum(Pa), maximum(Pa) )
+    # # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
+    # # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
+    # # @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax, :jet1 )
+    # # @time PlotMakie( mesh, mesh.phase, xmin, xmax, ymin, ymax, :jet1)
 
+    return maximum(Perr), maximum(Verr)
 end
 
-main()
+n    = collect(1:12)
+tau  = collect(15:27)
+resu = zeros(length(n), length(tau))
+resp = zeros(length(n), length(tau))
+
+for in = 1:length(n)
+    for it = 1:length(tau)
+        rp, ru = main(n[in], tau[it])
+        resu[in,it] = ru
+        resp[in,it] = rp
+    end
+end
+
+p2 = Plots.heatmap(n, tau, resp, c=:jet1 )
+display(Plots.plot(p2))
