@@ -13,7 +13,7 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
         Pe     = Pe .- Statistics.mean(Pe)
     elseif solver==1
         # Decoupled solve
-        coef  = 1e5*ones(mesh.nel)
+        coef  = 1e3.*mesh.ke./mesh.vole#*ones(mesh.nel)
         Kppi  = spdiagm(coef)
         Kpu   = -Kup'
         Kuusc = Kuu - Kup*(Kppi*Kpu)

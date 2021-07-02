@@ -1,48 +1,56 @@
 import UnicodePlots, Plots
-using  Printf, LoopVectorization, LinearAlgebra, SparseArrays
+using  Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT
 
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
 include("DiscretisationFCFV_Stokes.jl")
 include("SolversFCFV_Stokes.jl")
-include("EvalAnalDani.jl")
+include("EvalAnalDani_v2.jl")
 
 #--------------------------------------------------------------------#
 
-function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sx, sy, R, eta, gbar)
+function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sx, sy, rc, eta, gbar)
     # Evaluate T analytic on cell faces
-    etam, etai = eta[1], eta[2]
-    for in=1:mesh.nf
-        x        = mesh.xf[in]
-        y        = mesh.yf[in]
-        vx, vy, pre, sxx, syy, sxy = EvalAnalDani( x, y, R, etam, etai )
-        VxDir[in] = vx
-        VyDir[in] = vy
-        # Stress at faces
-        p          = pre
+    etam, etac = eta[1], eta[2]
+    gr  = 0;                        # Simple shear: gr=1, er=0
+    er  = -1;                       # Strain rate
+    @tturbo for ifac=1:mesh.nf
+        x, y                           = mesh.xf[ifac], mesh.yf[ifac]
+        in                             = sqrt(x^2.0 + y^2.0)<=rc
+        pa                             = SolutionFields_p( etam, etac, rc, er, gr, x, y, in)
+        vxa, vya                       = SolutionFields_v( etam, etac, rc, er, gr, x, y, in)
+        VxDir[ifac] = vxa
+        VyDir[ifac] = vya
         # Pseudo-tractions
-        pre, dVxdx, dVxdy, dVydx, dVydy = Tractions( x, y, R, etam, etai, 1 )
-        SxxNeu[in] = - pre + etam*dVxdx 
-        SyyNeu[in] = - pre + etam*dVydy 
-        SxyNeu[in] =         etam*dVxdy
-        SyxNeu[in] =         etam*dVydx
+        dvxdxa, dvxdya, dvydxa, dvydya = SolutionFields_dv(etam, etac, rc, er, gr, x, y, in)
+        SxxNeu[ifac] = - pa +  etam*dvxdxa 
+        SyyNeu[ifac] = - pa +  etam*dvydya
+        SxyNeu[ifac] =         etam*dvxdya
+        SyxNeu[ifac] =         etam*dvydxa
     end
     # Evaluate T analytic on barycentres
-    for iel=1:mesh.nel
-        x        = mesh.xc[iel]
-        y        = mesh.yc[iel]
-        vx, vy, pre, sxx, syy, sxy = EvalAnalDani( x, y, R, etam, etai )
-        P[iel]   = pre
-        Vx[iel]  = vx
-        Vy[iel]  = vy
-        Sxx[iel] = sxx
-        Syy[iel] = syy
-        Sxy[iel] = sxy
-        sx[iel]  = 0.0
-        sy[iel]  = 0.0
+    @tturbo for iel=1:mesh.nel
+        x, y                           = mesh.xc[iel], mesh.yc[iel]
+        in                             = sqrt(x^2.0 + y^2.0)<=rc
+        pa                             = SolutionFields_p( etam, etac, rc, er, gr, x, y, in)
+        vxa, vya                       = SolutionFields_v( etam, etac, rc, er, gr, x, y, in)
+        dvxdxa, dvxdya, dvydxa, dvydya = SolutionFields_dv(etam, etac, rc, er, gr, x, y, in)
+        P[iel]       = pa
+        Vx[iel]      = vxa
+        Vy[iel]      = vya
+        etaa         = (in==0) * etam + (in==1) * etac
+        Sxx[iel]     = -pa + 2.0*etaa*dvxdxa
+        Syy[iel]     = -pa + 2.0*etaa*dvydya
+        Sxy[iel]     = etaa*(dvxdya+dvydxa)
+        sx[iel]      = 0.0
+        sy[iel]      = 0.0
         out          = mesh.phase[iel] == 1.0
-        mesh.ke[iel] = (out==1) * 1.0*etam + (out!=1) * 1.0*etai
-        # Compute jump condition
+        mesh.ke[iel] = (out==1) * 1.0*etam + (out!=1) * 1.0*etac
+    end
+
+    # Compute jump condition
+    @tturbo for iel=1:mesh.nel
+        x, y                           = mesh.xc[iel], mesh.yc[iel] 
         for ifac=1:mesh.nf_el
             # Face
             nodei  = mesh.e2f[iel,ifac]
@@ -54,15 +62,19 @@ function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, Syy
             ni_x   = mesh.n_x[iel,ifac]
             ni_y   = mesh.n_y[iel,ifac]
             phase1 = Int64(mesh.phase[iel])
-            pre1, dVxdx1, dVxdy1, dVydx1, dVydy1 = Tractions( xF, yF, R, etam, etai, phase1 )
-            eta_face1 = eta[phase1]
+            in     = (phase1==1) * 0 + (phase1==2) * 1 
+            pre1                           = SolutionFields_p( etam, etac, rc, er, gr, x, y, in)
+            dVxdx1, dVxdy1, dVydx1, dVydy1 = SolutionFields_dv(etam, etac, rc, er, gr, x, y, in)
+            eta_face1 = (in==0) * etam + (in==1) * etac
             tL_x  = ni_x*(-pre1 + eta_face1*dVxdx1) + ni_y*eta_face1*dVxdy1
             tL_y  = ni_y*(-pre1 + eta_face1*dVydy1) + ni_x*eta_face1*dVydx1
             # From element 2
             ineigh = (mesh.e2e[iel,ifac]>0) * mesh.e2e[iel,ifac] + (mesh.e2e[iel,ifac]<1) * iel
             phase2 = Int64(mesh.phase[ineigh])
-            pre2, dVxdx2, dVxdy2, dVydx2, dVydy2 = Tractions( xF, yF, R, etam, etai, phase2)
-            eta_face2 = eta[phase2]
+            in     = (phase2==1) * 0 + (phase2==2) * 1 
+            pre2                           = SolutionFields_p( etam, etac, rc, er, gr, x, y, in)
+            dVxdx2, dVxdy2, dVydx2, dVydy2 = SolutionFields_dv(etam, etac, rc, er, gr, x, y, in)
+            eta_face2 = (in==0) * etam + (in==1) * etac
             tR_x = ni_x*(-pre2 + eta_face2*dVxdx2) + ni_y*eta_face2*dVxdy2
             tR_y = ni_y*(-pre2 + eta_face2*dVydy2) + ni_x*eta_face2*dVydx2
             gbar[iel,ifac,1] = 0.5 * (tL_x - tR_x)
@@ -74,8 +86,10 @@ end
 
 #--------------------------------------------------------------------#
 
-function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R, eta )
-    etam, etai = eta[1], eta[2]
+function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, rc, eta )
+    etam, etac = eta[1], eta[2]
+    gr  = 0;                        # Simple shear: gr=1, er=0
+    er  = -1;                       # Strain rate
     eVx  = zeros(mesh.nel)
     eVy  = zeros(mesh.nel)
     eTxx = zeros(mesh.nel)
@@ -88,16 +102,16 @@ function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R, eta )
     Tyya = zeros(mesh.nel)
     Txya = zeros(mesh.nel)
     Pa   = zeros(mesh.nel)
-    for iel=1:mesh.nel
-        x         = mesh.xc[iel]
-        y         = mesh.yc[iel]
-        vx, vy, pre, sxx, syy, sxy = EvalAnalDani( x, y, R, etam, etai )
-        Pa[iel]   = pre
-        Vxa[iel]  = vx
-        Vya[iel]  = vy
-        Txxa[iel] = pre + sxx 
-        Tyya[iel] = pre + syy 
-        Txya[iel] = sxy
+    @tturbo for iel=1:mesh.nel
+        x, y                           = mesh.xc[iel], mesh.yc[iel] 
+        in                             = sqrt(x^2.0 + y^2.0)<=rc
+        pa                             = SolutionFields_p( etam, etac, rc, er, gr, x, y, in)
+        vxa, vya                       = SolutionFields_v( etam, etac, rc, er, gr, x, y, in)
+        dvxdxa, dvxdya, dvydxa, dvydya = SolutionFields_dv(etam, etac, rc, er, gr, x, y, in)
+        Pa[iel], Vxa[iel], Vya[iel]    = pa, vxa, vya
+        Txxa[iel] = 2.0*mesh.ke[iel]*dvxdxa
+        Tyya[iel] = 2.0*mesh.ke[iel]*dvydya 
+        Txya[iel] = 1.0*mesh.ke[iel]*(dvxdya + dvydxa) 
         eVx[iel]  = Vxe[iel]  - Vxa[iel]
         eVy[iel]  = Vye[iel]  - Vya[iel]
         eTxx[iel] = Txxe[iel] - Txxa[iel]
@@ -125,15 +139,6 @@ end
 #--------------------------------------------------------------------#
 
 @views function main(n, tau)
-    # ```This version include the jump condition derived from the analytical solution
-    # The great thing is that pressure converges in L_infinity norm evem with quadrangles - this rocks
-    # # Test #1: For a contrast of:  eta        = [10.0 1.0] (weak inclusion), tau = 20.0
-    #     res = [1 2 4 8]*30 elements per dimension 
-    #     err = [4.839 3.944 2.811 1.798]
-    # # Test #2: For a contrast of:  eta        = [1.0 100.0] (strong inclusion), tau = 1.0/5.0
-    #     res = [1 2 4 8]*30 elements per dimension 
-    #     err = [4.169 2.658 1.628 0.83]
-    # ```
 
     println("\n******** FCFV STOKES ********")
 
@@ -142,7 +147,7 @@ end
     ymin, ymax = -3.0, 3.0
     # n          = 1
     nx, ny     = 30*n, 30*n
-    solver     = 0
+    solver     = 1
     R          = 1.0
     inclusion  = 1
     eta        = [1.0 100.0]
@@ -229,8 +234,15 @@ end
     return maximum(Perr), maximum(Verr)
 end
 
-n    = collect(1:12)
-tau  = collect(15:27)
+# n = 1
+# tau = 1.0
+# main(n, tau)
+
+# n    = collect(1:1:16)
+# n    = collect(17:1:20) # p2
+# tau  = collect(4:1:25)
+n    = collect(1:1:10)
+tau  = collect(1:1:4)
 resu = zeros(length(n), length(tau))
 resp = zeros(length(n), length(tau))
 
@@ -242,5 +254,12 @@ for in = 1:length(n)
     end
 end
 
-p2 = Plots.heatmap(n, tau, resp, c=:jet1 )
-display(Plots.plot(p2))
+# p2 = Plots.heatmap(n, tau, resp', c=:jet1 )
+# display(Plots.plot(p2))
+
+file = matopen(string(@__DIR__,"/results/MaxPerr_p3.mat"), "w" )
+write(file, "n",        n )
+write(file, "tau",    tau )
+write(file, "resu",  resu )
+write(file, "resp",  resp )
+close(file)

@@ -4,7 +4,7 @@ function ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNe
     ze = zeros(mesh.nel,2,2)
 
     # Assemble FCFV elements
-    @avx for iel=1:mesh.nel  
+    @tturbo for iel=1:mesh.nel  
 
         be[iel,1] += mesh.vole[iel]*sex[iel]
         be[iel,2] += mesh.vole[iel]*sey[iel]
@@ -41,7 +41,7 @@ function ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
     Tyye        = zeros(mesh.nel);
     Txye        = zeros(mesh.nel);
 
-    @avx for iel=1:mesh.nel
+    @tturbo for iel=1:mesh.nel
     
         Vxe[iel]  =  be[iel,1]/ae[iel]
         Vye[iel]  =  be[iel,2]/ae[iel]
@@ -83,7 +83,7 @@ function ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, Sxy
     Kup = zeros(mesh.nel, 2*mesh.nf_el);
     fp  = zeros(mesh.nel)
 
-    @avx for iel=1:mesh.nel #  
+    @tturbo for iel=1:mesh.nel 
 
         for ifac=1:mesh.nf_el 
 
