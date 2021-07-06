@@ -11,6 +11,7 @@ function ComputeFCFV_o2(mesh, se, Tdir, tau, o2)
     dj    = zeros(mesh.nel,mesh.nf_el,nen)
     rj    = zeros(mesh.nel,mesh.nf_el,nen)
 
+    # Assemble FCFV elements
     @tturbo for iel=1:mesh.nel  
 
         be[iel] = be[iel] + (o2==0)*mesh.vole[iel]*se[iel] 

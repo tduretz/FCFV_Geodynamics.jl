@@ -4,6 +4,7 @@ using Printf, LoopVectorization, LinearAlgebra, SparseArrays
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
 include("DiscretisationFCFV_Stokes.jl")
+include("DiscretisationFCFV_Stokes_o2.jl")
 include("SolversFCFV_Stokes.jl")
 
 #--------------------------------------------------------------------#
@@ -112,21 +113,24 @@ end
     solver     = 1
     R          = 0.5
     inclusion  = 0
+    o2         = 1
     # mesh_type  = "Quadrangles"
     mesh_type  = "UnstructTriangles"
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
-        tau  = 20
+        if o2==0 tau  = 1e0 end
+        if o2==1 tau  = 1e4 end
         mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R )
     elseif mesh_type=="UnstructTriangles"  
-        tau  = 20
+        if o2==0 tau  = 20 end
+        if o2==1 tau  = 20e4 end
         mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R ) 
     end
     println("Number of elements: ", mesh.nel)
 
     # Source term and BCs etc...
-    Pa     = zeros(mesh.nel) 
+    Pa     = zeros(mesh.nel)
     Vxa    = zeros(mesh.nel)
     Vya    = zeros(mesh.nel)
     Sxxa   = zeros(mesh.nel)
@@ -146,11 +150,12 @@ end
 
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
-    @time ae, be, ze = ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, tau)
+    @time ae, be, be_o2, ze, pe, mei, pe, rjx, rjy = ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, tau, o2)
 
     # Assemble element matrices and RHS
     println("Compute element matrices:")
-    @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau)
+    @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau, o2)
+    # @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau )
 
     # Assemble triplets and sparse
     println("Assemble triplets and sparse:")
@@ -160,9 +165,9 @@ end
     println("Linear solve:")
     @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
 
-    # # Reconstruct element values
+    # Reconstruct element values
     println("Compute element values:")
-    @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
+    @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy, mei, VxDir, VyDir, tau, o2)
 
     # # Compute discretisation errors
     err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, Txxa, Tyya, Txya = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
@@ -172,12 +177,6 @@ end
     @printf("Error in Tyy: %2.2e\n", err_Tyy)
     @printf("Error in Txy: %2.2e\n", err_Txy)
     @printf("Error in P  : %2.2e\n", err_P  )
-
-    println(minimum(Pa))
-    println(minimum(Pe))
-    println(maximum(Pa))
-    println(maximum(Pe))
-
 
     # Visualise
     println("Visualisation:")
