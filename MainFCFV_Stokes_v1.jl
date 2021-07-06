@@ -11,6 +11,7 @@ include("SolversFCFV_Stokes.jl")
 function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sx, sy)
     # Evaluate T analytic on cell faces
     @avx for in=1:mesh.nf
+        eta      = 1 
         x        = mesh.xf[in]
         y        = mesh.yf[in]
         VxDir[in] = x^2*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y)

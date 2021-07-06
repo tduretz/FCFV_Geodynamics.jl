@@ -101,7 +101,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
     # Triangulation
     domain   = TriangleMesh.Polygon_pslg(size(p,2), p, 0, Array{Int64}(undef,2,0), 0, Array{Float64}(undef,2,0),  size(s,2), s, st, 0, holes, size(regions,2), regions, 1.0)
     astring  = @sprintf("%0.10lf", area)
-    switches = "vDpenq33o2IAa$(astring)"  #QDpeq33o2Aa0.01
+    switches = "vQDpenq33o2IAa$(astring)"  #QDpeq33o2Aa0.01
     
     println("Arguments to Triangle: ", switches)
     trimesh  = TriangleMesh.create_mesh(domain, switches)

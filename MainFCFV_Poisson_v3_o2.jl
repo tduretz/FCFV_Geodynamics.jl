@@ -1,47 +1,13 @@
 import TriangleMesh, UnicodePlots, Plots
 using Printf, LoopVectorization, LinearAlgebra, SparseArrays
-using AlgebraicMultigrid
-import IterativeSolvers: cg
-import Metis
 
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
 include("DiscretisationFCFV.jl")
 include("DiscretisationFCFV_Poisson_o2.jl")
+include("SolversFCFV_Poisson.jl")
 
-function SolvePoisson(mesh, K, f, solver)
-# Solve for hybrid variable
-if solver == 0
-    @time Th   = K\f
-elseif solver == 1
-    println("Direct solve:")
-    PC  = 0.5.*(K.+K')
-    # @time permetis, iperm = Metis.permutation(PC)
-    # PCc = cholesky(PC, perm=convert(Vector{Int64},permetis))
-    PCc = cholesky(PC)
-    Th  = zeros(mesh.nf)
-    dTh = zeros(mesh.nf,1)
-    r   = zeros(mesh.nf,1)
-    r  .= f - K*Th
-    # @time Th   = K\f
-    for rit=1:5
-        r    .= f - K*Th
-        println("It. ", rit, " - Norm of residual: ", norm(r)/length(r))
-        if norm(r)/length(r) < 1e-10
-            break
-        end
-        dTh  .= PCc\r
-        Th  .+= dTh[:]
-    end
-elseif solver == 2
-    println("AMG preconditionned CG solver:")
-    # ml = ruge_stuben(K)
-    @time ml = smoothed_aggregation(K) #pas mal
-    @time p  = aspreconditioner(ml)
-    @time Th = cg(K, f, Pl = p, reltol=1e-6)
-end
-return Th
-end
+#--------------------------------------------------------------------#
 
 function SetUpProblem!( mesh, T, Tdir, Tneu, se, a, b, c, d, alp, bet )
     # Evaluate T analytic on cell faces
@@ -64,6 +30,8 @@ function SetUpProblem!( mesh, T, Tdir, Tneu, se, a, b, c, d, alp, bet )
     return
 end
 
+#--------------------------------------------------------------------#
+
 function ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
     eT  = zeros(mesh.nel)
     eqx = zeros(mesh.nel)
@@ -74,9 +42,9 @@ function ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
     @avx for iel=1:mesh.nel
         x        = mesh.xc[iel]
         y        = mesh.yc[iel]
-        Ta[iel]       = exp(alp*sin(a*x + c*y) + bet*cos(b*x + d*y))
-        qxa[iel]      = -Ta[iel] * (a*alp*cos(a*x + c*y) - b*bet*sin(b*x + d*y))
-        qya[iel]      = -Ta[iel] * (alp*c*cos(a*x + c*y) - bet*d*sin(b*x + d*y))
+        Ta[iel]  = exp(alp*sin(a*x + c*y) + bet*cos(b*x + d*y))
+        qxa[iel] = -Ta[iel] * (a*alp*cos(a*x + c*y) - b*bet*sin(b*x + d*y))
+        qya[iel] = -Ta[iel] * (alp*c*cos(a*x + c*y) - bet*d*sin(b*x + d*y))
         eT[iel]  = Te[iel] - Ta[iel]
         eqx[iel] = qx[iel] - qxa[iel]
         eqy[iel] = qy[iel] - qya[iel]
@@ -87,6 +55,7 @@ function ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
     return errT, errqx, errqy
 end
     
+#--------------------------------------------------------------------#
 
 function StabParam(tau, dA, Vol, mesh_type)
     if mesh_type=="Quadrangles";        taui = tau;    end
@@ -94,22 +63,24 @@ function StabParam(tau, dA, Vol, mesh_type)
     if mesh_type=="UnstructTriangles";  taui = tau end
     return taui
 end
+
+#--------------------------------------------------------------------#
     
-@views function main()
+@views function main( n )
 
     println("\n******** FCFV POISSON ********")
 
     # Create sides of mesh
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    nx, ny     = 16, 16
+    nx, ny     = n*8, n*8
     R          = 0.5
     inclusion  = 0
-    mesh_type  = "Quadrangles"
     solver     = 0
     o2         = 1
     BC         = [1; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
-    # mesh_type  = "UnstructTriangles"
+    # mesh_type  = "Quadrangles"
+    mesh_type  = "UnstructTriangles"
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
@@ -117,7 +88,8 @@ end
         if o2==1 tau  = 1e4 end
         mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles"  
-        tau  = 100
+        if o2==0 tau  = 1e2 end
+        if o2==1 tau  = 1e6 end
         mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC ) 
     end
     println("Number of elements: ", mesh.nel)
@@ -133,25 +105,23 @@ end
 
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
-    # @time ae, be, ze = ComputeFCFV(mesh, se, Tdir, tau)
     @time ae, be, be_o2, ze, pe, mei, pe, rj  = ComputeFCFV_o2(mesh, se, Tdir, tau, o2)
 
     # Assemble element matrices and RHS
     println("Compute element matrices:")
-    # @time Kv, fv = ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
     @time Kv, fv = ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rj, Tdir, Tneu, tau, o2)
 
     # Assemble triplets and sparse
     println("Assemble triplets and sparse:")
     @time K, f = CreateTripletsSparse(mesh, Kv, fv)
-    # display(UnicodePlots.spy(K))
     
+    # Solve
+    println("Solve:")
     @time Th = SolvePoisson(mesh, K, f, solver)
 
     # Reconstruct element values
     println("Compute element values:")
     @time Te, qx, qy = ComputeElementValues_o2(mesh, Th, ae, be, be_o2, ze, rj, mei, Tdir, tau, o2)
-    # @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
 
     # Compute discretisation errors
     err_T, err_qx, err_qy = ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
@@ -165,6 +135,7 @@ end
 
 end
 
-main()
-# main()
-# main()
+n = 4
+main( n )
+# main( n )
+# main( n )
