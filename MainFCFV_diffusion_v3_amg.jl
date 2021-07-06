@@ -7,12 +7,14 @@ import Metis
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
 include("DiscretisationFCFV.jl")
+include("DiscretisationFCFV_Poisson_o2.jl")
 
 function SolvePoisson(mesh, K, f, solver)
 # Solve for hybrid variable
-if solver==1
+if solver == 0
+    @time Th   = K\f
+elseif solver == 1
     println("Direct solve:")
-    # @time Th   = K\f
     PC  = 0.5.*(K.+K')
     # @time permetis, iperm = Metis.permutation(PC)
     # PCc = cholesky(PC, perm=convert(Vector{Int64},permetis))
@@ -31,12 +33,12 @@ if solver==1
         dTh  .= PCc\r
         Th  .+= dTh[:]
     end
-else
+elseif solver == 2
     println("AMG preconditionned CG solver:")
     # ml = ruge_stuben(K)
-    ml = smoothed_aggregation(K) #pas mal
-    p  = aspreconditioner(ml)
-    Th = cg(K, f, Pl = p)
+    @time ml = smoothed_aggregation(K) #pas mal
+    @time p  = aspreconditioner(ml)
+    @time Th = cg(K, f, Pl = p, reltol=1e-6)
 end
 return Th
 end
@@ -100,20 +102,23 @@ end
     # Create sides of mesh
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    nx, ny     = 1000, 1000
+    nx, ny     = 16, 16
     R          = 0.5
     inclusion  = 0
     mesh_type  = "Quadrangles"
-    solver     = 1
+    solver     = 0
+    o2         = 1
+    BC         = [1; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
     # mesh_type  = "UnstructTriangles"
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
-        tau  = 1
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R )
+        if o2==0 tau  = 1e0 end
+        if o2==1 tau  = 1e4 end
+        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles"  
         tau  = 100
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R ) 
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC ) 
     end
     println("Number of elements: ", mesh.nel)
 
@@ -128,11 +133,13 @@ end
 
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
-    @time ae, be, ze = ComputeFCFV(mesh, se, Tdir, tau)
+    # @time ae, be, ze = ComputeFCFV(mesh, se, Tdir, tau)
+    @time ae, be, be_o2, ze, pe, mei, pe, rj  = ComputeFCFV_o2(mesh, se, Tdir, tau, o2)
 
     # Assemble element matrices and RHS
     println("Compute element matrices:")
-    @time Kv, fv = ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
+    # @time Kv, fv = ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
+    @time Kv, fv = ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rj, Tdir, Tneu, tau, o2)
 
     # Assemble triplets and sparse
     println("Assemble triplets and sparse:")
@@ -143,8 +150,8 @@ end
 
     # Reconstruct element values
     println("Compute element values:")
-    @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
-    # @time Te, qx, qy = ComputeElementValuesFaces(mesh, Th, ae, be, ze, Tdir, tau)
+    @time Te, qx, qy = ComputeElementValues_o2(mesh, Th, ae, be, be_o2, ze, rj, mei, Tdir, tau, o2)
+    # @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
 
     # Compute discretisation errors
     err_T, err_qx, err_qy = ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
@@ -159,5 +166,5 @@ end
 end
 
 main()
-main()
-main()
+# main()
+# main()

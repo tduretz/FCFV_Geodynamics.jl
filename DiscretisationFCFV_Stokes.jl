@@ -153,6 +153,13 @@ function CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
     Kif  = e2f[:,ii[1,:]]
     Kj   = e2f[:,ij]
     Kuu  = sparse(Ki[:], Kj[:], Kuu_v[:], mesh.nf*2, mesh.nf*2)
+    # file = matopen(string(@__DIR__,"/results/matrix_uu.mat"), "w" )
+    # write(file, "Ki",       Ki[:] )
+    # write(file, "Kj",    Kj[:] )
+    # write(file, "Kuu",  Kuu_v[:] )
+    # write(file, "nrow",  mesh.nf*2 )
+    # write(file, "ncol",  mesh.nf*2 )
+    # close(file)
     fu   = sparse(Kif[:], ones(size(Kif[:])), fu_v[:], mesh.nf*2, 1)
     fu   = Array(fu)
     droptol!(Kuu, 1e-6)
@@ -163,6 +170,13 @@ function CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
     Ki   = e2f
     Kj   = ij
     Kup  = sparse(Ki[:], Kj[:], Kup_v[:], mesh.nf*2, mesh.nel  )
+    # file = matopen(string(@__DIR__,"/results/matrix_up.mat"), "w" )
+    # write(file, "Ki",       Ki[:] )
+    # write(file, "Kj",    Kj[:] )
+    # write(file, "Kup",  Kup_v[:] )
+    # write(file, "nrow",  mesh.nf*2 )
+    # write(file, "ncol",  mesh.nel )
+    # close(file)
     return Kuu, fu, Kup
 end
 
