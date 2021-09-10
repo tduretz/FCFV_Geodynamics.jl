@@ -152,7 +152,7 @@ function CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
     Ki   = e2f[:,ii]
     Kif  = e2f[:,ii[1,:]]
     Kj   = e2f[:,ij]
-    Kuu  = sparse(Ki[:], Kj[:], Kuu_v[:], mesh.nf*2, mesh.nf*2)
+    @time Kuu  = sparse(Ki[:], Kj[:], Kuu_v[:], mesh.nf*2, mesh.nf*2)
     # file = matopen(string(@__DIR__,"/results/matrix_uu.mat"), "w" )
     # write(file, "Ki",       Ki[:] )
     # write(file, "Kj",    Kj[:] )
@@ -160,8 +160,8 @@ function CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
     # write(file, "nrow",  mesh.nf*2 )
     # write(file, "ncol",  mesh.nf*2 )
     # close(file)
-    fu   = sparse(Kif[:], ones(size(Kif[:])), fu_v[:], mesh.nf*2, 1)
-    fu   = Array(fu)
+    @time fu   = sparse(Kif[:], ones(size(Kif[:])), fu_v[:], mesh.nf*2, 1)
+    u   = Array(fu)
     droptol!(Kuu, 1e-6)
     # Create triplets and assemble sparse matrix fo Kup
     idof = 1:mesh.nf_el*2  
@@ -169,7 +169,7 @@ function CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
     ij   = repeat(1:mesh.nel, 1, length(idof))
     Ki   = e2f
     Kj   = ij
-    Kup  = sparse(Ki[:], Kj[:], Kup_v[:], mesh.nf*2, mesh.nel  )
+    @time Kup  = sparse(Ki[:], Kj[:], Kup_v[:], mesh.nf*2, mesh.nel  )
     # file = matopen(string(@__DIR__,"/results/matrix_up.mat"), "w" )
     # write(file, "Ki",       Ki[:] )
     # write(file, "Kj",    Kj[:] )

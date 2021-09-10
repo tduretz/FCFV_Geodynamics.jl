@@ -143,7 +143,7 @@ end
 
 #--------------------------------------------------------------------#
 
-@views function main()
+@views function main( n, solver)
     # ```This version include the jump condition derived from the analytical solution
     # The great thing is that pressure converges in L_infinity norm evem with quadrangles - this rocks
     # # Test #1: For a contrast of:  eta        = [10.0 1.0] (weak inclusion), tau = 20.0
@@ -154,14 +154,14 @@ end
     #     err = [4.169 2.658 1.628 0.83]
     # ```
 
-    println("\n******** FCFV STOKES ********")
+    println("\n\n******** FCFV STOKES ********")
 
     # Create sides of mesh
     xmin, xmax = -3.0, 3.0
     ymin, ymax = -3.0, 3.0
-    n          = 1
+    # n          = 16
     nx, ny     = 30*n, 30*n
-    solver     = 1
+    # solver     = 3
     R          = 1.0
     inclusion  = 1
     eta        = [1.0 100.0]
@@ -211,12 +211,14 @@ end
     # Assemble triplets and sparse
     println("Assemble triplets and sparse:")
     @time Kuu, fu, Kup = CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
+    
     # display(UnicodePlots.spy(Kuu))
     # display(UnicodePlots.spy(Kup))
 
     # Solve for hybrid variable
     println("Linear solve:")
-    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
+    t_solve = @elapsed  Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
+    println("Linear solver took: ", t_solve, " s")
 
     # # Reconstruct element values
     println("Compute element values:")
@@ -235,17 +237,38 @@ end
     Verr = sqrt.( (Vxe.-Vxa).^2 .+ (Vye.-Vya).^2 ) 
     println("L_inf P error: ", maximum(Perr), " --- L_inf V error: ", maximum(Verr))
 
-    # Visualise
-    println("Visualisation:")
-    # @time PlotMakie(mesh, Vxe, xmin, xmax, ymin, ymax, :jet1)
-    # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
-    # @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :jet1, minimum(Pa), maximum(Pa) )
-    # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
-    # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
+    # # Visualise
+    # println("Visualisation:")
+    # # @time PlotMakie(mesh, Vxe, xmin, xmax, ymin, ymax, :jet1)
+    # # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
+    # # @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :jet1, minimum(Pa), maximum(Pa) )
+    # # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
+    # # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
     @time PlotMakie( mesh, Tyya, xmin, xmax, ymin, ymax, :jet1, -2.0, 6.0 )
-    # @time PlotMakie( mesh, log10.(mesh.ke), xmin, xmax, ymin, ymax, :jet1 )
-    # @time PlotMakie( mesh, mesh.phase, xmin, xmax, ymin, ymax, :jet1)
+    # # @time PlotMakie( mesh, log10.(mesh.ke), xmin, xmax, ymin, ymax, :jet1 )
+    # # @time PlotMakie( mesh, mesh.phase, xmin, xmax, ymin, ymax, :jet1)
+
+    ndof = 2*mesh.nf+mesh.nel
+    print(t_solve)
+    return t_solve, ndof
 
 end
 
-main()
+N = 1:15
+ndofs = zeros(length(N) )
+t0    = zeros(length(N) )
+t1    = zeros(length(N) )
+t3    = zeros(length(N) )
+
+main( 1, 1 ) # warm up
+
+# for i=1:length(N)
+#     # t0[i], ndofs[i] = main( N[i], 0 )
+#     # t1[i], ndofs[i]          = main( N[i], 1 )
+#     t3[i] , ndofs[i]          = main( N[i], 3 )
+# end
+
+# p = Plots.plot(  ndofs,  t0,  markershape=:dtriangle, label="Monolithic", legend=:bottomright, xlabel = "ndof", ylabel = "solve time" )
+# p = Plots.plot( ndofs,  t1,  markershape=:dtriangle, label="Powell-Hestenes", legend=:bottomright, xlabel = "ndof", ylabel = "solve time" )
+p = Plots.plot( ndofs,  t3,  markershape=:dtriangle, label="Modified PH", legend=:bottomright, xlabel = "ndof", ylabel = "solve time" )
+display(p)

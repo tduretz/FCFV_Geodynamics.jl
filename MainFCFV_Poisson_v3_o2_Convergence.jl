@@ -143,10 +143,11 @@ end
     return mesh.nf, err_T, err_qx, err_qy, err_q
 end
 
+function Run()
 #################### ORDER 1
 order = 1 
 
-N          = [8, 16, 32, 64 ]#, 128, 256, 512, 1024] 
+N          = [8, 16, 32, 64, 128, 256 ]#, 512, 1024] 
 mesh_type  = "Quadrangles"
 eT_quad    = zeros(size(N))
 eqx_quad   = zeros(size(N))
@@ -182,7 +183,6 @@ end
 #################### ORDER 2
 order = 2 
 
-N            = [8, 16, 32, 64 ]#, 128, 256, 512, 1024] 
 mesh_type    = "Quadrangles"
 eT_quad_o2   = zeros(size(N))
 eq_quad_o2   = zeros(size(N))
@@ -209,14 +209,18 @@ end
 
 #######################################
 
-p = Plots.plot(  log10.(1.0 ./ N) , log10.(eT_quad), markershape=:rect, color=:blue,      label="Quads O1 u"        )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eq_quad), markershape=:rect, linestyle = :dot, color=:blue,     label="Quads O1 q"        )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_tri),  markershape=:dtriangle, color=:blue, label="Triangles O1 u"    )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eq_tri),  markershape=:dtriangle, linestyle = :dot, color=:blue, label="Triangles O1 q"    )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_quad_o2), markershape=:rect, color=:red,      label="Quads O2 u"     )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eq_quad_o2), markershape=:rect, color=:red, linestyle = :dot,     label="Quads O2 q"     )
+p = Plots.plot(  log10.(1.0 ./ N) , log10.(eT_quad),    markershape=:rect,      color=:blue,      label="Quads O1 u"        )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eq_quad),    markershape=:rect,      linestyle = :dot, color=:blue,     label="Quads O1 q"        )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_tri),     markershape=:dtriangle, color=:blue, label="Triangles O1 u"    )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eq_tri),     markershape=:dtriangle, linestyle = :dot, color=:blue, label="Triangles O1 q"    )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_quad_o2), markershape=:rect,      color=:red,      label="Quads O2 u"     )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eq_quad_o2), markershape=:rect,      color=:red, linestyle = :dot,     label="Quads O2 q"     )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_tri_o2),  markershape=:dtriangle, color=:red, label="Triangles O2 u" )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eq_tri_o2),  markershape=:dtriangle, color=:red, linestyle = :dot, label="Triangles O2 q", legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eq_tri_o2),  markershape=:dtriangle, color=:red, linestyle = :dot, label="Triangles O2 q", legend=:outertopright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
 # p = Plots.plot(  ndof_quad[2:end], t_quad[2:end], markershape=:rect,      label="Quads"                          )
 # p = Plots.plot!( ndof_tri[2:end],  t_tri[2:end],  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "ndof", ylabel = "time" )
 display(p)
+
+end
+
+Run()

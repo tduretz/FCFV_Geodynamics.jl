@@ -136,11 +136,15 @@ function ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy
 
     @tturbo for iel=1:mesh.nel
     
-        Vxe[iel]  =  be[iel,1]/ae[iel]
-        Vye[iel]  =  be[iel,2]/ae[iel]
-        Txxe[iel] =  mesh.ke[iel]/mesh.vole[iel]*ze[iel,1,1]
-        Tyye[iel] =  mesh.ke[iel]/mesh.vole[iel]*ze[iel,2,2] 
-        Txye[iel] =  mesh.ke[iel]/mesh.vole[iel]*0.5*(ze[iel,1,2]+ze[iel,2,1])
+        Vxe[iel]    =  be[iel,1]/ae[iel]
+        Vye[iel]    =  be[iel,2]/ae[iel]
+        for in=1:nen
+            Vxe1[iel,in]  =  be_o2[iel,1,in]
+            Vye1[iel,in]  =  be_o2[iel,2,in]
+        end
+        Txxe[iel]   =  mesh.ke[iel]/mesh.vole[iel]*ze[iel,1,1]
+        Tyye[iel]   =  mesh.ke[iel]/mesh.vole[iel]*ze[iel,2,2] 
+        Txye[iel]   =  mesh.ke[iel]/mesh.vole[iel]*0.5*(ze[iel,1,2]+ze[iel,2,1])
         
         for ifac=1:mesh.nf_el
             
@@ -153,15 +157,13 @@ function ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy
             taui  = StabParam(tau,dAi,mesh.vole[iel],mesh.type,mesh.ke[iel])      # Stabilisation parameter for the face
 
             # First order
-            O1 = (bc!=1) & (o2==0)
             Vxe[iel]  += (bc!=1) *  dAi*taui*Vxh[nodei]/ae[iel]
             Vye[iel]  += (bc!=1) *  dAi*taui*Vyh[nodei]/ae[iel]
 
             # Second order
-            O2       = (bc!=1) & (o2==1)
             for in=1:nen
-                Vxe1[iel,in] += O2 * taui*rjx[iel,ifac,in]*Vxh[nodei]
-                Vye1[iel,in] += O2 * taui*rjy[iel,ifac,in]*Vyh[nodei]
+                Vxe1[iel,in] += (bc!=1) * taui*rjx[iel,ifac,in]*Vxh[nodei]
+                Vye1[iel,in] += (bc!=1) * taui*rjy[iel,ifac,in]*Vyh[nodei]
             end
 
             # Assemble
@@ -276,10 +278,10 @@ function ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDi
             Kup[iel,ifac]                            -= (bci!=1) * dAi*ni_x;
             Kup[iel,ifac+mesh.nf_el]                 -= (bci!=1) * dAi*ni_y;
             # Dirichlet nodes - uu block
-            Kuu[iel,ifac,ifac]                       += (bci==1) * 1e6
-            Kuu[iel,ifac+mesh.nf_el,ifac+mesh.nf_el] += (bci==1) * 1e6
-            fu[iel,ifac]                             += (bci!=1) * feix + (bci==1) * VxDir[nodei] * 1e6
-            fu[iel,ifac+mesh.nf_el]                  += (bci!=1) * feiy + (bci==1) * VyDir[nodei] * 1e6
+            Kuu[iel,ifac,ifac]                       += (bci==1) * 1e0
+            Kuu[iel,ifac+mesh.nf_el,ifac+mesh.nf_el] += (bci==1) * 1e0
+            fu[iel,ifac]                             += (bci!=1) * feix + (bci==1) * VxDir[nodei] * 1e0
+            fu[iel,ifac+mesh.nf_el]                  += (bci!=1) * feiy + (bci==1) * VyDir[nodei] * 1e0
             # Dirichlet nodes - pressure RHS
             fp[iel]                                  += (bci==1) * -dAi*(VxDir[nodei]*ni_x + VyDir[nodei]*ni_y)
         end
@@ -289,43 +291,43 @@ end
 
 #--------------------------------------------------------------------#
 
-function CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
-    # Create triplets and assemble sparse matrix fo Kuu
-    e2fu = mesh.e2f
-    e2fv = mesh.e2f .+ mesh.nf 
-    e2f  = hcat(e2fu, e2fv)
-    idof = 1:mesh.nf_el*2  
-    ii   = repeat(idof, 1, length(idof))'
-    ij   = repeat(idof, 1, length(idof))
-    Ki   = e2f[:,ii]
-    Kif  = e2f[:,ii[1,:]]
-    Kj   = e2f[:,ij]
-    Kuu  = sparse(Ki[:], Kj[:], Kuu_v[:], mesh.nf*2, mesh.nf*2)
-    # file = matopen(string(@__DIR__,"/results/matrix_uu.mat"), "w" )
-    # write(file, "Ki",       Ki[:] )
-    # write(file, "Kj",    Kj[:] )
-    # write(file, "Kuu",  Kuu_v[:] )
-    # write(file, "nrow",  mesh.nf*2 )
-    # write(file, "ncol",  mesh.nf*2 )
-    # close(file)
-    fu   = sparse(Kif[:], ones(size(Kif[:])), fu_v[:], mesh.nf*2, 1)
-    fu   = Array(fu)
-    droptol!(Kuu, 1e-6)
-    # Create triplets and assemble sparse matrix fo Kup
-    idof = 1:mesh.nf_el*2  
-    ii   = repeat(idof, 1, mesh.nel)'
-    ij   = repeat(1:mesh.nel, 1, length(idof))
-    Ki   = e2f
-    Kj   = ij
-    Kup  = sparse(Ki[:], Kj[:], Kup_v[:], mesh.nf*2, mesh.nel  )
-    # file = matopen(string(@__DIR__,"/results/matrix_up.mat"), "w" )
-    # write(file, "Ki",       Ki[:] )
-    # write(file, "Kj",    Kj[:] )
-    # write(file, "Kup",  Kup_v[:] )
-    # write(file, "nrow",  mesh.nf*2 )
-    # write(file, "ncol",  mesh.nel )
-    # close(file)
-    return Kuu, fu, Kup
-end
+# function CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
+#     # Create triplets and assemble sparse matrix fo Kuu
+#     e2fu = mesh.e2f
+#     e2fv = mesh.e2f .+ mesh.nf 
+#     e2f  = hcat(e2fu, e2fv)
+#     idof = 1:mesh.nf_el*2  
+#     ii   = repeat(idof, 1, length(idof))'
+#     ij   = repeat(idof, 1, length(idof))
+#     Ki   = e2f[:,ii]
+#     Kif  = e2f[:,ii[1,:]]
+#     Kj   = e2f[:,ij]
+#     Kuu  = sparse(Ki[:], Kj[:], Kuu_v[:], mesh.nf*2, mesh.nf*2)
+#     # file = matopen(string(@__DIR__,"/results/matrix_uu.mat"), "w" )
+#     # write(file, "Ki",       Ki[:] )
+#     # write(file, "Kj",    Kj[:] )
+#     # write(file, "Kuu",  Kuu_v[:] )
+#     # write(file, "nrow",  mesh.nf*2 )
+#     # write(file, "ncol",  mesh.nf*2 )
+#     # close(file)
+#     fu   = sparse(Kif[:], ones(size(Kif[:])), fu_v[:], mesh.nf*2, 1)
+#     fu   = Array(fu)
+#     droptol!(Kuu, 1e-6)
+#     # Create triplets and assemble sparse matrix fo Kup
+#     idof = 1:mesh.nf_el*2  
+#     ii   = repeat(idof, 1, mesh.nel)'
+#     ij   = repeat(1:mesh.nel, 1, length(idof))
+#     Ki   = e2f
+#     Kj   = ij
+#     Kup  = sparse(Ki[:], Kj[:], Kup_v[:], mesh.nf*2, mesh.nel  )
+#     # file = matopen(string(@__DIR__,"/results/matrix_up.mat"), "w" )
+#     # write(file, "Ki",       Ki[:] )
+#     # write(file, "Kj",    Kj[:] )
+#     # write(file, "Kup",  Kup_v[:] )
+#     # write(file, "nrow",  mesh.nf*2 )
+#     # write(file, "ncol",  mesh.nel )
+#     # close(file)
+#     return Kuu, fu, Kup
+# end
 
 #--------------------------------------------------------------------#
