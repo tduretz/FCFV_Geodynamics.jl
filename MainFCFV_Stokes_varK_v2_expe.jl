@@ -165,8 +165,8 @@ end
     R          = 1.0
     inclusion  = 1
     eta        = [1.0 100.0]
-    mesh_type  = "Quadrangles"
-    # mesh_type  = "UnstructTriangles"
+    # mesh_type  = "Quadrangles"
+    mesh_type  = "UnstructTriangles"
     BC         = [1; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
 
     # Generate mesh
@@ -254,7 +254,7 @@ end
 
 end
 
-N = 1:15
+N = 1:1
 ndofs = zeros(length(N) )
 t0    = zeros(length(N) )
 t1    = zeros(length(N) )
@@ -262,11 +262,11 @@ t3    = zeros(length(N) )
 
 main( 1, 1 ) # warm up
 
-# for i=1:length(N)
-#     # t0[i], ndofs[i] = main( N[i], 0 )
-#     # t1[i], ndofs[i]          = main( N[i], 1 )
-#     t3[i] , ndofs[i]          = main( N[i], 3 )
-# end
+for i=1:length(N)
+    # t0[i], ndofs[i] = main( N[i], 0 )
+    # t1[i], ndofs[i]          = main( N[i], 1 )
+    t3[i] , ndofs[i]          = main( N[i], 3 )
+end
 
 # p = Plots.plot(  ndofs,  t0,  markershape=:dtriangle, label="Monolithic", legend=:bottomright, xlabel = "ndof", ylabel = "solve time" )
 # p = Plots.plot( ndofs,  t1,  markershape=:dtriangle, label="Powell-Hestenes", legend=:bottomright, xlabel = "ndof", ylabel = "solve time" )

@@ -26,7 +26,7 @@ end
 
 
 # Input
-N  = 10000000
+N  = 1000000
 dx = 1
 
 # Sparse matrix
@@ -43,9 +43,18 @@ for i=1:3
 @time @views x  .= Kc\b
 @time @views x  .= SuiteSparse.CHOLMOD.solve(0, Kc, SuiteSparse.CHOLMOD.Dense(b) )[:]
 end
+xcm = SuiteSparse.CHOLMOD.zeros(N,1)
+bcm = SuiteSparse.CHOLMOD.Dense(b)
+
+for i=1:3
+    @time @views x  .= Kc\b
+    xcm  = SuiteSparse.CHOLMOD.solve(0, Kc, bcm )
+end
+
 
 # SuiteSparse.CHOLMOD.spsolve(Kc,SparseArrays.CHOLMOD.Sparse(b))
 # ldiv!(Kc, b)
+@time x  .= lu(K)\b
 
 # # One solve
 # @time x  .= Kc\b  # why does this allocate memory although the factorisation done and the vectors (x, b) are allocated?

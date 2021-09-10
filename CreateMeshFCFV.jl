@@ -1,4 +1,5 @@
-import TriangleMesh
+# import TriangleMesh
+import Triangulate
 
 Base.@kwdef mutable struct FCFV_Mesh
     type   ::Union{String, Missing}          = missing
@@ -50,9 +51,6 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
     sy     = [ 2; 3; 4; 1; ]
     st     = BC  # segment markers == boundary flags
     
-    println(sx)
-    println(st)
-    
     no_pts = size(px,1);
     pts_l  = pts_l+no_pts;
     pts_u  = pts_u+no_pts;
@@ -76,12 +74,6 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
         sy1          = collect(pts_l+1:pts_u+1)
         sy1[end]     = pts_l # Periodic
         h2           = [0.0; 0.0; 2.0; 0.0] # Region 2
-        # println(X.^2 .+ Y.^2)
-        # println(X)
-        # println(Y)
-        # println(sx1)
-        # println(sy1)
-        # println(st1)
         for i=1:no_pts_incl
             px   = push!(px, X[i])
             py   = push!(py, Y[i])
@@ -99,37 +91,60 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
     st      = st[:]
     
     # Triangulation
-    domain   = TriangleMesh.Polygon_pslg(size(p,2), p, 0, Array{Int64}(undef,2,0), 0, Array{Float64}(undef,2,0),  size(s,2), s, st, 0, holes, size(regions,2), regions, 1.0)
-    astring  = @sprintf("%0.10lf", area)
-    switches = "vQDpenq33o2IAa$(astring)"  #QDpeq33o2Aa0.01
-    
-    println("Arguments to Triangle: ", switches)
-    trimesh  = TriangleMesh.create_mesh(domain, switches)
-    nvert_el = 3 # vertices per element
-    
     mesh        = FCFV_Mesh()
     mesh.type   = "UnstructTriangles"
-    mesh.nel    = trimesh.n_cell
-    e2v         = trimesh.cell[1:3,:]
-    mesh.nv     = maximum(e2v)
-    e2f         = trimesh.cell[4:6,:] .- mesh.nv
-    mesh.nf     = maximum(e2f)
-    mesh.xv     = trimesh.point[1,1:mesh.nv]
-    mesh.yv     = trimesh.point[2,1:mesh.nv]
-    mesh.xf     = trimesh.point[1,mesh.nv+1:end]
-    mesh.yf     = trimesh.point[2,mesh.nv+1:end]
-    mesh.bc     = trimesh.point_marker[mesh.nv+1:end]
-    mesh.ke     = ones(Float64,mesh.nel)
-
-    if length(trimesh.triangle_attribute)>0
-        println(minimum(trimesh.triangle_attribute))
-        println(maximum(trimesh.triangle_attribute))
-        mesh.phase  = trimesh.triangle_attribute
-    else
-        mesh.phase  = ones(trimesh.n_cell)
-    end
+    nvert_el = 3
+  
     
-    nel  = trimesh.n_cell
+    
+    triin=Triangulate.TriangulateIO()
+    triin.pointlist=Matrix{Cdouble}(vcat(px',py'))
+    triin.segmentlist=Matrix{Cint}(vcat(sx',sy'))
+    triin.segmentmarkerlist=Vector{Int32}(st)
+    triin.regionlist=Matrix{Cdouble}(regions)
+    astring     = @sprintf("%0.10lf", area)
+    (trimesh, vorout)=Triangulate.triangulate("vQDpenq33o2IAa$(astring)", triin)  #
+    mesh.nel    = size(trimesh.trianglelist,2)
+    e2v         = trimesh.trianglelist[1:3,:]
+    mesh.nv     = maximum(e2v)
+    e2f         = trimesh.trianglelist[4:6,:] .- mesh.nv
+    mesh.nf     = maximum(e2f)
+    mesh.xv     = trimesh.pointlist[1,1:mesh.nv]
+    mesh.yv     = trimesh.pointlist[2,1:mesh.nv]
+    mesh.xf     = trimesh.pointlist[1,mesh.nv+1:end]
+    mesh.yf     = trimesh.pointlist[2,mesh.nv+1:end]
+    mesh.bc     = trimesh.pointmarkerlist[mesh.nv+1:end]
+    mesh.phase  = trimesh.triangleattributelist[:]
+   
+    
+    
+    # domain   = TriangleMesh.Polygon_pslg(size(p,2), p, 0, Array{Int64}(undef,2,0), 0, Array{Float64}(undef,2,0),  size(s,2), s, st, 0, holes, size(regions,2), regions, 1.0)
+    # astring  = @sprintf("%0.10lf", area)
+    # switches = "vQDpenq33o2IAa$(astring)"  #QDpeq33o2Aa0.01
+    
+    # println("Arguments to Triangle: ", switches)
+    # trimesh_0  = TriangleMesh.create_mesh(domain, switches)
+    # # vertices per element
+    # mesh.nel    = trimesh.n_cell
+    # e2v         = trimesh.cell[1:3,:]
+    # mesh.nv     = maximum(e2v)
+    # e2f         = trimesh.cell[4:6,:] .- mesh.nv
+    # mesh.nf     = maximum(e2f)
+    # mesh.xv     = trimesh.point[1,1:mesh.nv]
+    # mesh.yv     = trimesh.point[2,1:mesh.nv]
+    # mesh.xf     = trimesh.point[1,mesh.nv+1:end]
+    # mesh.yf     = trimesh.point[2,mesh.nv+1:end]
+    # mesh.bc     = trimesh.point_marker[mesh.nv+1:end]
+    # if length(trimesh.triangle_attribute)>0
+    #     println(minimum(trimesh.triangle_attribute))
+    #     println(maximum(trimesh.triangle_attribute))
+    #     mesh.phase  = trimesh.triangle_attribute
+    # else
+    #     mesh.phase  = ones(trimesh.n_cell)
+    # end
+    
+    mesh.ke     = ones(Float64,mesh.nel)
+    nel  = mesh.nel
     vole = zeros(nel)
     xc   = zeros(nel)
     yc   = zeros(nel)
@@ -169,7 +184,15 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
     mesh.dA  = zeros(Float64,mesh.nel,mesh.nf_el)
     mesh.e2e = zeros(  Int64,mesh.nel,mesh.nf_el)
     mesh.ke  =  ones(Float64,mesh.nel)
-    
+
+    # Receive arrays from Triangulate
+    vorodeges = zeros(Int64,size(vorout.edgelist))
+    vorodeges[1,:] .= vorout.edgelist[1,:]
+    vorodeges[2,:] .= vorout.edgelist[2,:]
+    seglist   = zeros(Int64,size(trimesh.edgelist))
+    seglist[1,:]   .= trimesh.edgelist[1,:]
+    seglist[2,:]   .= trimesh.edgelist[2,:]
+
      # Assemble FCFV elements
      @tturbo for iel=1:mesh.nel 
         
@@ -178,8 +201,8 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
             nodei  = mesh.e2f[iel,ifac]
 
             # Neighbouring element for this face
-            ele1 = trimesh.voronoi.edge[1,nodei]
-            ele2 = trimesh.voronoi.edge[2,nodei]
+            ele1 = vorodeges[1,nodei]
+            ele2 = vorodeges[2,nodei]
             iel2 = (iel==ele1) * ele2 + (iel==ele2) * ele1;
             mesh.e2e[iel,ifac] = iel2;
 
@@ -225,17 +248,18 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
     #     println("Content   : ", getfield(trimesh, fname))
     # end
 
+
     # Loop over edges and uses Voronoï diagram to get adjacent cells
     @tturbo for ifac=1:mesh.nf 
-        mesh.f2e[ifac,1] = trimesh.voronoi.edge[1,ifac]
-        mesh.f2e[ifac,2] = trimesh.voronoi.edge[2,ifac]
-        act1 = trimesh.voronoi.edge[1,ifac] > 0
-        act2 = trimesh.voronoi.edge[2,ifac] > 0
-        iel1 = (act1==1) * trimesh.voronoi.edge[1,ifac] + (act1==0) * 1
-        iel2 = (act2==1) * trimesh.voronoi.edge[2,ifac] + (act2==0) * 1
+        mesh.f2e[ifac,1] = vorodeges[1,ifac]
+        mesh.f2e[ifac,2] = vorodeges[2,ifac]
+        act1 = vorodeges[1,ifac] > 0
+        act2 = vorodeges[2,ifac] > 0
+        iel1 = (act1==1) * vorodeges[1,ifac] + (act1==0) * 1
+        iel2 = (act2==1) * vorodeges[2,ifac] + (act2==0) * 1
         # Compute face length
-        vert1  = trimesh.edge[1,ifac]
-        vert2  = trimesh.edge[2,ifac]
+        vert1  = seglist[1,ifac]
+        vert2  = seglist[2,ifac]
         xf     = 0.5*(mesh.xv[vert1] + mesh.xv[vert2])
         yf     = 0.5*(mesh.yv[vert1] + mesh.yv[vert2])
         dx     = (mesh.xv[vert1] - mesh.xv[vert2] );
