@@ -224,7 +224,7 @@ end
     println("L_inf P error: ", maximum(Perr), " --- L_inf V error: ", maximum(Verr))
 
     # Visualise
-    # println("Visualisation:")
+    println("Visualisation:")
     # PlotMakie(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
     # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
     @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :jet1, minimum(Pa), maximum(Pa) )

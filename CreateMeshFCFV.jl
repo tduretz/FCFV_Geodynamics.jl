@@ -312,8 +312,8 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
     nodes = zeros(Int64, size(x2d))
     # Number active dofs (midfaces) - Face node numbering
     inum = 0
-    for i=1:nx2
-        for j=1:ny2
+    for j=1:ny2
+        for i=1:nx2
             if (mod(j,2)==1 && mod(i,2)==0) || (mod(j,2)==0 && mod(i,2)==1)
                 inum += 1
                 nodes[i,j] = inum
