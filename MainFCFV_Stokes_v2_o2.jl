@@ -1,5 +1,5 @@
-import TriangleMesh, UnicodePlots, Plots
-using Printf, LoopVectorization, LinearAlgebra, SparseArrays
+import UnicodePlots, Plots
+using Revise, Printf, LoopVectorization, LinearAlgebra, SparseArrays
 
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
@@ -12,9 +12,9 @@ include("SolversFCFV_Stokes.jl")
 function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sx, sy)
     # Evaluate T analytic on cell faces
     @avx for in=1:mesh.nf
-        eta      = 1 
-        x        = mesh.xf[in]
-        y        = mesh.yf[in]
+        eta       = 1 
+        x         = mesh.xf[in]
+        y         = mesh.yf[in]
         VxDir[in] = x^2*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y)
         VyDir[in] =-y^2*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)
         # Stress at faces
@@ -109,7 +109,7 @@ end
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
     n          = 4
-    nx, ny     = 8*n, 8*n
+    nx, ny     = 4*n, 4*n
     solver     = 1
     R          = 0.5
     inclusion  = 0

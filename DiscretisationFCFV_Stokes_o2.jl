@@ -283,7 +283,9 @@ function ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDi
             fu[iel,ifac]                             += (bci!=1) * feix + (bci==1) * VxDir[nodei] * 1e0
             fu[iel,ifac+mesh.nf_el]                  += (bci!=1) * feiy + (bci==1) * VyDir[nodei] * 1e0
             # Dirichlet nodes - pressure RHS
-            fp[iel]                                  += (bci==1) * -dAi*(VxDir[nodei]*ni_x + VyDir[nodei]*ni_y)
+            # fp[iel]                                  = dAi#*ni_x# + VyDir[nodei]*ni_y)
+
+            fp[iel]                                  = (bci==1) * -dAi*(VxDir[nodei]*ni_x + VyDir[nodei]*ni_y)# * -1.0# #(bci==1) * -dAi*(VxDir[nodei]*ni_x + VyDir[nodei]*ni_y)
         end
     end
     return Kuu, fu, Kup, fp

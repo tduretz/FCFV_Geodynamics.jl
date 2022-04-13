@@ -1,4 +1,4 @@
-# import TriangleMesh
+# @tturbo was removed
 import Triangulate
 
 Base.@kwdef mutable struct FCFV_Mesh
@@ -149,7 +149,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
     xc   = zeros(nel)
     yc   = zeros(nel)
     
-    @tturbo for iel=1:nel
+    for iel=1:nel
         # Compute volumes of triangles - use vertices coordinates
         x1 = mesh.xv[e2v[1,iel]]
         y1 = mesh.yv[e2v[1,iel]]
@@ -194,7 +194,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
     seglist[2,:]   .= trimesh.edgelist[2,:]
 
      # Assemble FCFV elements
-     @tturbo for iel=1:mesh.nel 
+     for iel=1:mesh.nel 
         
         for ifac=1:mesh.nf_el
             
@@ -250,7 +250,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
 
 
     # Loop over edges and uses Voronoï diagram to get adjacent cells
-    @tturbo for ifac=1:mesh.nf 
+    for ifac=1:mesh.nf 
         mesh.f2e[ifac,1] = vorodeges[1,ifac]
         mesh.f2e[ifac,2] = vorodeges[2,ifac]
         act1 = vorodeges[1,ifac] > 0
@@ -372,7 +372,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
     # Cell 2 face numbering - for matrix connectivity
     face = zeros(Int64, 4, ncell)
     e2e  = zeros(Int64, 4, ncell)
-    @tturbo for i=1:nx
+    for i=1:nx
         for j=1:ny
             k  = j + (i-1)*ny
             jc = i+1 + (i-1)*1
@@ -393,7 +393,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
 
     # Cell 2 vertices - used for visualisation of quads
     vert = zeros(Int64, 4, ncell)
-    @tturbo for i=1:nx
+    for i=1:nx
         for j=1:ny
             k  = j + (i-1)*ny
             jc = i+1 + (i-1)*1
@@ -408,7 +408,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
     xc = zeros(ncell)
     yc = zeros(ncell)
     w  = 0.25
-    @tturbo for iel=1:ncell
+    for iel=1:ncell
         tempx = 0
         tempy = 0
         for j=1:4
@@ -445,7 +445,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
     # phase
     mesh.phase = ones(mesh.nel)
     if inclusion==1 
-        @tturbo for iel=1:mesh.nel
+        for iel=1:mesh.nel
             x               = mesh.xc[iel]
             y               = mesh.yc[iel]
             out             = (x^2 + y^2)>R^2
@@ -462,7 +462,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
     face2element   = zeros(Int64,2,mesh.nf)
     face2vertices  = zeros(Int64,2,mesh.nf)
     elem           = collect(1:mesh.nel)
-    @tturbo for iel=1:mesh.nel 
+    for iel=1:mesh.nel 
         for ifac=1:mesh.nf_el
             nodei  = mesh.e2f[iel,ifac]
             vert1  = mesh.e2v[iel,nodeA[ifac]]
@@ -491,7 +491,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
     end
 
      # Assemble FCFV elements
-    @tturbo for iel=1:mesh.nel  
+    for iel=1:mesh.nel  
         
         # println("element: ",  iel)
 
@@ -546,7 +546,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
     # end
 
     # Loop over edges and uses Voronoï diagram to get adjacent cells
-    @tturbo for ifac=1:mesh.nf 
+    for ifac=1:mesh.nf 
         mesh.f2e[ifac,1] = face2element[1,ifac]
         mesh.f2e[ifac,2] = face2element[2,ifac]
         act1 = face2element[1,ifac] > 0

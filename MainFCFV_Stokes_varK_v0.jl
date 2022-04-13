@@ -1,5 +1,5 @@
 import UnicodePlots, Plots
-using  Printf, LoopVectorization, LinearAlgebra, SparseArrays
+using  Revise, Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT
 
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
@@ -117,16 +117,16 @@ end
 #--------------------------------------------------------------------#
     
 function StabParam(tau, dA, Vol, mesh_type, coeff)
-    if mesh_type=="Quadrangles";        taui = coeff*tau  end
-    if mesh_type=="UnstructTriangles";  taui = coeff*tau*dA  end
+    if mesh_type=="Quadrangles";        taui = tau end#coeff*tau
+    if mesh_type=="UnstructTriangles";  taui = 1.0 end#coeff*tau*dA 
     return taui
 end
 
 #--------------------------------------------------------------------#
 
 @views function main()
-    # ```This version include the jump condition derived from the analytical solution
-    # The great thing is that pressure converges in L_infinity norm evem with quadrangles - this rocks
+    # ```This version includes the jump condition derived from the analytical solution
+    # The great thing is that pressure converges in L_infinity norm even with quadrangles - this rocks
     # # Test #1: For a contrast of:  eta        = [10.0 1.0] (weak inclusion), tau = 20.0
     #     res = [1 2 4 8]*30 elements per dimension 
     #     err = [4.839 3.944 2.811 1.798]
@@ -145,17 +145,22 @@ end
     solver     = 0
     R          = 1.0
     inclusion  = 1
-    eta        = [1.0 100.0]
+    eta        = [10.0 1.0]
     mesh_type  = "Quadrangles"
     # mesh_type  = "UnstructTriangles"
+    # mesh_type  = "TrianglesSameMATLAB"
     BC         = [2; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
+    new        = 1 # implementation if interface
 
     # Generate mesh
     if mesh_type=="Quadrangles" 
-        tau  = 2.0   
+        tau  = 50.0   # for new = 0 leads to convergence 
         mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
-    elseif mesh_type=="UnstructTriangles"  
-        tau  = 1.0/5.0
+    elseif mesh_type=="UnstructTriangles" 
+        tau = 1.0
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
+    elseif mesh_type=="TrianglesSameMATLAB"  
+        tau  = 1.0#/5.0
         area = 1.0 # area factor: SETTING REPRODUCE THE RESULTS OF MATLAB CODE USING TRIANGLE
         ninc = 29  # number of points that mesh the inclusion: SETTING REPRODUCE THE RESULTS OF MATLAB CODE USING TRIANGLE
         mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC, area, ninc ) 
@@ -187,12 +192,12 @@ end
 
     # Assemble element matrices and RHS
     println("Compute element matrices:")
-    @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau)
-
-    # Assemble triplets and sparse
-    println("Assemble triplets and sparse:")
-    @time Kuu, fu, Kup = CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
+    @time Kuu, Kup, fu, fp, tsparse = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau, new)
+    println("Sparsification: ", tsparse)
+    
     # display(UnicodePlots.spy(Kuu))
+    # display(UnicodePlots.spy(Kuug))
+    # display(UnicodePlots.spy(Kuua))
     # display(UnicodePlots.spy(Kup))
 
     # Solve for hybrid variable
@@ -202,6 +207,8 @@ end
     # # Reconstruct element values
     println("Compute element values:")
     @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
+
+    println("max. P :  ", maximum(Pe) )
 
     # # Compute discretisation errors
     err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, Txxa, Tyya, Txya = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R, eta )
@@ -217,7 +224,7 @@ end
     println("L_inf P error: ", maximum(Perr), " --- L_inf V error: ", maximum(Verr))
 
     # Visualise
-    println("Visualisation:")
+    # println("Visualisation:")
     # PlotMakie(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
     # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
     @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :jet1, minimum(Pa), maximum(Pa) )
@@ -226,6 +233,14 @@ end
     # @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax, :jet1 )
     # @time PlotMakie( mesh, mesh.phase, xmin, xmax, ymin, ymax, :jet1)
 
+    return maximum(Perr)
 end
 
 main()
+
+# τ    = 1.0:50.0
+# perr = zeros(size(τ))
+# for i=1:length(τ)
+#     perr[i] = main(τ[i])
+# end
+# display(Plots.plot(τ, perr))

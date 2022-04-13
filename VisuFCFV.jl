@@ -17,9 +17,6 @@ using Makie.GeometryBasics
 
     Colorbar(f[1, 2], colormap = cmap, limits=[min_v max_v], flipaxis = true, size = 25, height = Relative(2/3) )
 
-    xlims!(xmin, xmax)
-    ylims!(ymin, ymax)
-
     display(f)
     return 
 end

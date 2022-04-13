@@ -9,7 +9,8 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
         zero_p = spdiagm(mesh.nel, mesh.nel) 
         K      = [Kuu Kup; -Kup' zero_p]
         f      = [fu; fp]
-        xh     = lu(K)\f
+        # xh     = lu(K)\f
+        xh      = K\f
         Vxh    = xh[1:mesh.nf]
         Vyh    = xh[mesh.nf+1:2*mesh.nf]
         Pe     = xh[2*mesh.nf+1:end] 
@@ -24,7 +25,10 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
         Kpu   = -Kup'
         Kuusc = Kuu .- Kup*(Kppi*Kpu)
         PC    =  0.5*(Kuusc .+ Kuusc') 
-        t = @elapsed Kf    = cholesky(Hermitian(PC),check = false)
+        # Kuusc = 0.5*(Kuu.+Kuu') .- Kup*(Kppi*Kpu)
+        # PC    =  0.5*(Kuusc .+ Kuusc') 
+        # t = @elapsed Kf    = cholesky(Hermitian(PC),check = false)
+        t = @elapsed Kf = cholesky(PC)
         @printf("Cholesky took = %02.2e s\n", t)
         u     = zeros(2*mesh.nf,1)
         ru    = zeros(2*mesh.nf, 1)
