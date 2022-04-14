@@ -124,7 +124,7 @@ end
 
 #--------------------------------------------------------------------#
 
-@views function main()
+@views function main(τr=70.0)
     # ```This version includes the jump condition derived from the analytical solution
     # The great thing is that pressure converges in L_infinity norm even with quadrangles - this rocks
     # # Test #1: For a contrast of:  eta        = [10.0 1.0] (weak inclusion), tau = 20.0
@@ -155,6 +155,7 @@ end
     # Generate mesh
     if mesh_type=="Quadrangles" 
         tau  = 50.0   # for new = 0 leads to convergence 
+        tau  = τr
         mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles" 
         tau = 1.0
@@ -182,7 +183,7 @@ end
     SyyNeu = zeros(mesh.nf)
     SxyNeu = zeros(mesh.nf)
     SyxNeu = zeros(mesh.nf)
-    gbar   = zeros(mesh.nel,mesh.nf_el,2)
+    gbar   = zeros(mesh.nel,mesh.nf_el, 2)
     println("Model configuration :")
     @time SetUpProblem!(mesh, Pa, Vxa, Vya, Sxxa, Syya, Sxya, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sex, sey, R, eta, gbar)
 
@@ -192,7 +193,7 @@ end
 
     # Assemble element matrices and RHS
     println("Compute element matrices:")
-    @time Kuu, Kup, fu, fp, tsparse = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau, new)
+    @time Kuu, Muu, Kup, fu, fp, tsparse = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau, new)
     println("Sparsification: ", tsparse)
     
     # display(UnicodePlots.spy(Kuu))
@@ -202,7 +203,7 @@ end
 
     # Solve for hybrid variable
     println("Linear solve:")
-    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
+    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, Muu, solver)
 
     # # Reconstruct element values
     println("Compute element values:")
@@ -224,10 +225,10 @@ end
     println("L_inf P error: ", maximum(Perr), " --- L_inf V error: ", maximum(Verr))
 
     # Visualise
-    println("Visualisation:")
+    # println("Visualisation:")
     # PlotMakie(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
     # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
-    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :jet1, minimum(Pa), maximum(Pa) )
+    # @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :jet1, minimum(Pa), maximum(Pa) )
     # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
     # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
     # @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax, :jet1 )
@@ -236,11 +237,11 @@ end
     return maximum(Perr)
 end
 
-main()
+main( )
 
-# τ    = 1.0:50.0
+# τ    = 1:5:200
 # perr = zeros(size(τ))
 # for i=1:length(τ)
 #     perr[i] = main(τ[i])
 # end
-# display(Plots.plot(τ, perr))
+# display(Plots.plot(τ, perr, title=minimum(perr)))

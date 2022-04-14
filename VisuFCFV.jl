@@ -15,6 +15,8 @@ using Makie.GeometryBasics
 
     poly!(p, color = v, colormap = cmap, strokewidth = 0, strokecolor = :black, markerstrokewidth = 0, markerstrokecolor = (0, 0, 0, 0), aspect_ratio = :equal, colorrange=(min_v,max_v))
 
+    # GLMakie.scatter!(mesh.xf[mesh.bc.==3] ,mesh.yf[mesh.bc.==3] )
+
     Colorbar(f[1, 2], colormap = cmap, limits=[min_v max_v], flipaxis = true, size = 25, height = Relative(2/3) )
 
     display(f)

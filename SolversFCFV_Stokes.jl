@@ -3,7 +3,7 @@ using AlgebraicMultigrid
 import IterativeSolvers
 using SuiteSparse
 
-function StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
+function StokesSolvers(mesh, Kuu, Kup, fu, fp, M, solver)
     if solver==0
         # Coupled solve
         zero_p = spdiagm(mesh.nel, mesh.nel) 
@@ -24,10 +24,23 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
         Kppi  = spdiagm(coef)
         Kpu   = -Kup'
         Kuusc = Kuu .- Kup*(Kppi*Kpu)
-        PC    =  0.5*(Kuusc .+ Kuusc') 
+        PC    =  0.5*(M .+ M') 
         # Kuusc = 0.5*(Kuu.+Kuu') .- Kup*(Kppi*Kpu)
         # PC    =  0.5*(Kuusc .+ Kuusc') 
         # t = @elapsed Kf    = cholesky(Hermitian(PC),check = false)
+
+        # ndof  = size(Kuu,1)
+        # ndofx = Int64(ndof/2)
+        # Kxx   = PC[1:ndofx,1:ndofx]
+        # t = @elapsed Kxxf = cholesky(Kxx)
+        # restart = 30
+        # f      = zeros(Float64, 2*mesh.nf)
+        # v      = zeros(Float64, 2*mesh.nf)
+        # s      = zeros(Float64, 2*mesh.nf)
+        # val    = zeros(Float64, restart)
+        # VV     = zeros(Float64, (2*mesh.nf, restart) )  # !!!!!!!!!! allocate in the right sense :D
+        # SS     = zeros(Float64, (2*mesh.nf, restart) )
+
         t = @elapsed Kf = cholesky(PC)
         @printf("Cholesky took = %02.2e s\n", t)
         u     = zeros(2*mesh.nf,1)
@@ -47,6 +60,8 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
             end
             fusc .= fu  .- Kup*(Kppi*fp .+ p)
             u    .= Kf\fusc
+            # u    .= Kuusc\fusc
+            # KSP_GCR_StokesFCFV!( u, Kuusc, fusc, 1e-10, 2, Kxxf, f, v, s, val, VV, SS, restart  )
             p   .+= Kppi*(fp .- Kpu*u)
         end
         # Post-process solve
@@ -100,12 +115,9 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
         Kuusc = Kuu .- Kup*(Kppi*Kpu)
         ndof  = size(Kuu,1)
         ndofx = Int64(ndof/2)
-        Kxx   = Kuu[1:ndofx,1:ndofx]
+        Kxx   = M[1:ndofx,1:ndofx]
         t = @elapsed Kxxf  = cholesky(Hermitian(Kxx),check = false)
         @printf("Cholesky took = %02.2e s\n", t)
-       
-
-        # @printf("Cholesky took = %02.2e s\n", t)
         u     = zeros(Float64, 2*mesh.nf)
         ru    = zeros(Float64, 2*mesh.nf)
         fusc  = zeros(Float64, 2*mesh.nf)

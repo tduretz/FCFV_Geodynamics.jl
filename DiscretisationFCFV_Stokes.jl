@@ -86,6 +86,7 @@ function ElementAssemblyLoop(mesh, α, β, Ζ, VxDir, VyDir, σxxNeu, σyyNeu, �
     Kuui = zeros(2*mesh.nf_el, 2*mesh.nf_el, mesh.nel)
     Kuuj = zeros(2*mesh.nf_el, 2*mesh.nf_el, mesh.nel)
     Kuuv = zeros(2*mesh.nf_el, 2*mesh.nf_el, mesh.nel)
+    Muuv = zeros(2*mesh.nf_el, 2*mesh.nf_el, mesh.nel)
     fu   = zeros(2*mesh.nf_el, mesh.nel)
     Kupi = zeros(2*mesh.nf_el, mesh.nel)
     Kupj = zeros(2*mesh.nf_el, mesh.nel)
@@ -109,8 +110,8 @@ function ElementAssemblyLoop(mesh, α, β, Ζ, VxDir, VyDir, σxxNeu, σyyNeu, �
             τi    = StabParam(τr, Γi, Ωe, mesh.type, ηe)  
 
             # if ȷ==1
+            # ηn = mesh.ke[mesh.e2e[e,i]]
             #     if ηe==1.0
-                    
             #         ηe = 2.0/(1.0 + 1.0/10.0)
             #         ηe = (1.0 + 10.0)/2
             #     else
@@ -139,6 +140,10 @@ function ElementAssemblyLoop(mesh, α, β, Ζ, VxDir, VyDir, σxxNeu, σyyNeu, �
                 Kuuv[j   , i+nf, e] = on * -Γi * (                 - ηe*Ωe^-1*Γj*(       new*ȷ*ni_x*nj_y)       ) # u2u1
                 Kuuv[j+nf, i+nf, e] = on * -Γi * (α[e]^-1*τi*τj*Γj - ηe*Ωe^-1*Γj*(ninj + new*ȷ*ni_y*nj_y) - τi*δ) # u2u2
 
+                # PC - deactivate terms from new interface implementation
+                Muuv[j   , i   , e] = on * -Γi * (α[e]^-1*τi*τj*Γj - ηe*Ωe^-1*Γj*(ninj + 0*new*ȷ*ni_x*nj_x) - τi*δ) # u1u1
+                Muuv[j+nf, i+nf, e] = on * -Γi * (α[e]^-1*τi*τj*Γj - ηe*Ωe^-1*Γj*(ninj + 0*new*ȷ*ni_y*nj_y) - τi*δ) # u2u2
+
                 # Connectivity
                 Kuui[j   , i   , e]  = nodei;         Kuui[j+nf, i   , e]  = nodei
                 Kuuj[j   , i   , e]  = nodej;         Kuuj[j+nf, i   , e]  = nodej+mesh.nf
@@ -163,6 +168,8 @@ function ElementAssemblyLoop(mesh, α, β, Ζ, VxDir, VyDir, σxxNeu, σyyNeu, �
             # Dirichlet nodes - uu block
             Kuuv[i   , i   , e] += (bci==1) * 1e0
             Kuuv[i+nf, i+nf, e] += (bci==1) * 1e0
+            Muuv[i   , i   , e] += (bci==1) * 1e0
+            Muuv[i+nf, i+nf, e] += (bci==1) * 1e0
             fu[i   ,e]          += (bci!=1) * feix + (bci==1) * VxDir[nodei] * 1e0
             fu[i+nf,e]          += (bci!=1) * feiy + (bci==1) * VyDir[nodei] * 1e0
             # Dirichlet nodes - pressure RHS
@@ -171,26 +178,27 @@ function ElementAssemblyLoop(mesh, α, β, Ζ, VxDir, VyDir, σxxNeu, σyyNeu, �
     end
 
     # Call sparse assembly
-    tsparse = @elapsed Kuu, Kup, fu = Sparsify( Kuui, Kuuj, Kuuv, Kupi, Kupj, Kupv, fu, mesh.nf, mesh.nel)
+    tsparse = @elapsed Kuu, Muu, Kup, fu = Sparsify( Kuui, Kuuj, Kuuv, Muuv, Kupi, Kupj, Kupv, fu, mesh.nf, mesh.nel)
 
-    return Kuu, Kup, fu, fp, tsparse
+    return Kuu, Muu, Kup, fu, fp, tsparse
 end
 
 #--------------------------------------------------------------------#
 
-function Sparsify( Kuui, Kuuj, Kuuv, Kupi, Kupj, Kupv, fuv, nf, nel)
+function Sparsify( Kuui, Kuuj, Kuuv, Muuv, Kupi, Kupj, Kupv, fuv, nf, nel)
 
-    _one     = ones(size(Kupi[:]))
+    _one = ones(size(Kupi[:]))
     Kuu  =       dropzeros(sparse(Kuui[:], Kuuj[:], Kuuv[:], nf*2, nf*2))
+    Muu  =       dropzeros(sparse(Kuui[:], Kuuj[:], Muuv[:], nf*2, nf*2))
     Kup  =       dropzeros(sparse(Kupi[:], Kupj[:], Kupv[:], nf*2, nel ))
     fu   = Array(dropzeros(sparse(Kupi[:],    _one,  fuv[:], nf*2,   1 )))
 
-    file = matopen(string(@__DIR__,"/results/matrix_K.mat"), "w" )
-    write(file, "Kuu",    Kuu )
-    write(file, "Kup",    Kup )
-    close(file)
+    # file = matopen(string(@__DIR__,"/results/matrix_K.mat"), "w" )
+    # write(file, "Kuu",    Kuu )
+    # write(file, "Kup",    Kup )
+    # close(file)
 
-    return Kuu, Kup, fu
+    return Kuu, Muu, Kup, fu
 end
 
 #--------------------------------------------------------------------#
