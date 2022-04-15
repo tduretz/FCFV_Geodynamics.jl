@@ -68,13 +68,13 @@ function ResidualOnFaces_v2_GPU!(F, Mesh_bc, Mesh_f2e, Mesh_dA_f, Mesh_n_x_f, Me
     return
 end
 
-function Update_F_GPU!(F, Th_PT, F0, dTdtau, dmp, mesh_nf)
+function Update_F_GPU!(F, Th_PT, F0, dtau, dmp, mesh_nf)
 
     idof = (blockIdx().x-1) * blockDim().x + threadIdx().x
 
     if idof <= mesh_nf
         F[idof]     = (1.0 - dmp)*F0[idof] + F[idof]
-        Th_PT[idof] = Th_PT[idof] + dTdtau*F[idof]
+        Th_PT[idof] = Th_PT[idof] + dtau*F[idof]
         F0[idof]    = F[idof]
     end
     return

@@ -17,7 +17,7 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, M, solver)
         Pe     = Pe .- Statistics.mean(Pe)
     elseif solver==1
         # Decoupled solve
-        coef  = 1e3.*mesh.ke./mesh.vole#*ones(mesh.nel)
+        coef  = 1e4.*mesh.ke./mesh.vole#*ones(mesh.nel)
         # file = matopen(string(@__DIR__,"/results/matrix_ppi.mat"), "w" )
         # write(file, "coef",    coef )
         # close(file)
@@ -26,23 +26,10 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, M, solver)
         Kuusc = Kuu .- Kup*(Kppi*Kpu)
         PC    =  0.5*(M .+ M') 
         # Kuusc = 0.5*(Kuu.+Kuu') .- Kup*(Kppi*Kpu)
-        # PC    =  0.5*(Kuusc .+ Kuusc') 
+        PC    =  0.5*(Kuusc .+ Kuusc') 
         # t = @elapsed Kf    = cholesky(Hermitian(PC),check = false)
-
-        # ndof  = size(Kuu,1)
-        # ndofx = Int64(ndof/2)
-        # Kxx   = PC[1:ndofx,1:ndofx]
-        # t = @elapsed Kxxf = cholesky(Kxx)
-        # restart = 30
-        # f      = zeros(Float64, 2*mesh.nf)
-        # v      = zeros(Float64, 2*mesh.nf)
-        # s      = zeros(Float64, 2*mesh.nf)
-        # val    = zeros(Float64, restart)
-        # VV     = zeros(Float64, (2*mesh.nf, restart) )  # !!!!!!!!!! allocate in the right sense :D
-        # SS     = zeros(Float64, (2*mesh.nf, restart) )
-
-        t = @elapsed Kf = cholesky(PC)
-        @printf("Cholesky took = %02.2e s\n", t)
+        t = @elapsed Kf    = lu(Kuusc)
+        # @printf("Cholesky took = %02.2e s\n", t)
         u     = zeros(2*mesh.nf,1)
         ru    = zeros(2*mesh.nf, 1)
         fusc  = zeros(2*mesh.nf,1)
@@ -55,7 +42,7 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, M, solver)
             nrmu = norm(ru)
             nrmp = norm(rp)
             @printf("  --> Powell-Hestenes Iteration %02d\n  Momentum res.   = %2.2e\n  Continuity res. = %2.2e\n", rit, nrmu/sqrt(length(ru)), nrmp/sqrt(length(rp)))
-            if nrmu/sqrt(length(ru)) < 1e-10 && nrmp/sqrt(length(ru)) < 1e-10
+            if nrmu/sqrt(length(ru)) < 1e-13 && nrmp/sqrt(length(ru)) < 1e-13
                 break
             end
             fusc .= fu  .- Kup*(Kppi*fp .+ p)

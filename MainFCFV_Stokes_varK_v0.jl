@@ -142,14 +142,14 @@ end
     ymin, ymax = -3.0, 3.0
     n          = 1
     nx, ny     = 30*n, 30*n
-    solver     = 0
+    solver     = 3
     R          = 1.0
     inclusion  = 1
     eta        = [10.0 1.0]
     mesh_type  = "Quadrangles"
     # mesh_type  = "UnstructTriangles"
     # mesh_type  = "TrianglesSameMATLAB"
-    BC         = [2; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
+    BC         = [1; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
     new        = 1 # implementation if interface
 
     # Generate mesh
@@ -228,7 +228,7 @@ end
     # println("Visualisation:")
     # PlotMakie(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
     # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
-    # @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :jet1, minimum(Pa), maximum(Pa) )
+    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :jet1, minimum(Pa), maximum(Pa) )
     # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
     # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
     # @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax, :jet1 )
