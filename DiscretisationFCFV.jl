@@ -1,4 +1,4 @@
-function ComputeFCFV(mesh, se, Tdir, tau)
+function ComputeFCFV(mesh, se, Tdir)
     ae = zeros(mesh.nel)
     be = zeros(mesh.nel)
     ze = zeros(mesh.nel,2)
@@ -6,22 +6,22 @@ function ComputeFCFV(mesh, se, Tdir, tau)
     # Assemble FCFV elements
     @avx for iel=1:mesh.nel  
 
-        be[iel] = be[iel]   + mesh.vole[iel]*se[iel]
+        be[iel] = be[iel]   + mesh.Ω[iel]*se[iel]
         
         for ifac=1:mesh.nf_el
             
             nodei = mesh.e2f[iel,ifac]
             bc    = mesh.bc[nodei]
-            dAi   = mesh.dA[iel,ifac]
+            Γi    = mesh.Γ[iel,ifac]
             ni_x  = mesh.n_x[iel,ifac]
             ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau*mesh.ke[iel],dAi,mesh.vole[iel],mesh.type)                              # Stabilisation parameter for the face
+            τi    = mesh.τ[nodei]      
 
             # Assemble
-            ze[iel,1] += (bc==1) * dAi*ni_x*Tdir[nodei]  # Dirichlet
-            ze[iel,2] += (bc==1) * dAi*ni_y*Tdir[nodei]  # Dirichlet
-            be[iel]   += (bc==1) * dAi*taui*Tdir[nodei]  # Dirichlet
-            ae[iel]   +=           dAi*taui
+            ze[iel,1] += (bc==1) * Γi*ni_x*Tdir[nodei]  # Dirichlet
+            ze[iel,2] += (bc==1) * Γi*ni_y*Tdir[nodei]  # Dirichlet
+            be[iel]   += (bc==1) * Γi*τi*Tdir[nodei]    # Dirichlet
+            ae[iel]   +=           Γi*τi
             
         end
     end
@@ -30,7 +30,7 @@ end
 
 #--------------------------------------------------------------------#
 
-function ComputeElementValues(mesh, uh, ae, be, ze, Tdir, tau)
+function ComputeElementValues(mesh, uh, ae, be, ze, Tdir)
     ue          = zeros(mesh.nel);
     qx          = zeros(mesh.nel);
     qy          = zeros(mesh.nel);
@@ -38,23 +38,23 @@ function ComputeElementValues(mesh, uh, ae, be, ze, Tdir, tau)
     @avx for iel=1:mesh.nel
     
         ue[iel]  =  be[iel]/ae[iel]
-        qx[iel]  = -mesh.ke[iel]/mesh.vole[iel]*ze[iel,1]
-        qy[iel]  = -mesh.ke[iel]/mesh.vole[iel]*ze[iel,2]
+        qx[iel]  = -mesh.ke[iel]/mesh.Ω[iel]*ze[iel,1]
+        qy[iel]  = -mesh.ke[iel]/mesh.Ω[iel]*ze[iel,2]
         
         for ifac=1:mesh.nf_el
             
             # Face
             nodei = mesh.e2f[iel,ifac]
             bc    = mesh.bc[nodei]
-            dAi   = mesh.dA[iel,ifac]
+            Γi    = mesh.Γ[iel,ifac]
             ni_x  = mesh.n_x[iel,ifac]
             ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau*mesh.ke[iel],dAi,mesh.vole[iel],mesh.type)      # Stabilisation parameter for the face
+            τi    = mesh.τ[nodei]
 
             # Assemble
-            ue[iel] += (bc!=1) *  dAi*taui*uh[mesh.e2f[iel, ifac]]/ae[iel]
-            qx[iel] -= (bc!=1) *  mesh.ke[iel]/mesh.vole[iel]*dAi*ni_x*uh[mesh.e2f[iel, ifac]]
-            qy[iel] -= (bc!=1) *  mesh.ke[iel]/mesh.vole[iel]*dAi*ni_y*uh[mesh.e2f[iel, ifac]]
+            ue[iel] += (bc!=1) *  Γi*τi*uh[mesh.e2f[iel, ifac]]/ae[iel]
+            qx[iel] -= (bc!=1) *  mesh.ke[iel]/mesh.Ω[iel]*Γi*ni_x*uh[mesh.e2f[iel, ifac]]
+            qy[iel] -= (bc!=1) *  mesh.ke[iel]/mesh.Ω[iel]*Γi*ni_y*uh[mesh.e2f[iel, ifac]]
          end
     end
     return ue, qx, qy
@@ -62,9 +62,9 @@ end
 
 #--------------------------------------------------------------------#
 
-function ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
+function ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu)
+
     # Assemble element matrices and rhs
-    f    = zeros(mesh.nf);
     Kv   = zeros(mesh.nel, mesh.nf_el, mesh.nf_el)
     fv   = zeros(mesh.nel, mesh.nf_el)
 
@@ -74,26 +74,26 @@ function ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
 
             nodei = mesh.e2f[iel,ifac]
             bci   = mesh.bc[nodei]
-            dAi   = mesh.dA[iel,ifac]
+            Γi    = mesh.Γ[iel,ifac]
             ni_x  = mesh.n_x[iel,ifac]
             ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau*mesh.ke[iel],dAi,mesh.vole[iel], mesh.type)  
+            τi    = mesh.τ[nodei] 
                 
             for jfac=1:mesh.nf_el
 
                 nodej = mesh.e2f[iel,jfac]
                 bcj   = mesh.bc[nodej]   
-                dAj   = mesh.dA[iel,jfac]
+                Γj    = mesh.Γ[iel,jfac]
                 nj_x  = mesh.n_x[iel,jfac]
                 nj_y  = mesh.n_y[iel,jfac]
-                tauj  = StabParam(tau*mesh.ke[iel],dAj,mesh.vole[iel], mesh.type)  
+                τj    = mesh.τ[nodej]
                         
                 # Delta
-                del = 0.0 + (ifac==jfac)*1.0
+                δ = 0.0 + (ifac==jfac)*1.0
                         
                 # Element matrix
                 nitnj = ni_x*nj_x + ni_y*nj_y;
-                Ke_ij =-dAi * (1.0/ae[iel] * dAj * taui*tauj - mesh.ke[iel]/mesh.vole[iel]*dAj*nitnj - taui*del);
+                Ke_ij =-Γi * (1.0/ae[iel] * Γj * τi*τj - mesh.ke[iel]/mesh.Ω[iel]*Γj*nitnj - τi*δ);
                 yes   = (bci!=1) & (bcj!=1)
                 Kv[iel,ifac,jfac] = yes * Ke_ij
             end
@@ -101,7 +101,7 @@ function ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
             Xi     = 0.0 + (bci==2)*1.0;
             ti     = Tneu[nodei]
             nitze  = ni_x*ze[iel,1] + ni_y*ze[iel,2]
-            fe_i   = (bci!=1) * -dAi * (mesh.ke[iel]/mesh.vole[iel]*nitze - ti*Xi - 1.0/ae[iel]*be[iel]*taui)
+            fe_i   = (bci!=1) * -Γi * (mesh.ke[iel]/mesh.Ω[iel]*nitze - ti*Xi - 1.0/ae[iel]*be[iel]*τi)
             fv[iel,ifac] += (bci!=1) * fe_i
             # Dirichlet nodes
             Kv[iel,ifac,ifac] += (bci==1) * 1.0

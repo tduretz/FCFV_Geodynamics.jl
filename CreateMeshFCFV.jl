@@ -1,6 +1,13 @@
 # @tturbo was removed
 import Triangulate
 
+# function StabParam(τr, Γ, Ω, mesh_type) # ACHTUNG does not work on GPU (called from woithin kernel !)
+#     if mesh_type=="Quadrangles";        τ = τr;    end
+#     # if mesh_type=="UnstructTriangles";  τi = τ*dA; end
+#     if mesh_type=="UnstructTriangles";  τ = τr end
+#     return τ
+# end
+
 Base.@kwdef mutable struct FCFV_Mesh
     type   ::Union{String, Missing}          = missing
     nel    ::Union{Int64,  Missing}          = missing
@@ -17,16 +24,17 @@ Base.@kwdef mutable struct FCFV_Mesh
     yc     ::Union{Vector{Float64}, Missing} = missing # cent y coordinate
     e2v    ::Union{Matrix{Int64},   Missing} = missing # cell 2 node numbering
     e2f    ::Union{Matrix{Int64},   Missing} = missing # cell 2 face numbering
-    vole   ::Union{Vector{Float64}, Missing} = missing # volume of element
+    Ω      ::Union{Vector{Float64}, Missing} = missing # volume of element
     n_x    ::Union{Matrix{Float64}, Missing} = missing # normal 2 face x
     n_y    ::Union{Matrix{Float64}, Missing} = missing # normal 2 face y
-    dA     ::Union{Matrix{Float64}, Missing} = missing # face length
+    Γ      ::Union{Matrix{Float64}, Missing} = missing # face length
     e2e    ::Union{Matrix{Int64},   Missing} = missing # element 2 element numbering
     f2e    ::Union{Matrix{Int64},   Missing} = missing # face 2 element numbering
-    dA_f   ::Union{Matrix{Float64}, Missing} = missing # face 2 element numbering
-    vole_f ::Union{Matrix{Float64}, Missing} = missing # volume of element
+    Γ_f    ::Union{Matrix{Float64}, Missing} = missing # face 2 element numbering
+    Ω_f    ::Union{Matrix{Float64}, Missing} = missing # volume of element
     n_x_f  ::Union{Matrix{Float64}, Missing} = missing # normal 2 face x
     n_y_f  ::Union{Matrix{Float64}, Missing} = missing # normal 2 face y
+    τ      ::Union{Vector{Float64}, Missing} = missing # face stabilisation 
     # ---- mat props ---- #
     ke     ::Union{Vector{Float64}, Missing} = missing # diffusion coefficient
     phase  ::Union{Vector{Float64}, Missing} = missing # phase
@@ -35,7 +43,7 @@ end
 
 #--------------------------------------------------------------------#
 
-function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1; 1;], area = ((xmax-xmin)/nx)*((ymax-ymin)/ny), no_pts_incl = Int64(floor(1.0*pi*R/sqrt(((xmax-xmin)/nx)^2+((ymax-ymin)/ny)^2)))  )
+function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC=[2; 1; 1; 1;], area = ((xmax-xmin)/nx)*((ymax-ymin)/ny), no_pts_incl = Int64(floor(1.0*pi*R/sqrt(((xmax-xmin)/nx)^2+((ymax-ymin)/ny)^2)))  )
 
     regions  = Array{Float64}(undef,4,0)
     holes    = Array{Float64}(undef,2,0)
@@ -94,8 +102,6 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
     mesh        = FCFV_Mesh()
     mesh.type   = "UnstructTriangles"
     nvert_el = 3
-  
-    
     
     triin=Triangulate.TriangulateIO()
     triin.pointlist=Matrix{Cdouble}(vcat(px',py'))
@@ -115,9 +121,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
     mesh.yf     = trimesh.pointlist[2,mesh.nv+1:end]
     mesh.bc     = trimesh.pointmarkerlist[mesh.nv+1:end]
     mesh.phase  = trimesh.triangleattributelist[:]
-   
-    
-    
+ 
     # domain   = TriangleMesh.Polygon_pslg(size(p,2), p, 0, Array{Int64}(undef,2,0), 0, Array{Float64}(undef,2,0),  size(s,2), s, st, 0, holes, size(regions,2), regions, 1.0)
     # astring  = @sprintf("%0.10lf", area)
     # switches = "vQDpenq33o2IAa$(astring)"  #QDpeq33o2Aa0.01
@@ -144,8 +148,9 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
     # end
     
     mesh.ke     = ones(Float64,mesh.nel)
+    mesh.τ      = zeros(Float64,mesh.nf)
     nel  = mesh.nel
-    vole = zeros(nel)
+    Ωe   = zeros(nel)
     xc   = zeros(nel)
     yc   = zeros(nel)
     
@@ -161,7 +166,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
         b         = sqrt((x2-x3)^2 + (y2-y3)^2)
         c         = sqrt((x1-x3)^2 + (y1-y3)^2)
         s         = 1/2*(a+b+c)
-        vole[iel] = sqrt(s*(s-a)*(s-b)*(s-c))
+        Ωe[iel]   = sqrt(s*(s-a)*(s-b)*(s-c))
         xc[iel]   = 1.0/3.0*(x1+x2+x3)
         yc[iel]   = 1.0/3.0*(y1+y2+y3)
     end
@@ -172,7 +177,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
     mesh.nf_el  = 3
     mesh.xc     = xc
     mesh.yc     = yc
-    mesh.vole   = vole
+    mesh.Ω      = Ωe
     
     nodeA = [2 3 1]
     nodeB = [3 1 2]
@@ -181,7 +186,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
     # Compute normal to faces
     mesh.n_x = zeros(Float64,mesh.nel,mesh.nf_el)
     mesh.n_y = zeros(Float64,mesh.nel,mesh.nf_el)
-    mesh.dA  = zeros(Float64,mesh.nel,mesh.nf_el)
+    mesh.Γ   = zeros(Float64,mesh.nel,mesh.nf_el)
     mesh.e2e = zeros(  Int64,mesh.nel,mesh.nf_el)
     mesh.ke  =  ones(Float64,mesh.nel)
 
@@ -215,11 +220,11 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
             bc     = mesh.bc[nodei]
             dx     = (mesh.xv[vert1] - mesh.xv[vert2] );
             dy     = (mesh.yv[vert1] - mesh.yv[vert2] );
-            dAi    = sqrt(dx^2 + dy^2);
+            Γi     = sqrt(dx^2 + dy^2);
     
             # Face normal
-            n_x  = -dy/dAi
-            n_y  =  dx/dAi
+            n_x  = -dy/Γi
+            n_y  =  dx/Γi
             
             # Third vector
             v_x  = mesh.xf[nodei] - mesh.xc[iel]
@@ -229,7 +234,10 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
             dot                 = n_x*v_x + n_y*v_y 
             mesh.n_x[iel,ifac]  = ((dot>=0.0)*n_x - (dot<0.0)*n_x)
             mesh.n_y[iel,ifac]  = ((dot>=0.0)*n_y - (dot<0.0)*n_y)
-            mesh.dA[iel,ifac]   = dAi
+            mesh.Γ[iel,ifac]    = Γi
+
+            # Face stabilisation
+            mesh.τ[nodei] = StabParam(τr, Γi, mesh.Ω[iel], mesh.type, mesh.ke[iel]) 
         end
     end
 
@@ -237,10 +245,10 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
 
     # Create face to element numbering
     mesh.f2e    = zeros(Int,mesh.nf,2)
-    mesh.vole_f = zeros(Float64,mesh.nf,2)
+    mesh.Ω_f    = zeros(Float64,mesh.nf,2)
     mesh.n_x_f  = zeros(Float64,mesh.nf,2)
     mesh.n_y_f  = zeros(Float64,mesh.nf,2)
-    mesh.dA_f   = zeros(Float64,mesh.nf,2)
+    mesh.Γ_f    = zeros(Float64,mesh.nf,2)
 
     # # Loop through field names and fields: standard
     # for fname in fieldnames(typeof(trimesh))
@@ -264,15 +272,15 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
         yf     = 0.5*(mesh.yv[vert1] + mesh.yv[vert2])
         dx     = (mesh.xv[vert1] - mesh.xv[vert2] );
         dy     = (mesh.yv[vert1] - mesh.yv[vert2] );
-        dAi    = sqrt(dx^2 + dy^2);    
-        mesh.dA_f[ifac,1] =  dAi
-        mesh.dA_f[ifac,2] =  dAi
+        Γi     = sqrt(dx^2 + dy^2);    
+        mesh.Γ_f[ifac,1] =  Γi
+        mesh.Γ_f[ifac,2] =  Γi
         # Volumes
-        mesh.vole_f[ifac,1] = (act1==1) * mesh.vole[iel1]
-        mesh.vole_f[ifac,2] = (act2==2) * mesh.vole[iel2]
+        mesh.Ω_f[ifac,1] = (act1==1) * mesh.Ω[iel1]
+        mesh.Ω_f[ifac,2] = (act2==2) * mesh.Ω[iel2]
         # Compute face normal
-        n_x  = -dy/dAi
-        n_y  =  dx/dAi
+        n_x  = -dy/Γi
+        n_y  =  dx/Γi
         # Third vector  (w.r.t. element 1)
         v_x  = xf - mesh.xc[iel1]
         v_y  = yf - mesh.yc[iel1]
@@ -292,7 +300,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 
 
 #--------------------------------------------------------------------#
 
-function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1; 1;] )
+function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC=[2; 1; 1; 1;] )
     # Structure
     mesh        = FCFV_Mesh()
     # Generates a 2D rectangular mesh of nx*ny cells
@@ -362,11 +370,11 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
     for i=1:nx+1
         for j=1:ny+1
             ii = i + (j-1)*(ny+1)
-                xn[ii] = xmin + (i-1)*dx
-                yn[ii] = ymin + (j-1)*dy
-                if (i==1 || i==nx+1 || j==1 || j==ny+1)
-                    tn[ii] = 1
-                end
+            xn[ii] = xmin + (i-1)*dx
+            yn[ii] = ymin + (j-1)*dy
+            if (i==1 || i==nx+1 || j==1 || j==ny+1)
+                tn[ii] = 1
+            end
         end
     end
     # Cell 2 face numbering - for matrix connectivity
@@ -434,10 +442,11 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
     mesh.e2f    = face'
     mesh.xc     = xc
     mesh.yc     = yc
-    mesh.vole   = dx*dy*ones(ncell)
+    mesh.Ω      = dx*dy*ones(ncell)
     mesh.bc     = tf
     mesh.ke     =  ones(Float64,mesh.nel)
     mesh.e2e    = e2e'
+    mesh.τ      = zeros(Float64,mesh.nf)
 
     nodeA = [2 1 3 4]
     nodeB = [3 2 4 1]
@@ -456,7 +465,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
     # Compute normal to faces
     mesh.n_x = zeros(Float64,mesh.nel,mesh.nf_el)
     mesh.n_y = zeros(Float64,mesh.nel,mesh.nf_el)
-    mesh.dA  = zeros(Float64,mesh.nel,mesh.nf_el)
+    mesh.Γ   = zeros(Float64,mesh.nel,mesh.nf_el)
 
     # Get the number of element that are on each side of a face
     face2element   = zeros(Int64,2,mesh.nf)
@@ -505,7 +514,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
             bc     = mesh.bc[nodei]
             dx     = abs(mesh.xv[vert1] - mesh.xv[vert2] );
             dy     = abs(mesh.yv[vert1] - mesh.yv[vert2] );
-            dAi    = sqrt(dx^2 + dy^2);
+            Γi     = sqrt(dx^2 + dy^2);
 
             # if iel==1
             #     println(bc)
@@ -515,8 +524,8 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
             # end
            
             # Face normal
-            n_x  =  dy/dAi
-            n_y  = -dx/dAi
+            n_x  =  dy/Γi
+            n_y  = -dx/Γi
             
             # Third vector
             v_x  = mesh.xf[nodei] - mesh.xc[iel]
@@ -526,7 +535,10 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
             dot                 = n_x*v_x + n_y*v_y 
             mesh.n_x[iel,ifac]  = (dot>=0.0)*n_x - (dot<0.0)*n_x
             mesh.n_y[iel,ifac]  = (dot>=0.0)*n_y - (dot<0.0)*n_y
-            mesh.dA[iel,ifac]   = dAi
+            mesh.Γ[iel,ifac]    = Γi
+
+            # Face stabilisation
+            mesh.τ[nodei] = StabParam(τr, Γi, mesh.Ω[iel], mesh.type, mesh.ke[iel]) 
         end
     end
 
@@ -534,10 +546,10 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
 
     # Create face to element numbering
     mesh.f2e    = zeros(Int,mesh.nf,2)
-    mesh.vole_f = zeros(Float64,mesh.nf,2)
+    mesh.Ω_f    = zeros(Float64,mesh.nf,2)
     mesh.n_x_f  = zeros(Float64,mesh.nf,2)
     mesh.n_y_f  = zeros(Float64,mesh.nf,2)
-    mesh.dA_f   = zeros(Float64,mesh.nf,2)
+    mesh.Γ_f    = zeros(Float64,mesh.nf,2)
 
     # # Loop through field names and fields: standard
     # for fname in fieldnames(typeof(trimesh))
@@ -560,15 +572,15 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC=[2; 1; 1
         yf     = 0.5*(mesh.yv[vert1] + mesh.yv[vert2])
         dx     = (mesh.xv[vert1] - mesh.xv[vert2] );
         dy     = (mesh.yv[vert1] - mesh.yv[vert2] );
-        dAi    = sqrt(dx^2 + dy^2);    
-        mesh.dA_f[ifac,1] =  dAi
-        mesh.dA_f[ifac,2] =  dAi
+        Γi     = sqrt(dx^2 + dy^2);    
+        mesh.Γ_f[ifac,1] =  Γi
+        mesh.Γ_f[ifac,2] =  Γi
         # Volumes
-        mesh.vole_f[ifac,1] = (act1==1) * mesh.vole[iel1]
-        mesh.vole_f[ifac,2] = (act2==2) * mesh.vole[iel2]
+        mesh.Ω_f[ifac,1] = (act1==1) * mesh.Ω[iel1]
+        mesh.Ω_f[ifac,2] = (act2==2) * mesh.Ω[iel2]
         # Compute face normal
-        n_x  = -dy/dAi
-        n_y  =  dx/dAi
+        n_x  = -dy/Γi
+        n_y  =  dx/Γi
         # Third vector  (w.r.t. element 1)
         v_x  = xf - mesh.xc[iel1]
         v_y  = yf - mesh.yc[iel1]

@@ -1,33 +1,33 @@
 # @turbo was removed
-function ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, tau)
+function ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu)
 
     α = zeros(mesh.nel)
     β = zeros(mesh.nel,2)
     Ζ = zeros(mesh.nel,2,2)
 
     # Assemble FCFV elements
-    for e=1:mesh.nel  
+    @inbounds for e=1:mesh.nel  
 
-        β[e,1] += mesh.vole[e]*sex[e]
-        β[e,2] += mesh.vole[e]*sey[e]
+        β[e,1] += mesh.Ω[e]*sex[e]
+        β[e,2] += mesh.Ω[e]*sey[e]
         
         for i=1:mesh.nf_el
             
             nodei = mesh.e2f[e,i]
             bc    = mesh.bc[nodei]
-            Γ     = mesh.dA[e,i]
+            Γi    = mesh.Γ[e,i]
             ni_x  = mesh.n_x[e,i]
             ni_y  = mesh.n_y[e,i]
-            τi    = StabParam(tau, Γ, mesh.vole[e], mesh.type, mesh.ke[e])                              # Stabilisation parameter for the face
+            τi    = mesh.τ[nodei]  # Stabilisation parameter for the face
 
             # Assemble
-            Ζ[e,1,1] += (bc==1) * Γ*ni_x*VxDir[nodei] # Dirichlet
-            Ζ[e,1,2] += (bc==1) * Γ*ni_x*VyDir[nodei] # Dirichlet
-            Ζ[e,2,1] += (bc==1) * Γ*ni_y*VxDir[nodei] # Dirichlet
-            Ζ[e,2,2] += (bc==1) * Γ*ni_y*VyDir[nodei] # Dirichlet
-            β[e,1]   += (bc==1) * Γ*τi*VxDir[nodei]   # Dirichlet
-            β[e,2]   += (bc==1) * Γ*τi*VyDir[nodei]   # Dirichlet
-            α[e]     +=           Γ*τi
+            Ζ[e,1,1] += (bc==1) * Γi*ni_x*VxDir[nodei] # Dirichlet
+            Ζ[e,1,2] += (bc==1) * Γi*ni_x*VyDir[nodei] # Dirichlet
+            Ζ[e,2,1] += (bc==1) * Γi*ni_y*VxDir[nodei] # Dirichlet
+            Ζ[e,2,2] += (bc==1) * Γi*ni_y*VyDir[nodei] # Dirichlet
+            β[e,1]   += (bc==1) * Γi*τi*VxDir[nodei]   # Dirichlet
+            β[e,2]   += (bc==1) * Γi*τi*VyDir[nodei]   # Dirichlet
+            α[e]     +=           Γi*τi
             
         end
     end
@@ -36,7 +36,7 @@ end
 
 #--------------------------------------------------------------------#
 
-function ComputeElementValues(mesh, Vxh, Vyh, Pe, α, β, Ζ, VxDir, VyDir, τr)
+function ComputeElementValues(mesh, Vxh, Vyh, Pe, α, β, Ζ, VxDir, VyDir)
 
     Vxe         = zeros(mesh.nel);
     Vye         = zeros(mesh.nel);
@@ -44,10 +44,10 @@ function ComputeElementValues(mesh, Vxh, Vyh, Pe, α, β, Ζ, VxDir, VyDir, τr)
     Tyye        = zeros(mesh.nel);
     Txye        = zeros(mesh.nel);
 
-    for e=1:mesh.nel
+    @inbounds for e=1:mesh.nel
     
         η       =  mesh.ke[e]
-        Ω       =  mesh.vole[e]
+        Ω       =  mesh.Ω[e]
         Vxe[e]  =  β[e,1]/α[e]
         Vye[e]  =  β[e,2]/α[e]
         Txxe[e] =  η/Ω*Ζ[e,1,1]
@@ -59,10 +59,10 @@ function ComputeElementValues(mesh, Vxh, Vyh, Pe, α, β, Ζ, VxDir, VyDir, τr)
             # Face
             nodei = mesh.e2f[e,i]
             bc    = mesh.bc[nodei]
-            Γi    = mesh.dA[e,i]
+            Γi    = mesh.Γ[e,i]
             ni_x  = mesh.n_x[e,i]
             ni_y  = mesh.n_y[e,i]
-            τi    = StabParam(τr, Γi, mesh.vole[e], mesh.type, η)      # Stabilisation parameter for the face
+            τi    = mesh.τ[nodei]  # Stabilisation parameter for the face
 
             # Assemble
             Vxe[e]  += (bc!=1) *  Γi*τi*Vxh[nodei]/α[e]
@@ -80,7 +80,7 @@ end
 
 #--------------------------------------------------------------------#
 
-function ElementAssemblyLoop(mesh, α, β, Ζ, VxDir, VyDir, σxxNeu, σyyNeu, σxyNeu, σyxNeu, gbar, τr, new) 
+function ElementAssemblyLoop(mesh, α, β, Ζ, VxDir, VyDir, σxxNeu, σyyNeu, σxyNeu, σyxNeu, gbar, new) 
 
     # Assemble element matrices and rhs
     Kuui = zeros(2*mesh.nf_el, 2*mesh.nf_el, mesh.nel)
@@ -97,7 +97,7 @@ function ElementAssemblyLoop(mesh, α, β, Ζ, VxDir, VyDir, σxxNeu, σyyNeu, �
     @inbounds for e=1:mesh.nel 
 
         # Element properties
-        Ωe = mesh.vole[e]
+        Ωe = mesh.Ω[e]
         ηe = mesh.ke[e]
 
         for i=1:mesh.nf_el 
@@ -106,8 +106,8 @@ function ElementAssemblyLoop(mesh, α, β, Ζ, VxDir, VyDir, σxxNeu, σyyNeu, �
             nodei = mesh.e2f[e,i]
             bci   = mesh.bc[nodei]
             ȷ     = 0.0 + (bci==3)*1.0 # indicates interface
-            Γi    = mesh.dA[e,i]
-            τi    = StabParam(τr, Γi, Ωe, mesh.type, ηe)  
+            Γi    = mesh.Γ[e,i]
+            τi    = mesh.τ[nodei]  
 
             # if ȷ==1
             # ηn = mesh.ke[mesh.e2e[e,i]]
@@ -126,8 +126,8 @@ function ElementAssemblyLoop(mesh, α, β, Ζ, VxDir, VyDir, σxxNeu, σyyNeu, �
                 nj_x, nj_y  = mesh.n_x[e,j], mesh.n_y[e,j]
                 nodej = mesh.e2f[e,j]
                 bcj   = mesh.bc[nodej]   
-                Γj    = mesh.dA[e,j]
-                τj    = StabParam(τr, Γj, Ωe, mesh.type, ηe)   
+                Γj    = mesh.Γ[e,j]
+                τj    = mesh.τ[nodej]  
                 δ     = 0.0 + (i==j)*1.0    # Delta operator
                 on    = (bci!=1) & (bcj!=1) # Activate nodal connection if not Dirichlet!
                         

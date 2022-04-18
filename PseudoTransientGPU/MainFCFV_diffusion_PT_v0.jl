@@ -1,7 +1,7 @@
 const USE_GPU = false # ACHTUNG -> uncomment PT loop !!
 const USE_DIRECT = false
 
-using Printf, LoopVectorization, LinearAlgebra, SparseArrays
+using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT
 
 include("../CreateMeshFCFV.jl")
 include("../VisuFCFV.jl")
@@ -63,7 +63,7 @@ end
 
 #--------------------------------------------------------------------#    
 
-function StabParam(τ, dA, Vol, mesh_type) # ACHTUNG does not work on GPU (called from woithin kernel !)
+function StabParam(τ, Γ, Ω, mesh_type, ν) # ACHTUNG does not work on GPU (called from within kernel !)
     if mesh_type=="Quadrangles";        τi = τ;    end
     # if mesh_type=="UnstructTriangles";  τi = τ*dA; end
     if mesh_type=="UnstructTriangles";  τi = τ end
@@ -72,11 +72,11 @@ end
 
 #--------------------------------------------------------------------#
     
-@views function main()
+@views function main( n, θ, Δτ )
 
     println("\n******** FCFV POISSON ********")
     # Create sides of mesh
-    n          = 1
+    # n          = 2
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
     nx, ny     = n*20, n*20
@@ -88,10 +88,10 @@ end
     # Generate mesh
     if mesh_type=="Quadrangles" 
         τr   = 1
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R )
+        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R )
     elseif mesh_type=="UnstructTriangles"  
         τr   = 100
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R ) 
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R ) 
     end
     println("Number of elements: ", mesh.nel)
 
@@ -106,12 +106,12 @@ end
 
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
-    @time αe, βe, Ζe = ComputeFCFV(mesh, se, Tdir, τr)
+    @time αe, βe, Ζe = ComputeFCFV(mesh, se, Tdir)
 
     if USE_DIRECT
         # Assemble element matrices and RHS
         println("Compute element matrices:")
-        @time Kv, fv = ElementAssemblyLoop(mesh, αe, βe, Ζe, Tdir, Tneu, τr)
+        @time Kv, fv = ElementAssemblyLoop(mesh, αe, βe, Ζe, Tdir, Tneu)
 
         # Assemble triplets and sparse
         println("Assemble triplets and sparse:")
@@ -137,8 +137,8 @@ end
             Th  .+= dTh[:]
         end
         # Compute residual on faces -  This is check
-        @time Te, qx, qy = ComputeElementValues(mesh, Th, αe, βe, Ζe, Tdir, τr)
-        @time F          = ResidualOnFaces(mesh, Th, Te, qx, qy, τr)
+        @time Te, qx, qy = ComputeElementValues(mesh, Th, αe, βe, Ζe, Tdir)
+        @time F          = ResidualOnFaces(mesh, Th, Te, qx, qy)
         # println(F)
         println("Norm of matrix-free residual: ", norm(F)/length(F))
         Te2 = copy(Te)
@@ -187,43 +187,57 @@ end
         Th_PT = zeros(mesh.nf)
     end
 
-    # Now a PT solve
-    θ       = 1.0/(3.0*pi)
-    Δτ      = 3.5*minimum(mesh.dA)/1.01
+    # # Now a PT solve
+    # θ       = 4.0*minimum(mesh.Γ)# 1.0/(3.0*pi)
+    # # Δτ      = 3.5*minimum(mesh.Γ)/1.01
 
-    # θ       = 1.0/(6*pi)
-    # Δτ      = 3.5*minimum(mesh.dA)/1.01*2.9 # n=2
+
+    # θ       = 2.9*minimum(mesh.Γ)# 1.0/(6*pi)
+    # Δτ      = 3.5*minimum(mesh.Γ)/1.01*2.9 # n=2
+
+    # println(θ)
+    # println(Δτ)
 
     # θ       = 1.0/(12.0*pi)
-    # Δτ      = 3.5*minimum(mesh.dA)/1.01*2.9*2.9 # n=4
+    # Δτ      = 3.5*minimum(mesh.Γ)/1.01*2.9*2.9 # n=4
 
-    nout    = 1e2
+    nout    = 50#1e1
     iterMax = 5e4
     ϵ_PT    = 1e-7
-    # println(minimum(mesh.dA))
-    # println(maximum(mesh.dA))
+    println(minimum(mesh.Γ))
+    println(maximum(mesh.Γ))
 
     # PT loop
-    @time for iter=1:iterMax
-         if USE_GPU
-              # @cuda blocks=cublocks threads=cuthreads ResidualOnFaces_v2_GPU!(F, Mesh_bc, Mesh_f2e, Mesh_dA_f, Mesh_n_x_f, Mesh_n_y_f, Mesh_vole_f, Mesh_vole, Mesh_e2f, Mesh_dA, Mesh_n_x, Mesh_n_y, Th_PT, Te, Tneu, qx, qy, ae, be, ze, τ, mesh_nf, mesh_nf_el) #mesh_type not ok because string
-              # synchronize()
-              # @cuda blocks=cublocks threads=cuthreads Update_F_GPU!(F, Th_PT, ΔTΔτ0, Δτ, θ, mesh_nf)
-              # synchronize()
-         else
-            ΔTΔτ0 .= ΔTΔτ 
-            ResidualOnFaces_v2!(ΔTΔτ, mesh, Th_PT, Te, qx, qy, αe, βe, Ζe, τr, Tneu)
-            ΔTΔτ  .= (1.0 - θ).*ΔTΔτ0 .+ ΔTΔτ 
-            Th_PT .= Th_PT .+ Δτ .* ΔTΔτ
-         end
+    local iter = 0
+    success = 0
+    @time while (iter<iterMax)
+        iter +=1
+        if USE_GPU
+            # @cuda blocks=cublocks threads=cuthreads ResidualOnFaces_v2_GPU!(F, Mesh_bc, Mesh_f2e, Mesh_dA_f, Mesh_n_x_f, Mesh_n_y_f, Mesh_vole_f, Mesh_vole, Mesh_e2f, Mesh_dA, Mesh_n_x, Mesh_n_y, Th_PT, Te, Tneu, qx, qy, ae, be, ze, τ, mesh_nf, mesh_nf_el) #mesh_type not ok because string
+            # synchronize()
+            # @cuda blocks=cublocks threads=cuthreads Update_F_GPU!(F, Th_PT, ΔTΔτ0, Δτ, θ, mesh_nf)
+            # synchronize()
+        else
+        ΔTΔτ0 .= ΔTΔτ 
+        ResidualOnFaces_v2!(ΔTΔτ, mesh, Th_PT, αe, βe, Ζe, Tneu)
+        ΔTΔτ  .= (1.0 - θ).*ΔTΔτ0 .+ ΔTΔτ 
+        Th_PT .= Th_PT .+ Δτ .* ΔTΔτ
+        end
         if iter % nout == 0
             err = norm(ΔTΔτ)/sqrt(length(ΔTΔτ))
             println("PT Iter. ", iter, " --- Norm of matrix-free residual: ", err)
             if err < ϵ_PT
                 print("PT solve converged in")
+                success = true
+                break
+            elseif err>1e4
+                success = false
+                println("exploding !")
                 break
             elseif isnan(err)
-                error("NaN !")
+                success = false
+                println("NaN !")
+                break
             end
         end
     end
@@ -232,14 +246,14 @@ end
 
     # Reconstruct element values
     println("Compute element values:")
-    @time Te, qx, qy = ComputeElementValues(mesh, Array(Th), Array(αe), Array(βe), Array(Ζe), Array(Tdir), τr)
-    @time Te1, qx1, qy1 = ComputeElementValuesFaces(mesh, Array(Th), Array(αe), Array(βe), Array(Ζe), Array(Tdir), τr)
+    @time Te, qx, qy = ComputeElementValues(mesh, Array(Th), Array(αe), Array(βe), Array(Ζe), Array(Tdir))
+    @time Te1, qx1, qy1 = ComputeElementValuesFaces(mesh, Array(Th), Array(αe), Array(βe), Array(Ζe))
     if USE_DIRECT
         println(norm(Te.-Te2)/length(Te[:]))
+        println(norm(Te.-Te1)/length(Te[:]))
+        println(norm(qx.-qx1)/length(qx[:]))
+        println(norm(qy.-qy1)/length(qy[:]))
     end
-    println(norm(Te.-Te1)/length(Te[:]))
-    println(norm(qx.-qx1)/length(qx[:]))
-    println(norm(qy.-qy1)/length(qy[:]))
 
     # Compute discretisation errors
     err_T, err_qx, err_qy = ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
@@ -256,7 +270,43 @@ end
     #     # @time PlotMakie(mesh, Te1, xmin, xmax, ymin, ymax; cmap = :batlow, min_v = 0.9, max_v = 1.2)
     # end
     print("Done! Total runtime:")
-    return
+    return iter, success
 end
 
-@time main()
+#########################################################
+
+main( 1.25, 0.090, 0.145 )
+# main( 3, 0.04, 0.21 )
+# main( 1.5, 0.082, 0.1575 )
+# main( 6, 0.02, 0.24 )
+# main( 8, 0.014, 0.25 )
+# main( 2, 0.060, 0.180 )
+# main( 4, 0.03, 0.22 )
+# main( 10, 0.011, 0.256 )
+# main( 1, 0.12, 0.125 )
+
+# nv  = [1, 2, 4, 8]
+# tet  = 0.01:0.01/2:0.1
+# dtau =  0.1:0.05:1
+
+# sucv = zeros(length(nv), length(tet), length(dtau))
+# itv  = zeros(length(nv), length(tet), length(dtau))
+
+# for in=1:length(nv)
+#     for iθ=1:length(tet)
+#         for iΔ=1:length(dtau)
+#             @printf("n = %02d -- θ = %2.3f -- Δτ = %2.3f\n", nv[in], tet[iθ], dtau[iΔ] )
+#             iter, success = main( nv[in], tet[iθ], dtau[iΔ] )
+#             if success==true sucv[in,iθ,iΔ] = 1 end
+#             itv[in,iθ,iΔ]  = iter
+#         end
+#     end
+# end
+
+# file = matopen(string(@__DIR__,"/PT_syst.mat"), "w")
+# write(file, "n", nv)
+# write(file, "tet", Array(tet))
+# write(file, "dtau", Array(dtau))
+# write(file, "success", sucv)
+# write(file, "iter", itv)
+# close(file)

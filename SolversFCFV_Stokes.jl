@@ -96,7 +96,7 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, M, solver)
         Pe  = p[:]
     elseif solver==3
         # Decoupled solve
-        coef  = 1e3.*mesh.ke./mesh.vole#*ones(mesh.nel)
+        coef  = 1e3.*mesh.ke./mesh.Ω#*ones(mesh.nel)
         Kppi  = spdiagm(coef)
         Kpu   = .- Kup'
         Kuusc = Kuu .- Kup*(Kppi*Kpu)

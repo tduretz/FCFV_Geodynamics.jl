@@ -9,23 +9,22 @@ include("EvalAnalDani.jl")
 
 #--------------------------------------------------------------------#
 
-function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sx, sy, R, eta, gbar)
+function SetUpProblem!(mesh, P, P_f, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sx, sy, R, eta, gbar)
     # Evaluate T analytic on cell faces
     etam, etai = eta[1], eta[2]
     for in=1:mesh.nf
         x        = mesh.xf[in]
         y        = mesh.yf[in]
-        vx, vy, pre, sxx, syy, sxy = EvalAnalDani( x, y, R, etam, etai )
+        vx, vy, p, sxx, syy, sxy = EvalAnalDani( x, y, R, etam, etai )
         VxDir[in] = vx
         VyDir[in] = vy
-        # Stress at faces
-        p          = pre
-        # Pseudo-tractions
-        pre, dVxdx, dVxdy, dVydx, dVydy = Tractions( x, y, R, etam, etai, 1 )
-        SxxNeu[in] = - pre + etam*dVxdx 
-        SyyNeu[in] = - pre + etam*dVydy 
-        SxyNeu[in] =         etam*dVxdy
-        SyxNeu[in] =         etam*dVydx
+        # Stress at faces - Pseudo-tractions
+        p, dVxdx, dVxdy, dVydx, dVydy = Tractions( x, y, R, etam, etai, 1 )
+        SxxNeu[in] = - p + etam*dVxdx 
+        SyyNeu[in] = - p + etam*dVydy 
+        SxyNeu[in] =       etam*dVxdy
+        SyxNeu[in] =       etam*dVydx
+        P_f[in]    = p
     end
     # Evaluate T analytic on barycentres
     for iel=1:mesh.nel
@@ -49,8 +48,6 @@ function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, Syy
             xF     = mesh.xf[nodei]
             yF     = mesh.yf[nodei]
             nodei  = mesh.e2f[iel,ifac]
-            bc     = mesh.bc[nodei]
-            dAi    = mesh.dA[iel,ifac]
             ni_x   = mesh.n_x[iel,ifac]
             ni_y   = mesh.n_y[iel,ifac]
             phase1 = Int64(mesh.phase[iel])
@@ -88,6 +85,26 @@ function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R, eta )
     Tyya = zeros(mesh.nel)
     Txya = zeros(mesh.nel)
     Pa   = zeros(mesh.nel)
+    Pe_f = zeros(mesh.nf) 
+   
+    for in=1:mesh.nf
+
+        P_f = 0
+        cc  = 0
+        if (mesh.f2e[in,1]>0)
+            iel  = mesh.f2e[in,1]
+            P_f += Pe[iel]
+            cc  += 1
+        end
+        if (mesh.f2e[in,2]>0)
+            iel  = mesh.f2e[in,2]
+            P_f += Pe[iel]
+            cc  += 1
+        end
+        P_f /= cc
+        vx, vy, pre, sxx, syy, sxy = EvalAnalDani( mesh.xf[in], mesh.yf[in], R, etam, etai )
+        Pe_f[in] = P_f - pre
+    end
     for iel=1:mesh.nel
         x         = mesh.xc[iel]
         y         = mesh.yc[iel]
@@ -111,7 +128,7 @@ function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R, eta )
     errTyy = norm(eTyy)/norm(Tyya)
     errTxy = norm(eTxy)/norm(Txya)
     errP   = norm(eP)  /norm(Pa)
-    return errVx, errVy, errTxx, errTyy, errTxy, errP, Txxa, Tyya, Txya
+    return errVx, errVy, errTxx, errTyy, errTxy, errP, Txxa, Tyya, Txya, Pe_f
 end
 
 #--------------------------------------------------------------------#
@@ -142,12 +159,12 @@ end
     ymin, ymax = -3.0, 3.0
     n          = 1
     nx, ny     = 30*n, 30*n
-    solver     = 3
+    solver     = 0
     R          = 1.0
     inclusion  = 1
     eta        = [10.0 1.0]
     mesh_type  = "Quadrangles"
-    # mesh_type  = "UnstructTriangles"
+    # mesh_type  = "UnstructTriangles" 
     # mesh_type  = "TrianglesSameMATLAB"
     BC         = [1; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
     new        = 1 # implementation if interface
@@ -156,20 +173,23 @@ end
     if mesh_type=="Quadrangles" 
         tau  = 50.0   # for new = 0 leads to convergence 
         tau  = τr
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
+        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles" 
         tau = 1.0
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC )
     elseif mesh_type=="TrianglesSameMATLAB"  
         tau  = 1.0#/5.0
         area = 1.0 # area factor: SETTING REPRODUCE THE RESULTS OF MATLAB CODE USING TRIANGLE
         ninc = 29  # number of points that mesh the inclusion: SETTING REPRODUCE THE RESULTS OF MATLAB CODE USING TRIANGLE
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC, area, ninc ) 
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC, area, ninc ) 
     end
     println("Number of elements: ", mesh.nel)
 
+    Perr = 0
+
     # Source term and BCs etc...
     Pa     = zeros(mesh.nel)
+    Pa_f   = zeros(mesh.nf)
     Vxa    = zeros(mesh.nel)
     Vya    = zeros(mesh.nel)
     Sxxa   = zeros(mesh.nel)
@@ -185,34 +205,34 @@ end
     SyxNeu = zeros(mesh.nf)
     gbar   = zeros(mesh.nel,mesh.nf_el, 2)
     println("Model configuration :")
-    @time SetUpProblem!(mesh, Pa, Vxa, Vya, Sxxa, Syya, Sxya, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sex, sey, R, eta, gbar)
+    @time SetUpProblem!(mesh, Pa, Pa_f, Vxa, Vya, Sxxa, Syya, Sxya, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sex, sey, R, eta, gbar)
 
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
-    @time ae, be, ze = ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, tau)
+    @time ae, be, ze = ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu)
 
     # Assemble element matrices and RHS
     println("Compute element matrices:")
-    @time Kuu, Muu, Kup, fu, fp, tsparse = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau, new)
+    @time Kuu, Muu, Kup, fu, fp, tsparse = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, new)
     println("Sparsification: ", tsparse)
     
-    # display(UnicodePlots.spy(Kuu))
-    # display(UnicodePlots.spy(Kuug))
-    # display(UnicodePlots.spy(Kuua))
-    # display(UnicodePlots.spy(Kup))
+    # # display(UnicodePlots.spy(Kuu))
+    # # display(UnicodePlots.spy(Kuug))
+    # # display(UnicodePlots.spy(Kuua))
+    # # display(UnicodePlots.spy(Kup))
 
     # Solve for hybrid variable
     println("Linear solve:")
     @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, Muu, solver)
 
-    # # Reconstruct element values
+    # Reconstruct element values
     println("Compute element values:")
-    @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
+    @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir)
 
     println("max. P :  ", maximum(Pe) )
 
-    # # Compute discretisation errors
-    err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, Txxa, Tyya, Txya = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R, eta )
+    # Compute discretisation errors
+    err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, Txxa, Tyya, Txya, Perr_f = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R, eta )
     @printf("Error in Vx : %2.2e\n", err_Vx )
     @printf("Error in Vy : %2.2e\n", err_Vy )
     @printf("Error in Txx: %2.2e\n", err_Txx)
@@ -223,12 +243,21 @@ end
     Perr = abs.(Pa.-Pe) 
     Verr = sqrt.( (Vxe.-Vxa).^2 .+ (Vye.-Vya).^2 ) 
     println("L_inf P error: ", maximum(Perr), " --- L_inf V error: ", maximum(Verr))
+    println("L_inf P error: ", maximum(Perr_f), " --- L_inf V error: ", maximum(Verr))
+
+    # Perr_fc= zeros(mesh.nel) 
+    # for e=1:mesh.nel
+    #     for i=1:mesh.nf_el
+    #         nodei = mesh.e2f[e,i]
+    #         Perr_fc[e] += 0.25*Perr_f[nodei]
+    #     end
+    # end
 
     # Visualise
     # println("Visualisation:")
     # PlotMakie(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
     # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
-    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :jet1, minimum(Pa), maximum(Pa) )
+    @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Pa), maximum(Pa) )
     # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
     # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
     # @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax, :jet1 )
