@@ -138,11 +138,7 @@ function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, Syy
         for ifac=1:mesh.nf_el
             # Face
             nodei  = mesh.e2f[iel,ifac]
-            xF     = mesh.xf[nodei]
-            yF     = mesh.yf[nodei]
             nodei  = mesh.e2f[iel,ifac]
-            bc     = mesh.bc[nodei]
-            dAi    = mesh.Γ[iel,ifac]
             ni_x   = mesh.n_x[iel,ifac]
             ni_y   = mesh.n_y[iel,ifac]
             phase1 = Int64(mesh.phase[iel])
@@ -235,7 +231,7 @@ end
 
 #--------------------------------------------------------------------#
 
-@views function main(n, mesh_type, order)
+@views function main(n, mesh_type, order, new)
 
     println("\n******** FCFV STOKES ********")
 
@@ -339,7 +335,7 @@ end
     # Assemble element matrices and RHS
     println("Compute element matrices:")
     # @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar)
-    @time Kuu, Muu, Kup, fu, fp, tsparse = ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, o2)
+    @time Kuu, Muu, Kup, fu, fp, tsparse = ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, o2, new)
 
     # Assemble triplets and sparse
     # println("Assemble triplets and sparse:")
@@ -391,6 +387,7 @@ end
 
 #################### ORDER 1
 order = 1 
+new   = 1
 
 N             = 30 .* [1; 2; 3; 4;];#  5; 6; 7; 8; 9; 10; 11; 12; 13; 14 ] #
 println(N)
@@ -401,7 +398,7 @@ eTau_quad  = zeros(size(N))
 t_quad     = zeros(size(N))
 ndof_quad  = zeros(size(N))
 for k=1:length(N)
-    t_quad[k]    = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = main( N[k], mesh_type, order )
+    t_quad[k]    = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = main( N[k], mesh_type, order, new )
     eV_quad[k]   = err_V
     eP_quad[k]   = err_P
     eTau_quad[k] = err_Tii
@@ -415,7 +412,7 @@ eTau_tri   = zeros(size(N))
 t_tri      = zeros(size(N))
 ndof_tri   = zeros(size(N))
 for k=1:length(N)
-    t_tri[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N[k], mesh_type, order )
+    t_tri[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N[k], mesh_type, order, new )
     eV_tri[k]    = err_V
     eP_tri[k]    = err_P
     eTau_tri[k]  = err_Tii
@@ -432,7 +429,7 @@ eTau_quad_o2  = zeros(size(N))
 t_quad_o2     = zeros(size(N))
 ndof_quad_o2  = zeros(size(N))
 for k=1:length(N)
-    t_quad_o2[k]    = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = main( N[k], mesh_type, order )
+    t_quad_o2[k]    = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = main( N[k], mesh_type, order, new )
     eV_quad_o2[k]   = err_V
     eP_quad_o2[k]   = err_P
     eTau_quad_o2[k] = err_Tii
@@ -446,7 +443,7 @@ eTau_tri_o2   = zeros(size(N))
 t_tri_o2      = zeros(size(N))
 ndof_tri_o2   = zeros(size(N))
 for k=1:length(N)
-    t_tri_o2[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N[k], mesh_type, order )
+    t_tri_o2[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N[k], mesh_type, order, new )
     eV_tri_o2[k]    = err_V
     eP_tri_o2[k]    = err_P
     eTau_tri_o2[k]  = err_Tii
@@ -481,32 +478,32 @@ p = Plots.annotate!(log10.(1.0 ./ N[1]), log10(order2[1]), "O2", :black)
 display(p)
 
 
-# n = 2
-# tau = 1.0
-# main(n, tau)
+# # n = 2
+# # tau = 1.0
+# # main(n, tau)
 
-# # n    = collect(1:1:16)
-# # n    = collect(17:1:20) # p2
-# # tau  = collect(4:1:25)
-# n    = collect(1:1:20)
-# tau  = collect(1:1:4)
-# resu = zeros(length(n), length(tau))
-# resp = zeros(length(n), length(tau))
+# # # n    = collect(1:1:16)
+# # # n    = collect(17:1:20) # p2
+# # # tau  = collect(4:1:25)
+# # n    = collect(1:1:20)
+# # tau  = collect(1:1:4)
+# # resu = zeros(length(n), length(tau))
+# # resp = zeros(length(n), length(tau))
 
-# for in = 1:length(n)
-#     for it = 1:length(tau)
-#         rp, ru = main(n[in], tau[it])
-#         resu[in,it] = ru
-#         resp[in,it] = rp
-#     end
-# end
+# # for in = 1:length(n)
+# #     for it = 1:length(tau)
+# #         rp, ru = main(n[in], tau[it])
+# #         resu[in,it] = ru
+# #         resp[in,it] = rp
+# #     end
+# # end
 
-# # p2 = Plots.heatmap(n, tau, resp', c=:jet1 )
-# # display(Plots.plot(p2))
+# # # p2 = Plots.heatmap(n, tau, resp', c=:jet1 )
+# # # display(Plots.plot(p2))
 
-# file = matopen(string(@__DIR__,"/results/MaxPerr_p3.mat"), "w" )
-# write(file, "n",        n )
-# write(file, "tau",    tau )
-# write(file, "resu",  resu )
-# write(file, "resp",  resp )
-# close(file)
+# # file = matopen(string(@__DIR__,"/results/MaxPerr_p3.mat"), "w" )
+# # write(file, "n",        n )
+# # write(file, "tau",    tau )
+# # write(file, "resu",  resu )
+# # write(file, "resp",  resp )
+# # close(file)
