@@ -82,8 +82,8 @@ end
     nx, ny     = n*20, n*20
     R          = 0.5
     inclusion  = 0
-    # mesh_type  = "Quadrangles"
-    mesh_type  = "UnstructTriangles"
+    mesh_type  = "Quadrangles"
+    # mesh_type  = "UnstructTriangles"
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
@@ -206,6 +206,13 @@ end
     ϵ_PT    = 1e-7
     println(minimum(mesh.Γ))
     println(maximum(mesh.Γ))
+    println(minimum(mesh.Ω))
+    println(maximum(mesh.Ω))
+    println("Δτ = ", Δτ)
+    Ωe = maximum(mesh.Ω)
+    Δx = minimum(mesh.Γ)
+    D  = 1.0
+    println("Δτ1 = ", Δx^2/(1.1*D) * 1.0/Ωe *2/3)
 
     # PT loop
     local iter = 0
@@ -275,7 +282,15 @@ end
 
 #########################################################
 
-main( 1.25, 0.090, 0.145 )
+# quads
+# main( 1, 0.19, 0.88 )
+# main( 2, 0.11, 0.93 )
+# main( 4, 0.057, 0.965 )
+# main( 8, 0.029, 0.125*7.25 )
+# main( 16, 0.014125, 0.125*7.25*1.0 ) #--> 1900
+
+# triangles
+# main( 1.25, 0.095, 0.145 )
 # main( 3, 0.04, 0.21 )
 # main( 1.5, 0.082, 0.1575 )
 # main( 6, 0.02, 0.24 )

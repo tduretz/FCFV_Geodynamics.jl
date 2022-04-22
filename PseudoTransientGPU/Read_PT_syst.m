@@ -68,7 +68,7 @@ dt(3) = 0.22;
 % t(3) = 0.06;
 
 %%%%%%%%%%%%%%%%
-n1  = 0.02:0.01:10;
+n1  = 0.02:0.01:20;
 L   = 1;
 dA  = L./(20*n)/1.5;
 
@@ -79,6 +79,13 @@ Om1 = 1/2*dA1.^2;
 
 D = 1;
 dt1  = dA1.^2/(2*D)/2 .* 3./Om1.^(1);
+
+
+% quads
+nq = [1, 2, 4, 8];
+tq = [0.19, 0.11, 0.057, 0.029];
+
+% quads
 
 figure(2), clf
 subplot(131), hold on
@@ -105,8 +112,10 @@ p = polyfit(log10(n), log10(t), 1);
 % plot( log10(n), p(2) + log10(n).*p(1))
 % plot(log10(n), log10(t), 'o')
 plot(n, t, 'o')
+plot(nq, tq, 'x')
 ncx = 20*n1;
+plot(n1, 7.10*2 * L./pi./ncx, '-k')
 plot(n1, 7.4074 * L./pi./ncx)
 % plot( (n1), exp(p(2)*2.3) .* (n1).^p(1))
-axis([0 10 .01 .3])
+axis([0 20 .01 .3])
 title('theta'), xlabel('ncx')
