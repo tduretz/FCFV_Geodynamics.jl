@@ -200,7 +200,7 @@ function ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDi
     Kup = zeros(mesh.nel, 2*mesh.nf_el);
     fp  = zeros(mesh.nel)
 
-    @tturbo for iel=1:mesh.nel 
+    for iel=1:mesh.nel 
 
         for ifac=1:mesh.nf_el 
 
