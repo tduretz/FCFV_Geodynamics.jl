@@ -17,7 +17,7 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, M, solver)
         Pe     = Pe .- Statistics.mean(Pe)
     elseif solver==1
         # Decoupled solve
-        coef  = 1e4.*mesh.ke./mesh.vole#*ones(mesh.nel)
+        coef  = 1e4.*mesh.ke./mesh.Ω#*ones(mesh.nel)
         # file = matopen(string(@__DIR__,"/results/matrix_ppi.mat"), "w" )
         # write(file, "coef",    coef )
         # close(file)

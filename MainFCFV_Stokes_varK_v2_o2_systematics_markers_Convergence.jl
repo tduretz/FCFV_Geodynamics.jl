@@ -142,7 +142,7 @@ function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, Syy
             yF     = mesh.yf[nodei]
             nodei  = mesh.e2f[iel,ifac]
             bc     = mesh.bc[nodei]
-            dAi    = mesh.dA[iel,ifac]
+            dAi    = mesh.Γ[iel,ifac]
             ni_x   = mesh.n_x[iel,ifac]
             ni_y   = mesh.n_y[iel,ifac]
             phase1 = Int64(mesh.phase[iel])
@@ -226,11 +226,11 @@ end
 
 #--------------------------------------------------------------------#
     
-function StabParam(tau, dA, Vol, mesh_type, coeff)
-    # if mesh_type=="Quadrangles";        taui = coeff*tau  end
-    if mesh_type=="Quadrangles";        taui = coeff*tau/dA  end
-    if mesh_type=="UnstructTriangles";  taui = coeff*tau*dA  end
-    return taui
+function StabParam(τr, dA, Vol, mesh_type, coeff)
+    # if mesh_type=="Quadrangles";        taui = coeff*τ  end
+    if mesh_type=="Quadrangles";        τi = coeff*τr/dA  end
+    if mesh_type=="UnstructTriangles";  τi = coeff*τr*dA  end
+    return τi
 end
 
 #--------------------------------------------------------------------#
@@ -244,7 +244,7 @@ end
     ymin, ymax = -3.0, 3.0
     # n          = 1
     nx, ny     = n, n
-    solver     = 1
+    solver     = 0
     R          = 1.0
     inclusion  = 1
     eta        = [1.0 100.0]
@@ -259,18 +259,18 @@ end
         # tau  = 1.0
         # if o2==0 tau  = 5e0 end
         # if o2==1 tau  = 1e1 end
-        if o2==0 tau  = 6e-2 end
-        if o2==1 tau  = 6e-2 end    
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
+        if o2==0 τr  = 6e-2 end
+        if o2==1 τr  = 6e-2 end    
+        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles"  
-        if o2==0 tau  = 1.0 end
-        if o2==1 tau  = 1e4 end  
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
+        if o2==0 τr  = 1.0 end
+        if o2==1 τr  = 1e4 end  
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC )
         # area = 1.0 # area factor: SETTING REPRODUCE THE RESULTS OF MATLAB CODE USING TRIANGLE
         # ninc = 29  # number of points that mesh the inclusion: SETTING REPRODUCE THE RESULTS OF MATLAB CODE USING TRIANGLE
         # mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC, area, ninc ) 
     end
-    println("Number of elements: ", mesh.nel, " --- Number of dofs: ", 2*mesh.nf+mesh.nel, " --- tau0 =  ", tau)
+    println("Number of elements: ", mesh.nel, " --- Number of dofs: ", 2*mesh.nf+mesh.nel, " --- τr =  ", τr)
 
     # Initialise markers
     ncx, ncy  = nx, ny
@@ -333,28 +333,28 @@ end
 
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
-    # @time ae, be, ze = ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, tau)
-    @time ae, be, be_o2, ze, pe, mei, pe, rjx, rjy = ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, tau, o2)
+    # @time ae, be, ze = ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu)
+    @time ae, be, be_o2, ze, pe, mei, pe, rjx, rjy = ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, o2)
 
     # Assemble element matrices and RHS
     println("Compute element matrices:")
-    # @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau)
-    @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau, o2)
+    # @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar)
+    @time Kuu, Muu, Kup, fu, fp, tsparse = ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, o2)
 
     # Assemble triplets and sparse
-    println("Assemble triplets and sparse:")
-    @time Kuu, fu, Kup = CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
+    # println("Assemble triplets and sparse:")
+    # @time Kuu, fu, Kup = CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
     # display(UnicodePlots.spy(Kuu))
     # display(UnicodePlots.spy(Kup))
 
     # Solve for hybrid variable
     println("Linear solve:")
-    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
+    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, Muu, solver)
 
     # # Reconstruct element values
     println("Compute element values:")
-    # @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
-    @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy, mei, VxDir, VyDir, tau, o2)
+    # @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir)
+    @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy, mei, VxDir, VyDir, o2)
 
     # # Compute discretisation errors
     err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii, Txxa, Tyya, Txya = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R, eta )
@@ -392,7 +392,7 @@ end
 #################### ORDER 1
 order = 1 
 
-N             = 30 .* [1; 2; 3; 4;  5; 6; 7; 8; 9; 10; 11; 12; 13; 14 ] #
+N             = 30 .* [1; 2; 3; 4;];#  5; 6; 7; 8; 9; 10; 11; 12; 13; 14 ] #
 println(N)
 mesh_type  = "Quadrangles"
 eV_quad    = zeros(size(N))

@@ -1,4 +1,4 @@
-function ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, tau, o2)
+function ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, o2)
     nen   = 3
     ae    = zeros(mesh.nel)
     be    = zeros(mesh.nel,2)
@@ -14,19 +14,19 @@ function ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, Sy
     rjy   = zeros(mesh.nel,mesh.nf_el,nen)
 
     # Assemble FCFV elements
-    @tturbo for iel=1:mesh.nel  
+    @inbounds for iel=1:mesh.nel  
 
-        be[iel,1] += mesh.vole[iel]*sex[iel]
-        be[iel,2] += mesh.vole[iel]*sey[iel]
+        be[iel,1] += mesh.Ω[iel]*sex[iel]
+        be[iel,2] += mesh.Ω[iel]*sey[iel]
         
         for ifac=1:mesh.nf_el
             
             nodei = mesh.e2f[iel,ifac]
             bc    = mesh.bc[nodei]
-            dAi   = mesh.dA[iel,ifac]
+            dAi   = mesh.Γ[iel,ifac]
             ni_x  = mesh.n_x[iel,ifac]
             ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau,dAi,mesh.vole[iel],mesh.type,mesh.ke[iel])                              # Stabilisation parameter for the face
+            taui  = mesh.τ[nodei]                              # Stabilisation parameter for the face
 
             N[iel,ifac,1] = 1.0
             N[iel,ifac,2] = mesh.xf[nodei] - mesh.xc[iel]
@@ -50,13 +50,13 @@ function ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, Sy
     
     if o2==1 # The remaining of this function is only done if second order FCFV is used
         # me matrix
-        @tturbo for iel=1:mesh.nel 
+        @inbounds for iel=1:mesh.nel 
             for ifac=1:mesh.nf_el
 
                 nodei = mesh.e2f[iel,ifac]
                 bc    = mesh.bc[nodei]
-                dAi   = mesh.dA[iel,ifac] 
-                taui  = StabParam(tau,dAi,mesh.vole[iel],mesh.type,mesh.ke[iel]) 
+                dAi   = mesh.Γ[iel,ifac] 
+                taui  = mesh.τ[nodei]   
 
                 for in=1:nen
                     djx[iel,ifac,in] =  dAi * N[iel,ifac,in] * VxDir[nodei]
@@ -74,7 +74,7 @@ function ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, Sy
         cf11 =  1.0; cf12 =-1.0; cf13 =  1.0;
         cf21 = -1.0; cf22 = 1.0; cf23 = -1.0;
         cf31 =  1.0; cf32 =-1.0; cf33 =  1.0;
-        @tturbo for iel=1:mesh.nel 
+        @inbounds for iel=1:mesh.nel 
             for ifac=1:mesh.nf_el
                 Mm11 = me[iel,2,2] * me[iel,3,3] - me[iel,2,3] * me[iel,3,2]
                 Mm12 = me[iel,2,1] * me[iel,3,3] - me[iel,2,3] * me[iel,3,1]
@@ -96,17 +96,17 @@ function ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, Sy
         end
 
         # Assembly of b vector
-        @tturbo for iel=1:mesh.nel
+        @inbounds for iel=1:mesh.nel
 
-            be_o2[iel,1,1] = mesh.vole[iel]*sex[iel]
-            be_o2[iel,2,1] = mesh.vole[iel]*sey[iel]
+            be_o2[iel,1,1] = mesh.Ω[iel]*sex[iel]
+            be_o2[iel,2,1] = mesh.Ω[iel]*sey[iel]
 
             for ifac=1:mesh.nf_el
                     
                 nodei = mesh.e2f[iel,ifac]
                 bc    = mesh.bc[nodei]
-                dAi   = mesh.dA[iel,ifac]
-                taui  = StabParam(tau,dAi,mesh.vole[iel],mesh.type,mesh.ke[iel])                              # Stabilisation parameter for the face
+                dAi   = mesh.Γ[iel,ifac]
+                taui  = mesh.τ[nodei]                              # Stabilisation parameter for the face
                 
                 for in=1:nen
                     be_o2[iel,1,in] += (bc==1) * taui * djx[iel,ifac,in]
@@ -122,7 +122,7 @@ end
 
 #--------------------------------------------------------------------#
 
-function ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy, mei, VxDir, VyDir, tau, o2)
+function ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy, mei, VxDir, VyDir, o2)
     nen         = 3
     Vxe         = zeros(mesh.nel);
     Vye         = zeros(mesh.nel);
@@ -134,7 +134,7 @@ function ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy
     Tyye        = zeros(mesh.nel);
     Txye        = zeros(mesh.nel);
 
-    @tturbo for iel=1:mesh.nel
+    @inbounds for iel=1:mesh.nel
     
         Vxe[iel]    =  be[iel,1]/ae[iel]
         Vye[iel]    =  be[iel,2]/ae[iel]
@@ -142,19 +142,19 @@ function ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy
             Vxe1[iel,in]  =  be_o2[iel,1,in]
             Vye1[iel,in]  =  be_o2[iel,2,in]
         end
-        Txxe[iel]   =  mesh.ke[iel]/mesh.vole[iel]*ze[iel,1,1]
-        Tyye[iel]   =  mesh.ke[iel]/mesh.vole[iel]*ze[iel,2,2] 
-        Txye[iel]   =  mesh.ke[iel]/mesh.vole[iel]*0.5*(ze[iel,1,2]+ze[iel,2,1])
+        Txxe[iel]   =  mesh.ke[iel]/mesh.Ω[iel]*ze[iel,1,1]
+        Tyye[iel]   =  mesh.ke[iel]/mesh.Ω[iel]*ze[iel,2,2] 
+        Txye[iel]   =  mesh.ke[iel]/mesh.Ω[iel]*0.5*(ze[iel,1,2]+ze[iel,2,1])
         
         for ifac=1:mesh.nf_el
             
             # Face
             nodei = mesh.e2f[iel,ifac]
             bc    = mesh.bc[nodei]
-            dAi   = mesh.dA[iel,ifac]
+            dAi   = mesh.Γ[iel,ifac]
             ni_x  = mesh.n_x[iel,ifac]
             ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau,dAi,mesh.vole[iel],mesh.type,mesh.ke[iel])      # Stabilisation parameter for the face
+            taui  = mesh.τ[nodei]  
 
             # First order
             Vxe[iel]  += (bc!=1) *  dAi*taui*Vxh[nodei]/ae[iel]
@@ -167,9 +167,9 @@ function ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy
             end
 
             # Assemble
-            Txxe[iel] += (bc!=1) *  mesh.ke[iel]/mesh.vole[iel]*dAi*ni_x*Vxh[nodei]
-            Tyye[iel] += (bc!=1) *  mesh.ke[iel]/mesh.vole[iel]*dAi*ni_y*Vyh[nodei]
-            Txye[iel] += (bc!=1) *  mesh.ke[iel]*0.5*( 1.0/mesh.vole[iel]*dAi*( ni_x*Vyh[nodei] + ni_y*Vxh[nodei] ) )
+            Txxe[iel] += (bc!=1) *  mesh.ke[iel]/mesh.Ω[iel]*dAi*ni_x*Vxh[nodei]
+            Tyye[iel] += (bc!=1) *  mesh.ke[iel]/mesh.Ω[iel]*dAi*ni_y*Vyh[nodei]
+            Txye[iel] += (bc!=1) *  mesh.ke[iel]*0.5*( 1.0/mesh.Ω[iel]*dAi*( ni_x*Vyh[nodei] + ni_y*Vxh[nodei] ) )
         end
         Txxe[iel] *= 2.0
         Tyye[iel] *= 2.0
@@ -192,33 +192,37 @@ end
 
 #--------------------------------------------------------------------#
 
-function ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau, o2)
+function ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, o2)
     # Assemble element matrices and rhs
-    f   = zeros(mesh.nf)
-    Kuu = zeros(mesh.nel, 2*mesh.nf_el, 2*mesh.nf_el)
-    fu  = zeros(mesh.nel, 2*mesh.nf_el)
-    Kup = zeros(mesh.nel, 2*mesh.nf_el);
-    fp  = zeros(mesh.nel)
+    Kuuv = zeros(mesh.nel, 2*mesh.nf_el, 2*mesh.nf_el)
+    Muuv = zeros(mesh.nel, 2*mesh.nf_el, 2*mesh.nf_el)
+    Kuui = zeros(mesh.nel, 2*mesh.nf_el, 2*mesh.nf_el)
+    Kuuj = zeros(mesh.nel, 2*mesh.nf_el, 2*mesh.nf_el)
+    fu   = zeros(mesh.nel, 2*mesh.nf_el)
+    Kupi = zeros(mesh.nel, 2*mesh.nf_el)
+    Kupj = zeros(mesh.nel, 2*mesh.nf_el)
+    Kupv = zeros(mesh.nel, 2*mesh.nf_el)
+    fp   = zeros(mesh.nel)
 
-    @tturbo for iel=1:mesh.nel 
+    @inbounds for iel=1:mesh.nel 
 
         for ifac=1:mesh.nf_el 
 
             nodei = mesh.e2f[iel,ifac]
             bci   = mesh.bc[nodei]
-            dAi   = mesh.dA[iel,ifac]
+            dAi   = mesh.Γ[iel,ifac]
             ni_x  = mesh.n_x[iel,ifac]
             ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau,dAi,mesh.vole[iel], mesh.type,mesh.ke[iel])  
+            taui  = mesh.τ[nodei]   
                 
             for jfac=1:mesh.nf_el
 
                 nodej = mesh.e2f[iel,jfac]
                 bcj   = mesh.bc[nodej]   
-                dAj   = mesh.dA[iel,jfac]
+                dAj   = mesh.Γ[iel,jfac]
                 nj_x  = mesh.n_x[iel,jfac]
                 nj_y  = mesh.n_y[iel,jfac]
-                tauj  = StabParam(tau,dAj,mesh.vole[iel], mesh.type,mesh.ke[iel])  
+                tauj  = mesh.τ[nodej]   
                         
                 # Delta
                 del = 0.0 + (ifac==jfac)*1.0
@@ -240,13 +244,18 @@ function ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDi
                 ry      = (pe[iel,ifac,1] * meidy1 + pe[iel,ifac,2] * meidy2 + pe[iel,ifac,3] * meidy3)
                 resy    = (o2==0) * res + (o2==1) * ry
 
-                Kexij =-dAi * (resx * taui*tauj - mesh.ke[iel]/mesh.vole[iel]*dAj*nitnj - taui*del)
-                Keyij =-dAi * (resy * taui*tauj - mesh.ke[iel]/mesh.vole[iel]*dAj*nitnj - taui*del)
+                Kexij =-dAi * (resx * taui*tauj - mesh.ke[iel]/mesh.Ω[iel]*dAj*nitnj - taui*del)
+                Keyij =-dAi * (resy * taui*tauj - mesh.ke[iel]/mesh.Ω[iel]*dAj*nitnj - taui*del)
                 yes   = (bci!=1) & (bcj!=1)
-                Kuu[iel,ifac,           jfac           ] = yes * Kexij
-                Kuu[iel,ifac+mesh.nf_el,jfac+mesh.nf_el] = yes * Keyij
-                # Kuu[iel,ifac,           jfac           ] = (bci!=1) * (bcj!=1) * Ke_ij
-                # Kuu[iel,ifac+mesh.nf_el,jfac+mesh.nf_el] = (bci!=1) * (bcj!=1) * Ke_ij
+                Kuuv[iel,ifac,           jfac           ] = yes * Kexij
+                Kuuv[iel,ifac+mesh.nf_el,jfac+mesh.nf_el] = yes * Keyij
+                Muuv[iel,ifac,           jfac           ] = yes * Kexij
+                Muuv[iel,ifac+mesh.nf_el,jfac+mesh.nf_el] = yes * Keyij
+                # Connectivity
+                Kuui[iel,ifac,           jfac           ]  = nodei;         Kuui[iel,ifac,           jfac+mesh.nf_el]  = nodei
+                Kuuj[iel,ifac,           jfac           ]  = nodej;         Kuuj[iel,ifac,           jfac+mesh.nf_el]  = nodej+mesh.nf
+                Kuui[iel,ifac+mesh.nf_el,jfac           ]  = nodei+mesh.nf; Kuui[iel,ifac+mesh.nf_el,jfac+mesh.nf_el]  = nodei+mesh.nf
+                Kuuj[iel,ifac+mesh.nf_el,jfac           ]  = nodej;         Kuuj[iel,ifac+mesh.nf_el,jfac+mesh.nf_el]  = nodej+mesh.nf
             end
             # RHS
             Xi      = 0.0 + (bci==2)*1.0
@@ -272,23 +281,50 @@ function ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDi
             ay2    = (pe[iel,ifac,1] * meidy1 + pe[iel,ifac,2] * meidy2 + pe[iel,ifac,3] * meidy3)
             ay     = (o2==0) * ay1 + (o2==1) * ay2
             #-----------------------------
-            feix    = (bci!=1) * -dAi * (mesh.ke[iel]/mesh.vole[iel]*nitze_x - tix*Xi - gbar[iel,ifac,1]*Ji - ax*taui)
-            feiy    = (bci!=1) * -dAi * (mesh.ke[iel]/mesh.vole[iel]*nitze_y - tiy*Xi - gbar[iel,ifac,2]*Ji - ay*taui)
+            feix    = (bci!=1) * -dAi * (mesh.ke[iel]/mesh.Ω[iel]*nitze_x - tix*Xi - gbar[iel,ifac,1]*Ji - ax*taui)
+            feiy    = (bci!=1) * -dAi * (mesh.ke[iel]/mesh.Ω[iel]*nitze_y - tiy*Xi - gbar[iel,ifac,2]*Ji - ay*taui)
             # up block
-            Kup[iel,ifac]                            -= (bci!=1) * dAi*ni_x;
-            Kup[iel,ifac+mesh.nf_el]                 -= (bci!=1) * dAi*ni_y;
+            Kupv[iel, ifac]            -= (bci!=1) * dAi*ni_x;
+            Kupv[iel, ifac+mesh.nf_el] -= (bci!=1) * dAi*ni_y;
+            Kupi[iel, ifac]             = nodei
+            Kupj[iel, ifac]             = iel
+            Kupi[iel, ifac+mesh.nf_el]  = nodei + mesh.nf
+            Kupj[iel, ifac+mesh.nf_el]  = iel
             # Dirichlet nodes - uu block
-            Kuu[iel,ifac,ifac]                       += (bci==1) * 1e0
-            Kuu[iel,ifac+mesh.nf_el,ifac+mesh.nf_el] += (bci==1) * 1e0
-            fu[iel,ifac]                             += (bci!=1) * feix + (bci==1) * VxDir[nodei] * 1e0
-            fu[iel,ifac+mesh.nf_el]                  += (bci!=1) * feiy + (bci==1) * VyDir[nodei] * 1e0
+            Kuuv[iel,ifac,ifac]                       += (bci==1) * 1e0
+            Kuuv[iel,ifac+mesh.nf_el,ifac+mesh.nf_el] += (bci==1) * 1e0
+            Muuv[iel,ifac,ifac]                       += (bci==1) * 1e0
+            Muuv[iel,ifac+mesh.nf_el,ifac+mesh.nf_el] += (bci==1) * 1e0
+            fu[iel,ifac]                              += (bci!=1) * feix + (bci==1) * VxDir[nodei] * 1e0
+            fu[iel,ifac+mesh.nf_el]                   += (bci!=1) * feiy + (bci==1) * VyDir[nodei] * 1e0
             # Dirichlet nodes - pressure RHS
             # fp[iel]                                  = dAi#*ni_x# + VyDir[nodei]*ni_y)
 
             fp[iel]                                  = (bci==1) * -dAi*(VxDir[nodei]*ni_x + VyDir[nodei]*ni_y)# * -1.0# #(bci==1) * -dAi*(VxDir[nodei]*ni_x + VyDir[nodei]*ni_y)
         end
     end
-    return Kuu, fu, Kup, fp
+    # Call sparse assembly
+    tsparse = @elapsed Kuu, Muu, Kup, fu = Sparsify( Kuui, Kuuj, Kuuv, Muuv, Kupi, Kupj, Kupv, fu, mesh.nf, mesh.nel)
+
+    return Kuu, Muu, Kup, fu, fp, tsparse
+end
+
+#--------------------------------------------------------------------#
+
+function Sparsify( Kuui, Kuuj, Kuuv, Muuv, Kupi, Kupj, Kupv, fuv, nf, nel)
+
+    _one = ones(size(Kupi[:]))
+    Kuu  =       dropzeros(sparse(Kuui[:], Kuuj[:], Kuuv[:], nf*2, nf*2))
+    Muu  =       dropzeros(sparse(Kuui[:], Kuuj[:], Muuv[:], nf*2, nf*2))
+    Kup  =       dropzeros(sparse(Kupi[:], Kupj[:], Kupv[:], nf*2, nel ))
+    fu   = Array(dropzeros(sparse(Kupi[:],    _one,  fuv[:], nf*2,   1 )))
+
+    # file = matopen(string(@__DIR__,"/results/matrix_K.mat"), "w" )
+    # write(file, "Kuu",    Kuu )
+    # write(file, "Kup",    Kup )
+    # close(file)
+
+    return Kuu, Muu, Kup, fu
 end
 
 #--------------------------------------------------------------------#
