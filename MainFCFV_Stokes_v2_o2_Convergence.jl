@@ -127,6 +127,7 @@ end
     R          = 0.5
     inclusion  = 0
     o2         = order-1
+    new        = 0
     # mesh_type  = "Quadrangles"
     # mesh_type  = "UnstructTriangles"
   
@@ -134,11 +135,11 @@ end
     if mesh_type=="Quadrangles" 
         if o2==0 tau  = 2e1 end
         if o2==1 tau  = 1e6 end
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R )
+        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, tau, inclusion, R )
     elseif mesh_type=="UnstructTriangles"  
         if o2==0 tau  = 2e1 end
         if o2==1 tau  = 20e4 end
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R ) 
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, tau, inclusion, R ) 
     end
     println("Number of elements: ", mesh.nel)
 
@@ -163,24 +164,19 @@ end
 
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
-    @time ae, be, be_o2, ze, pe, mei, pe, rjx, rjy = ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, tau, o2)
+    @time ae, be, be_o2, ze, pe, mei, pe, rjx, rjy = ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, o2)
 
     # Assemble element matrices and RHS
     println("Compute element matrices:")
-    @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau, o2)
-    # @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau )
-
-    # Assemble triplets and sparse
-    println("Assemble triplets and sparse:")
-    @time Kuu, fu, Kup = CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
+    @time Kuu, Muu, Kup, fu, fp, tsparse = ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, o2, new)
 
     # Solve for hybrid variable
     println("Linear solve:")
-    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
+    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, Muu, solver)
 
     # Reconstruct element values
     println("Compute element values:")
-    @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy, mei, VxDir, VyDir, tau, o2)
+    @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy, mei, VxDir, VyDir, o2)
 
     # # Compute discretisation errors
     err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )

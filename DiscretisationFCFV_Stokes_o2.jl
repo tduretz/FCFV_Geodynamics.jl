@@ -236,7 +236,8 @@ function ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDi
             ni_x, ni_y = mesh.n_x[e,i], mesh.n_y[e,i]
             nodei = mesh.e2f[e,i]
             bci   = mesh.bc[nodei]
-            ȷ     = 0.0 + (bci==3)*1.0 # indicates interface
+            ȷ     = 0.0 + (bci==3)*1.0 + (bci==0)*1.0 # indicates interface
+            # println(ȷ, ' ', new)
             Γi    = mesh.Γ[e,i]
             τi    = mesh.τ[nodei]  
 

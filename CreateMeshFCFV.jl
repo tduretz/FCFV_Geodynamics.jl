@@ -358,7 +358,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC=[2;
                     tf[nodes[i,j]] = BC[3]
                 end
                 if ( i==1 ) # SOUTH
-                    tf[nodes[i,j]] = BC[1] # set Neumann at the South
+                    tf[nodes[i,j]] = BC[1] 
                 end
             end
         end
