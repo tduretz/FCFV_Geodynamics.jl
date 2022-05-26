@@ -1,4 +1,4 @@
-import TriangleMesh, UnicodePlots, Plots
+import UnicodePlots, Plots
 using Revise, Printf, LoopVectorization, LinearAlgebra, SparseArrays
 
 include("CreateMeshFCFV.jl")
@@ -6,7 +6,7 @@ include("VisuFCFV.jl")
 include("DiscretisationFCFV_Stokes.jl")
 include("DiscretisationFCFV_Stokes_o2.jl")
 include("SolversFCFV_Stokes.jl")
-include("SolKz_JustRelax.jl")
+include("SolKz.jl")
 
 #--------------------------------------------------------------------#
     
@@ -26,7 +26,6 @@ function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, Syy
         x         = mesh.xf[in]
         y         = mesh.yf[in]
         vx, vy, p, ρ, η = _solkz_solution(x, y)
-        eta       = η
         VxDir[in] = vx
         VyDir[in] = vy
         # Stress at faces using pseudo-tractions
@@ -34,18 +33,17 @@ function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, Syy
         dVxdy = 0.0
         dVydx = 0.0
         dVydy = 0.0
-        SxxNeu[in] = - p + eta*dVxdx 
-        SyyNeu[in] = - p + eta*dVydy 
-        SxyNeu[in] =       eta*dVxdy
-        SyxNeu[in] =       eta*dVydx
+        SxxNeu[in] = - p + η*dVxdx 
+        SyyNeu[in] = - p + η*dVydy 
+        SxyNeu[in] =       η*dVxdy
+        SyxNeu[in] =       η*dVydx
     end
     # Evaluate T analytic on barycentres
     for iel=1:mesh.nel
         x        = mesh.xc[iel]
         y        = mesh.yc[iel]
         vx, vy, p, ρ, η = _solkz_solution(x, y)
-        eta      = η
-        mesh.ke[iel] = eta/2.0
+        mesh.ke[iel] = η
         P[iel]   =  p
         Vx[iel]  =  vx
         Vy[iel]  =  vy
@@ -113,34 +111,35 @@ end
 
 #--------------------------------------------------------------------#
 
-@views function main( N, mesh_type, order, new )
+@views function main( N, mesh_type, o2, new, τr )
 
     println("\n******** FCFV STOKES ********")
 
     # Create sides of mesh
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    n          = 4
     nx, ny     = N, N
     solver     = 0
     R          = 0.5
     inclusion  = 0
     BC         = [1; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
-    o2         = order-1
     # mesh_type  = "Quadrangles"
     # mesh_type  = "UnstructTriangles"
-  
+    
     # Generate mesh
     if mesh_type=="Quadrangles" 
-        if o2==0 tau  = 2e1 end
-        if o2==1 tau  = 1e6 end
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, tau, inclusion, R, BC )
+        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles"  
-        if o2==0 tau  = 2e1 end
-        if o2==1 tau  = 20e4 end
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, tau, inclusion, R, BC ) 
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC ) 
     end
     println("Number of elements: ", mesh.nel)
+
+    # Set jump condition for variable viscosity
+    if new==1
+        for i=1:length(mesh.bc)
+            if (mesh.bc[i]==0) mesh.bc[i] = 3 end
+        end
+    end
 
     # Source term and BCs etc...
     Pa     = zeros(mesh.nel)
@@ -200,31 +199,110 @@ end
     return ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii
 end
 
+##################################################################
+
 function Run()
-    order      = 1 
     new        = 0
-    N          = 64
-    mesh_type  = "UnstructTriangles"
-    # mesh_type  = "Quadrangles"
-    @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N, mesh_type, order, new )
+    order      = 1
+    o2         = order-1
+    N          = 128
+    # mesh_type  = "UnstructTriangles"
+    mesh_type  = "Quadrangles"
+    # Generate mesh
+    if mesh_type=="Quadrangles" 
+        if o2==0 τr  = 3e3 end
+        if o2==1 τr  = 1e9 end
+    elseif mesh_type=="UnstructTriangles"  
+        if o2==0 τr  = 2e1 end
+        if o2==1 τr  = 1e9 end
+    end
+    @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N, mesh_type, o2, new, τr )
 end
 
+##################################################################
 
+function RunStab()
+    new        = 0
+    order      = 2
+    o2         = order-1
+    N          = 64
 
-function RunConvergence()
+    logτ       = 0:1:13
+    # logτ       = [0, 0.5]
+    τ          = 10.0.^(logτ)
+    eV         = zeros(2,2,length(τ)) 
+    eP         = zeros(2,2,length(τ))
+    ndof       = zeros(2,2,length(τ))   
+    for i=1:length(τ)
+        #######################################
+        mesh_type  = "Quadrangles"
+        order      = 1
+        o2         = order-1
+        @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N, mesh_type, o2, new, τ[i] )
+        eV[1,1,i] = err_V
+        eP[1,1,i] = err_P
+        #######################################
+        mesh_type  = "Quadrangles"
+        order      = 2
+        o2         = order-1
+        @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N, mesh_type, o2, new, τ[i] )
+        eV[1,2,i] = err_V
+        eP[1,2,i] = err_P
+        #######################################
+        mesh_type  = "UnstructTriangles"
+        order      = 1
+        o2         = order-1
+        @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N, mesh_type, o2, new, τ[i] )
+        eV[2,1,i] = err_V
+        eP[2,1,i] = err_P
+        #######################################
+        mesh_type  = "UnstructTriangles"
+        order      = 2
+        o2         = order-1
+        @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N, mesh_type, o2, new, τ[i] )
+        eV[2,2,i] = err_V
+        eP[2,2,i] = err_P
+    end
+    p1 = Plots.plot(   logτ , log10.(eV[1,1,:]),   markershape=:rect,      color=:blue,  label="Quads V O1"     )
+    p1 = Plots.plot!(  logτ , log10.(eV[1,2,:]),   markershape=:rect,      color=:red,   label="Quads V O2"     )
+    p1 = Plots.plot!(  logτ , log10.(eV[2,1,:]),   markershape=:dtriangle, color=:blue,  label="Triangles V O1" )
+    p1 = Plots.plot!(  logτ , log10.(eV[2,2,:]),   markershape=:dtriangle, color=:red,   label="Triangles V O2", xlabel="log10(τ)", ylabel="L1 E(V)" )
+    
+    p2 = Plots.plot(   logτ , log10.(eP[1,1,:]),   markershape=:rect,      color=:blue,  label="Quads P O1"     )
+    p2 = Plots.plot!(  logτ , log10.(eP[1,2,:]),   markershape=:rect,      color=:red,   label="Quads P O2"     )
+    p2 = Plots.plot!(  logτ , log10.(eP[2,1,:]),   markershape=:dtriangle, color=:blue,  label="Triangles P O1" )
+    p2 = Plots.plot!(  logτ , log10.(eP[2,2,:]),   markershape=:dtriangle, color=:red,   label="Triangles P O2", xlabel="log10(τ)", ylabel="L1 E(P)" )
+    display(Plots.plot(p1,p2))
+end
 
+##################################################################
+
+function RunConvergence(mesh_type)
+
+    new = 0
     #################### ORDER 1
-    order = 1 
+    order      = 1 
+    o2         = order-1
 
-    N             = [8, 16, 32, 64, 128]#, 256], 512, 1024]
+    # Generate mesh
+    if mesh_type=="Quadrangles" 
+        if o2==0 τr  = 3e3 end
+        if o2==1 τr  = 1e9 end
+    elseif mesh_type=="UnstructTriangles"  
+        if o2==0 τr  = 2e1 end
+        if o2==1 τr  = 1e9 end
+    end
+
+    N          = [8, 16, 32, 64, 128]#, 256], 512, 1024]
     mesh_type  = "Quadrangles"
+
     eV_quad    = zeros(size(N))
     eP_quad    = zeros(size(N))
     eTau_quad  = zeros(size(N))
     t_quad     = zeros(size(N))
     ndof_quad  = zeros(size(N))
     for k=1:length(N)
-        t_quad[k]    = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = main( N[k], mesh_type, order )
+        t_quad[k]    = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = main( N[k], mesh_type, o2, new, τr )
         eV_quad[k]   = err_V
         eP_quad[k]   = err_P
         eTau_quad[k] = err_Tii
@@ -238,7 +316,7 @@ function RunConvergence()
     t_tri      = zeros(size(N))
     ndof_tri   = zeros(size(N))
     for k=1:length(N)
-        t_tri[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N[k], mesh_type, order )
+        t_tri[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N[k], mesh_type, o2, new, τr )
         eV_tri[k]    = err_V
         eP_tri[k]    = err_P
         eTau_tri[k]  = err_Tii
@@ -246,7 +324,17 @@ function RunConvergence()
     end
 
     #################### ORDER 2
-    order = 2 
+    order         = 2 
+    o2            = order-1
+
+    # Generate mesh
+    if mesh_type=="Quadrangles" 
+        if o2==0 tau  = 3e3 end
+        if o2==1 tau  = 1e9 end
+    elseif mesh_type=="UnstructTriangles"  
+        if o2==0 tau  = 2e1 end
+        if o2==1 tau  = 1e9 end
+    end
 
     mesh_type     = "Quadrangles"
     eV_quad_o2    = zeros(size(N))
@@ -255,7 +343,7 @@ function RunConvergence()
     t_quad_o2     = zeros(size(N))
     ndof_quad_o2  = zeros(size(N))
     for k=1:length(N)
-        t_quad_o2[k]    = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = main( N[k], mesh_type, order )
+        t_quad_o2[k]    = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = main( N[k], mesh_type, o2, new, τr )
         eV_quad_o2[k]   = err_V
         eP_quad_o2[k]   = err_P
         eTau_quad_o2[k] = err_Tii
@@ -269,7 +357,7 @@ function RunConvergence()
     t_tri_o2      = zeros(size(N))
     ndof_tri_o2   = zeros(size(N))
     for k=1:length(N)
-        t_tri_o2[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N[k], mesh_type, order )
+        t_tri_o2[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N[k], mesh_type, o2, new, τr )
         eV_tri_o2[k]    = err_V
         eP_tri_o2[k]    = err_P
         eTau_tri_o2[k]  = err_Tii
@@ -305,5 +393,6 @@ function RunConvergence()
 
 end 
 
-Run()
-# RunConvergence()
+#Run()
+RunConvergence("Quadrangles" )
+# RunStab()

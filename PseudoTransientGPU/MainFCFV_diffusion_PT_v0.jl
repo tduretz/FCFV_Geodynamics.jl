@@ -72,17 +72,17 @@ end
 
 #--------------------------------------------------------------------#
     
-@views function main( n, θ, Δτ )
+@views function main( mesh_type, n, θ, Δτ )
 
     println("\n******** FCFV POISSON ********")
     # Create sides of mesh
     # n          = 2
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    nx, ny     = n*20, n*20
+    nx, ny     = Int16(n*20), Int16(n*20)
     R          = 0.5
     inclusion  = 0
-    mesh_type  = "Quadrangles"
+    # mesh_type  = "Quadrangles"
     # mesh_type  = "UnstructTriangles"
   
     # Generate mesh
@@ -90,7 +90,7 @@ end
         τr   = 1
         mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R )
     elseif mesh_type=="UnstructTriangles"  
-        τr   = 100
+        τr   = 1
         mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R ) 
     end
     println("Number of elements: ", mesh.nel)
@@ -271,34 +271,35 @@ end
     # Visualise
     # print("Visualisation:")
     # if USE_DIRECT
-    #     @time PlotMakie(mesh, Te,  xmin, xmax, ymin, ymax, :batlow, 0.9, 1.2)
+        # @time PlotMakie(mesh, Te,  xmin, xmax, ymin, ymax, cgrad(:roma, rev=true), 0.7, 1.5)
     # else
     #     @time PlotMakie(mesh, Te1, xmin, xmax, ymin, ymax, :batlow, 0.9, 1.2)
-    #     # @time PlotMakie(mesh, Te1, xmin, xmax, ymin, ymax; cmap = :batlow, min_v = 0.9, max_v = 1.2)
+        # @time PlotMakie(mesh, Te1, xmin, xmax, ymin, ymax; cmap = :batlow, min_v = 0.9, max_v = 1.2)
     # end
     print("Done! Total runtime:")
-    return iter, success
+    return iter, success, length(Th), nx
 end
 
 #########################################################
 
 # quads
-# main( 1, 0.19, 0.88 )
-# main( 2, 0.11, 0.93 )
-# main( 4, 0.057, 0.965 )
-# main( 8, 0.029, 0.125*7.25 )
-# main( 16, 0.014125, 0.125*7.25*1.0 ) #--> 1900
+# main( "Quadrangles", 1, 0.19, 0.88 )
+# main( "Quadrangles",2, 0.11, 0.93 )
+# main( "Quadrangles",4, 0.057, 0.965 )
+# main( "Quadrangles",8, 0.029, 0.125*7.25 )
+# main( "Quadrangles",16, 0.014125, 0.125*7.25*1.0 ) #--> 1900
 
-# triangles
-# main( 1.25, 0.095, 0.145 )
-# main( 3, 0.04, 0.21 )
-# main( 1.5, 0.082, 0.1575 )
-# main( 6, 0.02, 0.24 )
-# main( 8, 0.014, 0.25 )
-# main( 2, 0.060, 0.180 )
-# main( 4, 0.03, 0.22 )
-# main( 10, 0.011, 0.256 )
-# main( 1, 0.12, 0.125 )
+# triangles (test were made with τ=100 which is inappropriate, need to remake)
+# main( "UnstructTriangles", 1.25, 0.095, 0.145 )
+# main( "UnstructTriangles",3, 0.04, 0.21 )
+# main( "UnstructTriangles",1.5, 0.082, 0.1575 )
+# main( "UnstructTriangles",6, 0.02, 0.24 )
+# main( "UnstructTriangles",8, 0.014, 0.25 )
+# main( "UnstructTriangles",2, 0.060, 0.180 )
+# main( "UnstructTriangles",4, 0.03, 0.22 )
+# main( "UnstructTriangles",10, 0.011, 0.256 )
+# main( "UnstructTriangles", 1, 0.12, 0.125 )
+
 
 # nv  = [1, 2, 4, 8]
 # tet  = 0.01:0.01/2:0.1
@@ -325,3 +326,9 @@ end
 # write(file, "success", sucv)
 # write(file, "iter", itv)
 # close(file)
+
+main( "UnstructTriangles", 1, 0.11428, 0.28 )
+main( "UnstructTriangles", 2, 0.11428/2, 0.28 )
+main( "UnstructTriangles", 4, 0.11428/4, 0.28 )
+main( "UnstructTriangles", 8, 0.11428/8.0, 0.28 )
+main( "UnstructTriangles", 16, 0.11428/16, 0.28 )

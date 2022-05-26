@@ -255,8 +255,8 @@ end
         # tau  = 1.0
         # if o2==0 tau  = 5e0 end
         # if o2==1 tau  = 1e1 end
-        if o2==0 τr  = 6e-2 end
-        if o2==1 τr  = 6e-2 end    
+        if o2==0 τr  = 6e-3 end
+        if o2==1 τr  = 6e-3 end    
         mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles"  
         if o2==0 τr  = 1.0 end
@@ -334,14 +334,7 @@ end
 
     # Assemble element matrices and RHS
     println("Compute element matrices:")
-    # @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar)
     @time Kuu, Muu, Kup, fu, fp, tsparse = ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, o2, new)
-
-    # Assemble triplets and sparse
-    # println("Assemble triplets and sparse:")
-    # @time Kuu, fu, Kup = CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
-    # display(UnicodePlots.spy(Kuu))
-    # display(UnicodePlots.spy(Kup))
 
     # Solve for hybrid variable
     println("Linear solve:")
@@ -386,8 +379,8 @@ end
 
 
 #################### ORDER 1
-order = 1 
 new   = 1
+order = 1 
 
 N             = 30 .* [1; 2; 3; 4;];#  5; 6; 7; 8; 9; 10; 11; 12; 13; 14 ] #
 println(N)
@@ -405,12 +398,12 @@ for k=1:length(N)
     ndof_quad[k] = ndof
 end
 
-# mesh_type  = "UnstructTriangles"
-# eV_tri     = zeros(size(N))
-# eP_tri     = zeros(size(N))
-# eTau_tri   = zeros(size(N))
-# t_tri      = zeros(size(N))
-# ndof_tri   = zeros(size(N))
+mesh_type  = "UnstructTriangles"
+eV_tri     = zeros(size(N))
+eP_tri     = zeros(size(N))
+eTau_tri   = zeros(size(N))
+t_tri      = zeros(size(N))
+ndof_tri   = zeros(size(N))
 # for k=1:length(N)
 #     t_tri[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N[k], mesh_type, order, new )
 #     eV_tri[k]    = err_V
@@ -436,12 +429,12 @@ for k=1:length(N)
     ndof_quad_o2[k] = ndof
 end
 
-# mesh_type     = "UnstructTriangles"
-# eV_tri_o2     = zeros(size(N))
-# eP_tri_o2     = zeros(size(N))
-# eTau_tri_o2   = zeros(size(N))
-# t_tri_o2      = zeros(size(N))
-# ndof_tri_o2   = zeros(size(N))
+mesh_type     = "UnstructTriangles"
+eV_tri_o2     = zeros(size(N))
+eP_tri_o2     = zeros(size(N))
+eTau_tri_o2   = zeros(size(N))
+t_tri_o2      = zeros(size(N))
+ndof_tri_o2   = zeros(size(N))
 # for k=1:length(N)
 #     t_tri_o2[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N[k], mesh_type, order, new )
 #     eV_tri_o2[k]    = err_V
@@ -455,7 +448,7 @@ end
 p = Plots.plot(  log10.(1.0 ./ N) , log10.(eV_quad),   markershape=:rect,      color=:blue,                         label="Quads V O1"                          )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_quad),   markershape=:rect,      color=:blue,      linestyle = :dot,  label="Quads P O1"                          )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eTau_quad), markershape=:rect,      color=:blue,      linestyle = :dash, label="Quads Tau O1"                        )
-# p = Plots.plot!( log10.(1.0 ./ N) , log10.(eV_tri),    markershape=:dtriangle, color=:blue,                         label="Triangles V O1"                     )
+# p = Plots.plot( log10.(1.0 ./ N) , log10.(eV_tri),    markershape=:dtriangle, color=:blue,                         label="Triangles V O1"                     )
 # p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_tri),    markershape=:dtriangle, color=:blue,      linestyle = :dot,  label="Triangles P O1"                     )
 # p = Plots.plot!( log10.(1.0 ./ N) , log10.(eTau_tri),  markershape=:dtriangle, color=:blue,      linestyle = :dash, label="Triangles Tau O1")#, legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
 
@@ -471,7 +464,7 @@ n      = [35, 70]
 p = Plots.plot!( log10.(1.0 ./ n) , log10.(order1), color=:black, label="Order 1")
 p = Plots.plot!( log10.(1.0 ./ n) , log10.(order2), color=:black, label="Order 2", linestyle = :dash)
 p = Plots.annotate!(log10.(1.0 ./ N[1]), log10(order1[1]), "O1", :black)
-p = Plots.annotate!(log10.(1.0 ./ N[1]), log10(order2[1]), "O2", :black)
+p = Plots.annotate!(log10.(1.0 ./ N[1]), log10(order2[1]), "O2", :black, legend=:bottomleft )
 
 # p = Plots.plot(  ndof_quad[2:end], t_quad[2:end], markershape=:rect,      label="Quads"                          )
 # p = Plots.plot!( ndof_tri[2:end],  t_tri[2:end],  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "ndof", ylabel = "time" )
