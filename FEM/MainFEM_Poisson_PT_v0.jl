@@ -1,6 +1,7 @@
 const USE_GPU    = false  # not supported yet 
 const USE_DIRECT = false
 const USE_NODAL  = false
+const USE_MAKIE  = false
 
 using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT
 
@@ -11,8 +12,8 @@ include("IntegrationPoints.jl")
 
 #----------------------------------------------------------#
 
-function StabParam(τ, Γ, Ω, mesh_type, ν)
-    return 0.
+function StabParam(τ, Γ, Ω, mesh_type, ν) 
+    return 0. # Stabilisation is only needed for FCFV
 end
 
 #----------------------------------------------------------#
@@ -42,7 +43,7 @@ function ResidualPoissonElementalFEM!( F, T, mesh, K_all, b )
     # Residual
     F .= 0.0
     @inbounds for e = 1:mesh.nel
-        nodes     = mesh.e2v[e,:]
+        nodes      = mesh.e2v[e,:]
         T_ele      = T[nodes]
         K_ele      = K_all[e,:,:]
         f_ele      = K_ele*T_ele .- b[e,:]
@@ -171,7 +172,7 @@ function main( n, θ, Δτ )
     end
 
     # Element data
-    nip  = 3
+    nip       = 3
     mesh.nnel = 3
     ipx, ipw  = IntegrationTriangle( nip )
     N, dNdX   = ShapeFunctions(ipx, nip, mesh.nnel)
@@ -240,7 +241,9 @@ function main( n, θ, Δτ )
         end
     end
 
-    PlotMakie(mesh, Te, xmin, xmax, ymin, ymax)
+    if USE_MAKIE
+        PlotMakie(mesh, Te, xmin, xmax, ymin, ymax)
+    end
    
 end
 

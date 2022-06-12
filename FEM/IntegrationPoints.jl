@@ -28,20 +28,21 @@ function ShapeFunctions(ipx, nip, nnel)
 
     N    = zeros(nip,nnel,1)
     dNdx = zeros(nip,nnel,2)
+    println(nnel)
 
     for i=1:nip
         # Local coordinates of integration points
         η2 = ipx[i,1]
         η3 = ipx[i,2]
         η1 = 1.0-η2-η3
-        if nnel == 3
+        if nnel==3
             N[i,:,:]    .= [η1 η2 η3]'
             dNdx[i,:,:] .= [-1. 1. 0.;  #w.r.t eta2
                             -1. 0. 1.]' #w.r.t eta3
         elseif nnel==6
-            N[i,:,:]    .= [η1*(2*η1-1) η2*(2*η2-1) η3*(2*eta3-1) 4*η2*η3  4*η1*η3    4*η1*η2]
-            dNdx[i,:,:] .= [1-4*η1      -1+4*η2     0.            4*η3    -4*η3       4*η1-4*η2;  #w.r.t eta2
-                            1-4*η1      0.          -1+4*η3       4*η2     4*η1-4*η3 -4*η2]       #w.r.t eta3
+            N[i,:,:]    .= [η1*(2*η1-1) η2*(2*η2-1) η3*(2*η3-1) 4*η2*η3  4*η1*η3    4*η1*η2]
+            dNdx[i,:,:] .= [1-4*η1      -1+4*η2     0.          4*η3    -4*η3       4*η1-4*η2;  #w.r.t eta2
+                            1-4*η1      0.          -1+4*η3     4*η2     4*η1-4*η3 -4*η2]       #w.r.t eta3
              
         end
     end
