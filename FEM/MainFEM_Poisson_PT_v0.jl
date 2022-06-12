@@ -25,7 +25,7 @@ function ResidualPoissonNodalFEM!( F, T, mesh, K_all, b )
         if mesh.bcn[in]==0
             for ii=1:length(mesh.n2e[in])
                 e       = mesh.n2e[in][ii]
-                nodes   = mesh.e2v[e,:]
+                nodes   = mesh.e2n[e,:]
                 T_ele   = T[nodes]  
                 K       = K_all[e,:,:] 
                 f       = K*T_ele .- b[e]
@@ -43,7 +43,7 @@ function ResidualPoissonElementalFEM!( F, T, mesh, K_all, b )
     # Residual
     F .= 0.0
     @inbounds for e = 1:mesh.nel
-        nodes      = mesh.e2v[e,:]
+        nodes      = mesh.e2n[e,:]
         T_ele      = T[nodes]
         K_ele      = K_all[e,:,:]
         f_ele      = K_ele*T_ele .- b[e,:]
@@ -66,7 +66,7 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX )
 
     # Element loop
     @inbounds for e = 1:mesh.nel
-        nodes   = mesh.e2v[e,:]
+        nodes   = mesh.e2n[e,:]
         x       = [mesh.xv[nodes] mesh.yv[nodes]]
         ke      = mesh.ke[e]
         J       = zeros(2,2)
@@ -102,7 +102,7 @@ function DirectSolveFEM!(T, mesh, K_all, b)
 
     # Assembly of global sparse matrix
     @inbounds for e=1:mesh.nel
-        nodes = mesh.e2v[e,:]
+        nodes = mesh.e2n[e,:]
         for j=1:3
             if mesh.bcn[nodes[j]] == 0
                 # If not Dirichlet, add connection
@@ -174,7 +174,7 @@ function main( n, θ, Δτ )
     # Element data
     nip       = 3
     mesh.nnel = 3
-    ipx, ipw  = IntegrationTriangle( nip )
+    ipx, ipw  = IntegrationTriangle(nip)
     N, dNdX   = ShapeFunctions(ipx, nip, mesh.nnel)
 
     #-----------------------------------------------------------------#
@@ -237,7 +237,7 @@ function main( n, θ, Δτ )
     Te = zeros(mesh.nel)
     for e=1:mesh.nel
         for in=1:mesh.nnel
-            Te[e] += 1.0/3.0 * T[mesh.e2v[e,in]]
+            Te[e] += 1.0/3.0 * T[mesh.e2n[e,in]]
         end
     end
 
