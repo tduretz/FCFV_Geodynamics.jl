@@ -298,9 +298,6 @@ end
     # Update cell info on markers
     LocateMarkers(p,dx,dy,xc,yc,xmin,xmax,ymin,ymax)
 
-
-
-
     # Source term and BCs etc...
     Pa     = zeros(mesh.nel)
     Vxa    = zeros(mesh.nel)
@@ -329,7 +326,6 @@ end
 
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
-    # @time ae, be, ze = ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu)
     @time ae, be, be_o2, ze, pe, mei, pe, rjx, rjy = ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, o2)
 
     # Assemble element matrices and RHS

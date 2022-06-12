@@ -44,7 +44,7 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, M, solver)
             nrmu = norm(ru)
             nrmp = norm(rp)
             @printf("  --> Powell-Hestenes Iteration %02d\n  Momentum res.   = %2.2e\n  Continuity res. = %2.2e\n", rit, nrmu/sqrt(length(ru)), nrmp/sqrt(length(rp)))
-            if nrmu/sqrt(length(ru)) < 1e-13 && nrmp/sqrt(length(ru)) < 1e-13
+            if nrmu/sqrt(length(ru)) < 1e-11 && nrmp/sqrt(length(ru)) < 1e-11
                 break
             end
             fusc .= fu  .- Kup*(Kppi*fp .+ p)

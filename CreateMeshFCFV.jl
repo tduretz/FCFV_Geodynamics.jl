@@ -1,12 +1,67 @@
 # @tturbo was removed
 import Triangulate
 
-# function StabParam(τr, Γ, Ω, mesh_type) # ACHTUNG does not work on GPU (called from woithin kernel !)
-#     if mesh_type=="Quadrangles";        τ = τr;    end
-#     # if mesh_type=="UnstructTriangles";  τi = τ*dA; end
-#     if mesh_type=="UnstructTriangles";  τ = τr end
-#     return τ
-# end
+function FaceStabParam( mesh, τr, mesh_type )
+
+    if mesh_type=="UnstructTriangles"
+        nodeA = [2 3 1]
+        nodeB = [3 1 2]
+        nodeC = [1 2 3]
+    else
+        nodeA = [2 1 3 4]
+        nodeB = [3 2 4 1]
+    end
+
+    # Assemble FCFV elements
+    for iel=1:mesh.nel  
+            
+        # println("element: ",  iel)
+
+        for ifac=1:mesh.nf_el
+            
+            nodei  = mesh.e2f[iel,ifac]
+
+            # Vertices
+            vert1  = mesh.e2v[iel,nodeA[ifac]]
+            vert2  = mesh.e2v[iel,nodeB[ifac]]
+            bc     = mesh.bc[nodei]
+            dx     = abs(mesh.xv[vert1] - mesh.xv[vert2] );
+            dy     = abs(mesh.yv[vert1] - mesh.yv[vert2] );
+            Γi     = sqrt(dx^2 + dy^2);
+
+            # Face stabilisation
+            mesh.τ[nodei] = StabParam(τr, Γi, mesh.Ω[iel], mesh.type, mesh.ke[iel]) 
+        end
+    end
+end
+
+function Node2ElementNumbering!( mesh )
+
+    nnel = 3 # HARD-CODE 3 node linear element
+
+    # Create node to element list
+    nnodes = mesh.nv
+    nel_node = zeros(Int64,nnodes)
+    for el=1:mesh.nel # count how many elements are connected to a node
+        for in=1:nnel 
+            nel_node[mesh.e2v[el,in]] += 1 # atomic
+        end
+    end
+
+    # Allocate array of arrays
+    mesh.n2e     = [Vector{Int64}(undef, nel_node[i]) for i in 1:nnodes]
+    mesh.n2e_loc = [Vector{Int64}(undef, nel_node[i]) for i in 1:nnodes]
+    nel_node     = zeros(Int64,nnodes)
+    for el=1:mesh.nel # count how many elments are connected to a node
+        for in=1:nnel
+            nel_node[mesh.e2v[el,in]] += 1
+            node = mesh.e2v[el,in]
+            mesh.n2e[node][nel_node[mesh.e2v[el,in]]]     = el
+            mesh.n2e_loc[node][nel_node[mesh.e2v[el,in]]] = in
+        end
+    end
+    return nothing
+end
 
 Base.@kwdef mutable struct FCFV_Mesh
     type   ::Union{String, Missing}          = missing
@@ -19,7 +74,7 @@ Base.@kwdef mutable struct FCFV_Mesh
     yv     ::Union{Vector{Float64}, Missing} = missing # node y coordinate
     xf     ::Union{Vector{Float64}, Missing} = missing # face x coordinate
     yf     ::Union{Vector{Float64}, Missing} = missing # face y coordinate
-    bc     ::Union{Vector{Int64},   Missing} = missing # face y coordinate
+    bc     ::Union{Vector{Int64},   Missing} = missing # node tag
     xc     ::Union{Vector{Float64}, Missing} = missing # cent x coordinate
     yc     ::Union{Vector{Float64}, Missing} = missing # cent y coordinate
     e2v    ::Union{Matrix{Int64},   Missing} = missing # cell 2 node numbering
@@ -38,12 +93,16 @@ Base.@kwdef mutable struct FCFV_Mesh
     # ---- mat props ---- #
     ke     ::Union{Vector{Float64}, Missing} = missing # diffusion coefficient
     phase  ::Union{Vector{Float64}, Missing} = missing # phase
+    # ----- FEM
+    n2e    ::Union{Vector{Vector{Int64}}, Missing} = missing # node 2 element
+    bcn    ::Union{Vector{Int64},         Missing} = missing # node tag
+    n2e_loc::Union{Vector{Vector{Int64}}, Missing} = missing # node 2 element
     # phase_f::Union{Matrix{Float64}, Missing} = missing # normal 2 face x
 end
 
 #--------------------------------------------------------------------#
 
-function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC=[2; 1; 1; 1;], area = ((xmax-xmin)/nx)*((ymax-ymin)/ny), no_pts_incl = Int64(floor(1.0*pi*R/sqrt(((xmax-xmin)/nx)^2+((ymax-ymin)/ny)^2)))  )
+function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC=[1; 1; 1; 1;], area = ((xmax-xmin)/nx)*((ymax-ymin)/ny), no_pts_incl = Int64(floor(1.0*pi*R/sqrt(((xmax-xmin)/nx)^2+((ymax-ymin)/ny)^2)))  )
 
     regions  = Array{Float64}(undef,4,0)
     holes    = Array{Float64}(undef,2,0)
@@ -120,33 +179,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
     mesh.xf     = trimesh.pointlist[1,mesh.nv+1:end]
     mesh.yf     = trimesh.pointlist[2,mesh.nv+1:end]
     mesh.bc     = trimesh.pointmarkerlist[mesh.nv+1:end]
-    mesh.phase  = trimesh.triangleattributelist[:]
- 
-    # domain   = TriangleMesh.Polygon_pslg(size(p,2), p, 0, Array{Int64}(undef,2,0), 0, Array{Float64}(undef,2,0),  size(s,2), s, st, 0, holes, size(regions,2), regions, 1.0)
-    # astring  = @sprintf("%0.10lf", area)
-    # switches = "vQDpenq33o2IAa$(astring)"  #QDpeq33o2Aa0.01
-    
-    # println("Arguments to Triangle: ", switches)
-    # trimesh_0  = TriangleMesh.create_mesh(domain, switches)
-    # # vertices per element
-    # mesh.nel    = trimesh.n_cell
-    # e2v         = trimesh.cell[1:3,:]
-    # mesh.nv     = maximum(e2v)
-    # e2f         = trimesh.cell[4:6,:] .- mesh.nv
-    # mesh.nf     = maximum(e2f)
-    # mesh.xv     = trimesh.point[1,1:mesh.nv]
-    # mesh.yv     = trimesh.point[2,1:mesh.nv]
-    # mesh.xf     = trimesh.point[1,mesh.nv+1:end]
-    # mesh.yf     = trimesh.point[2,mesh.nv+1:end]
-    # mesh.bc     = trimesh.point_marker[mesh.nv+1:end]
-    # if length(trimesh.triangle_attribute)>0
-    #     println(minimum(trimesh.triangle_attribute))
-    #     println(maximum(trimesh.triangle_attribute))
-    #     mesh.phase  = trimesh.triangle_attribute
-    # else
-    #     mesh.phase  = ones(trimesh.n_cell)
-    # end
-    
+    mesh.phase  = trimesh.triangleattributelist[:] 
     mesh.ke     = ones(Float64,mesh.nel)
     mesh.τ      = zeros(Float64,mesh.nf)
     nel  = mesh.nel
@@ -292,8 +325,10 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
         mesh.n_x_f[ifac,2]  = -mesh.n_x_f[ifac,1]
         mesh.n_y_f[ifac,2]  = -mesh.n_y_f[ifac,1]
     end
+    ### FEM 
+    Node2ElementNumbering!( mesh )
+    mesh.bcn = trimesh.pointmarkerlist[1:mesh.nv]
     ############# FOR THE PSEUDO-TRANSIENT PURPOSES ONLY #############
-    
     return mesh
     
     end
@@ -499,7 +534,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC=[2;
         end
     end
 
-     # Assemble FCFV elements
+    # Assemble FCFV elements
     for iel=1:mesh.nel  
         
         # println("element: ",  iel)

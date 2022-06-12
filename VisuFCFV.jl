@@ -1,7 +1,7 @@
 using GLMakie
 using Makie.GeometryBasics
 
-@views function PlotMakie(mesh, v, xmin, xmax, ymin, ymax, cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
+@views function PlotMakie(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v), writefig=false)
     ``` Create patch plots for either Quadrangles or Triangles
     ```
     # min_v, max_v = minimum(v), maximum(v)
@@ -12,6 +12,8 @@ using Makie.GeometryBasics
     # GLMakie.scatter!(mesh.xf[mesh.bc.==3] ,mesh.yf[mesh.bc.==3] )
     Colorbar(f[1, 2], colormap = cmap, limits=[min_v max_v], flipaxis = true, size = 25, height = Relative(2/3) )
     display(f)
-    save( string(@__DIR__, "/plot.png"), f)
+    if writefig==true 
+        save( string(@__DIR__, "/plot.png"), f)
+    end
     return 
 end
