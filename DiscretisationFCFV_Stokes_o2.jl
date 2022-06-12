@@ -223,8 +223,6 @@ function ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDi
     fp   = zeros(mesh.nel)
     nf   = mesh.nf_el
 
-   
-
     for e=1:mesh.nel 
 
         # Element properties
