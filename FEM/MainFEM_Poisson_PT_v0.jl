@@ -67,7 +67,7 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX )
     # Element loop
     @inbounds for e = 1:mesh.nel
         nodes   = mesh.e2n[e,:]
-        x       = [mesh.xv[nodes] mesh.yv[nodes]]
+        x       = [mesh.xv[nodes] mesh.yv[nodes]]    
         ke      = mesh.ke[e]
         J       = zeros(2,2)
         invJ    = zeros(2,2)
@@ -137,15 +137,21 @@ function main( n, θ, Δτ )
     nx, ny     = Int16(n*20), Int16(n*20)
     R          = 0.5
     inclusion  = 0
+
+    # Element data
     mesh_type  = "UnstructTriangles" 
+    nip       = 3
+    nnel      = 3
+    ipx, ipw  = IntegrationTriangle(nip)
+    N, dNdX   = ShapeFunctions(ipx, nip, nnel)
   
     # Generate mesh
     if mesh_type=="Quadrangles" # not supported for FEM
         τr   = 1
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R )
+        # mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R )
     elseif mesh_type=="UnstructTriangles"  
         τr   = 1
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R ) 
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R; nnel ) 
     end
     println("Number of elements: ", mesh.nel)
     println("Number of vertices: ", mesh.nv)
@@ -170,12 +176,6 @@ function main( n, θ, Δτ )
         Te     = exp(alp*sin(a*x + c*y) + bet*cos(b*x + d*y))
         se[e] = Te*(-a*alp*cos(a*x + c*y) + b*bet*sin(b*x + d*y))*(a*alp*cos(a*x + c*y) - b*bet*sin(b*x + d*y)) + Te*(a^2*alp*sin(a*x + c*y) + b^2*bet*cos(b*x + d*y)) + Te*(-alp*c*cos(a*x + c*y) + bet*d*sin(b*x + d*y))*(alp*c*cos(a*x + c*y) - bet*d*sin(b*x + d*y)) + Te*(alp*c^2*sin(a*x + c*y) + bet*d^2*cos(b*x + d*y))
     end
-
-    # Element data
-    nip       = 3
-    mesh.nnel = 3
-    ipx, ipw  = IntegrationTriangle(nip)
-    N, dNdX   = ShapeFunctions(ipx, nip, mesh.nnel)
 
     #-----------------------------------------------------------------#
     K_all, b = ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX )
