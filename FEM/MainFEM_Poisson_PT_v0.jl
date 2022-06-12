@@ -56,7 +56,7 @@ end
 
 function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) 
 
-    nnel         = 3#size(mesh.e2v,2)
+    nnel         = mesh.nnel
     nip          = length(ipw)
     K_all        = zeros(mesh.nel, nnel, nnel) 
     b            = zeros(mesh.nel, nnel)
@@ -172,9 +172,9 @@ function main( n, θ, Δτ )
 
     # Element data
     nip  = 3
-    nnel = 3
-    ipx, ipw = IntegrationTriangle( nip )
-    N, dNdX  = ShapeFunctions(ipx, nip, nnel)
+    mesh.nnel = 3
+    ipx, ipw  = IntegrationTriangle( nip )
+    N, dNdX   = ShapeFunctions(ipx, nip, mesh.nnel)
 
     #-----------------------------------------------------------------#
     K_all, b = ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX )
@@ -235,7 +235,7 @@ function main( n, θ, Δτ )
 
     Te = zeros(mesh.nel)
     for e=1:mesh.nel
-        for in=1:3
+        for in=1:mesh.nnel
             Te[e] += 1.0/3.0 * T[mesh.e2v[e,in]]
         end
     end
