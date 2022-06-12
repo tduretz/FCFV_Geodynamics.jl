@@ -1,6 +1,6 @@
 const USE_GPU    = false  # not supported yet 
 const USE_DIRECT = false
-const USE_NODAL  = false
+const USE_NODAL  = true
 const USE_MAKIE  = false
 
 using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT
@@ -20,7 +20,7 @@ end
 
 function ResidualPoissonNodalFEM!( F, T, mesh, K_all, b )
     # Residual
-    @inbounds for in = 1:mesh.nv
+    for in = 1:mesh.nn
         F[in] = 0.0
         if mesh.bcn[in]==0
             for ii=1:length(mesh.n2e[in])
@@ -28,7 +28,7 @@ function ResidualPoissonNodalFEM!( F, T, mesh, K_all, b )
                 nodes   = mesh.e2n[e,:]
                 T_ele   = T[nodes]  
                 K       = K_all[e,:,:] 
-                f       = K*T_ele .- b[e]
+                f       = K*T_ele .- b[e,:]
                 inode   = mesh.n2e_loc[in][ii]
                 F[in]  -= f[inode]
             end
@@ -42,7 +42,7 @@ end
 function ResidualPoissonElementalFEM!( F, T, mesh, K_all, b )
     # Residual
     F .= 0.0
-    @inbounds for e = 1:mesh.nel
+    for e = 1:mesh.nel
         nodes      = mesh.e2n[e,:]
         T_ele      = T[nodes]
         K_ele      = K_all[e,:,:]
@@ -65,9 +65,9 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX )
     b_ele        = zeros(nnel)
 
     # Element loop
-    @inbounds for e = 1:mesh.nel
+    for e = 1:mesh.nel
         nodes   = mesh.e2n[e,:]
-        x       = [mesh.xv[nodes] mesh.yv[nodes]]    
+        x       = [mesh.xn[nodes] mesh.yn[nodes]]    
         ke      = mesh.ke[e]
         J       = zeros(2,2)
         invJ    = zeros(2,2)
@@ -101,12 +101,12 @@ function DirectSolveFEM!(T, mesh, K_all, b)
     rhs  = zeros(ndof)
 
     # Assembly of global sparse matrix
-    @inbounds for e=1:mesh.nel
+    for e=1:mesh.nel
         nodes = mesh.e2n[e,:]
-        for j=1:3
+        for j=1:mesh.nnel
             if mesh.bcn[nodes[j]] == 0
                 # If not Dirichlet, add connection
-                for i=1:3  
+                for i=1:mesh.nnel
                     if mesh.bcn[nodes[i]] == 0 # Important to keep matrix symmetric
                         K[nodes[j], nodes[i]] += K_all[e,j,i]
                     else
@@ -128,7 +128,7 @@ end
 
 #----------------------------------------------------------#
 
-function main( n, θ, Δτ )
+function main( n, nnel, θ, Δτ )
 
     println("\n******** FEM POISSON ********")
     # Create sides of mesh
@@ -141,7 +141,6 @@ function main( n, θ, Δτ )
     # Element data
     mesh_type  = "UnstructTriangles" 
     nip       = 3
-    nnel      = 3
     ipx, ipw  = IntegrationTriangle(nip)
     N, dNdX   = ShapeFunctions(ipx, nip, nnel)
   
@@ -154,17 +153,17 @@ function main( n, θ, Δτ )
         mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R; nnel ) 
     end
     println("Number of elements: ", mesh.nel)
-    println("Number of vertices: ", mesh.nv)
+    println("Number of vertices: ", mesh.nn)
 
-    T  = zeros(mesh.nv)     # Solution on nodes 
+    T  = zeros(mesh.nn)     # Solution on nodes 
     se = zeros(mesh.nel)    # Source term on elements
 
     # Intial guess
     alp = 0.1; bet = 0.3; a = 5.1; b = 4.3; c = -6.2; d = 3.4;
-    for in = 1:mesh.nv
+    for in = 1:mesh.nn
         if mesh.bcn[in]==1
-            x     = mesh.xv[in]
-            y     = mesh.yv[in]
+            x     = mesh.xn[in]
+            y     = mesh.yn[in]
             T[in] = exp(alp*sin(a*x + c*y) + bet*cos(b*x + d*y))
         end
     end
@@ -197,8 +196,8 @@ function main( n, θ, Δτ )
         # Δx = minimum(mesh.Γ)
         # D  = 1.0
         # println("Δτ1 = ", Δx^2/(1.1*D) * 1.0/Ωe *2/3)
-        ΔTΔτ  = zeros(mesh.nv) # Residual
-        ΔTΔτ0 = zeros(mesh.nv)
+        ΔTΔτ  = zeros(mesh.nn) # Residual
+        ΔTΔτ0 = zeros(mesh.nn)
         # PT loop
         local iter = 0
         success = 0
@@ -247,8 +246,13 @@ function main( n, θ, Δτ )
    
 end
 
-# main(1, 0.20398980000000003,        0.23333333333333336) # 150
-main(2, 0.20398980000000003*0.61,   0.23333333333333336) # 250
-# main(4, 0.20398980000000003*0.61/2, 0.23333333333333336*0.96) # 500
-# main(8, 0.20398980000000003*0.61/4 * 0.98, 0.23333333333333336*0.88) # 1000
+# Linear elements
+# main(1, 3, 0.20398980000000003,        0.23333333333333336) # 150
+# main(2, 3, 0.20398980000000003*0.61,   0.23333333333333336) # 250
+# main(4, 3, 0.20398980000000003*0.61/2, 0.23333333333333336*0.96) # 500
+# main(8, 3, 0.20398980000000003*0.61/4 * 0.98, 0.23333333333333336*0.88) # 1000
+
+# Quadratic elements
+main(1, 6, 0.20398980000000003*0.49,        0.23333333333333336/1.35) # 350
+
 
