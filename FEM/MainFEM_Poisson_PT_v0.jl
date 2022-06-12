@@ -1,7 +1,7 @@
-const USE_GPU    = false  # not supported yet 
-const USE_DIRECT = false
-const USE_NODAL  = true
-const USE_MAKIE  = false
+const USE_GPU    = false  # Not supported yet 
+const USE_DIRECT = false  # Sparse matrix assembly + direct solver
+const USE_NODAL  = false  # Nodal evaluation of residual
+const USE_MAKIE  = false  # Visualisation 
 
 using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT
 
@@ -20,10 +20,10 @@ end
 
 function ResidualPoissonNodalFEM!( F, T, mesh, K_all, b )
     # Residual
-    for in = 1:mesh.nn
+    Threads.@threads for in = 1:mesh.nn
         F[in] = 0.0
         if mesh.bcn[in]==0
-            for ii=1:length(mesh.n2e[in])
+            @inbounds for ii=1:length(mesh.n2e[in])
                 e       = mesh.n2e[in][ii]
                 nodes   = mesh.e2n[e,:]
                 T_ele   = T[nodes]  
@@ -42,7 +42,7 @@ end
 function ResidualPoissonElementalFEM!( F, T, mesh, K_all, b )
     # Residual
     F .= 0.0
-    for e = 1:mesh.nel
+    @inbounds for e = 1:mesh.nel
         nodes      = mesh.e2n[e,:]
         T_ele      = T[nodes]
         K_ele      = K_all[e,:,:]
@@ -65,7 +65,7 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX )
     b_ele        = zeros(nnel)
 
     # Element loop
-    for e = 1:mesh.nel
+    @inbounds for e = 1:mesh.nel
         nodes   = mesh.e2n[e,:]
         x       = [mesh.xn[nodes] mesh.yn[nodes]]    
         ke      = mesh.ke[e]
@@ -101,7 +101,7 @@ function DirectSolveFEM!(T, mesh, K_all, b)
     rhs  = zeros(ndof)
 
     # Assembly of global sparse matrix
-    for e=1:mesh.nel
+    @inbounds for e=1:mesh.nel
         nodes = mesh.e2n[e,:]
         for j=1:mesh.nnel
             if mesh.bcn[nodes[j]] == 0
@@ -253,6 +253,8 @@ end
 # main(8, 3, 0.20398980000000003*0.61/4 * 0.98, 0.23333333333333336*0.88) # 1000
 
 # Quadratic elements
+main(1, 6, 0.20398980000000003*0.49,        0.23333333333333336/1.35) # 350
+main(1, 6, 0.20398980000000003*0.49,        0.23333333333333336/1.35) # 350
 main(1, 6, 0.20398980000000003*0.49,        0.23333333333333336/1.35) # 350
 
 
