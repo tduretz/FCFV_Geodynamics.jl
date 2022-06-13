@@ -28,7 +28,6 @@ function ShapeFunctions(ipx, nip, nnel)
 
     N    = zeros(nip,nnel,1)
     dNdx = zeros(nip,nnel,2)
-    println(nnel)
 
     for i=1:nip
         # Local coordinates of integration points

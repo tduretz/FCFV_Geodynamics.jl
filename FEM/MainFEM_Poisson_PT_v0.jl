@@ -1,7 +1,8 @@
-const USE_GPU    = false  # Not supported yet 
-const USE_DIRECT = false  # Sparse matrix assembly + direct solver
-const USE_NODAL  = false  # Nodal evaluation of residual
-const USE_MAKIE  = false  # Visualisation 
+const USE_GPU      = false  # Not supported yet 
+const USE_DIRECT   = false  # Sparse matrix assembly + direct solver
+const USE_NODAL    = false  # Nodal evaluation of residual
+const USE_PARALLEL = false  # Parallel residual evaluation
+const USE_MAKIE    = false  # Visualisation 
 
 using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT
 import Base.Threads: @threads, @sync, @spawn, nthreads, threadid
@@ -56,16 +57,13 @@ end
 
 #----------------------------------------------------------#
 
-function ResidualPoissonElementalParallelFEM!( F, T, mesh, K_all, b )
-    F_th   = [similar(F) for _ = 1:nthreads()] # per thread
-    chunks = Iterators.partition(1:mesh.nel, mesh.nel ÷ nthreads())
+function ResidualPoissonElementalParallelFEM!( F, F_th, chunks, T, mesh, K_all, b )
     # Residual
-    F .= 0.0
+    F     .= 0.0
     @sync for e_chunk in chunks
         @spawn begin
             tid = threadid()
-            fill!(phase_th[tid], 0)
-            fill!(weight_th[tid], 0)
+            fill!(F_th[tid], 0.0)
             for e in e_chunk
                 n_ele              = mesh.e2n[e,:]
                 T_ele              = T[n_ele]
@@ -224,18 +222,25 @@ function main( n, nnel, θ, Δτ )
         # Δx = minimum(mesh.Γ)
         # D  = 1.0
         # println("Δτ1 = ", Δx^2/(1.1*D) * 1.0/Ωe *2/3)
-        ΔTΔτ  = zeros(mesh.nn) # Residual
-        ΔTΔτ0 = zeros(mesh.nn)
+        ΔTΔτ    = zeros(mesh.nn) # Residual
+        ΔTΔτ_th = [similar(ΔTΔτ) for _ = 1:nthreads()]                   # Parallel: per thread
+        chunks  = Iterators.partition(1:mesh.nel, mesh.nel ÷ nthreads()) # Parallel: chunks of elements
+        ΔTΔτ0   = zeros(mesh.nn)
+
         # PT loop
         local iter = 0
         success = 0
         @time while (iter<iterMax)
-            iter +=1
+            iter  += 1
             ΔTΔτ0 .= ΔTΔτ 
             if USE_NODAL
                 ResidualPoissonNodalFEM!( ΔTΔτ, T, mesh, K_all, b )
             else
-                ResidualPoissonElementalSerialFEM!( ΔTΔτ, T, mesh, K_all, b )
+                if USE_PARALLEL==false
+                    ResidualPoissonElementalSerialFEM!( ΔTΔτ, T, mesh, K_all, b )
+                else
+                    ResidualPoissonElementalParallelFEM!( ΔTΔτ, ΔTΔτ_th, chunks, T, mesh, K_all, b )
+                end
             end
             ΔTΔτ  .= (1.0 - θ).*ΔTΔτ0 .+ ΔTΔτ 
             T    .+= Δτ .* ΔTΔτ
