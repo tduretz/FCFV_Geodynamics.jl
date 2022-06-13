@@ -4,6 +4,7 @@ const USE_NODAL  = false  # Nodal evaluation of residual
 const USE_MAKIE  = false  # Visualisation 
 
 using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT
+import Base.Threads: @threads, @sync, @spawn, nthreads, threadid
 
 include("../CreateMeshFCFV.jl")
 include("../VisuFCFV.jl")
@@ -39,7 +40,7 @@ end
 
 #----------------------------------------------------------#
 
-function ResidualPoissonElementalFEM!( F, T, mesh, K_all, b )
+function ResidualPoissonElementalSerialFEM!( F, T, mesh, K_all, b )
     # Residual
     F .= 0.0
     @inbounds for e = 1:mesh.nel
@@ -52,6 +53,33 @@ function ResidualPoissonElementalFEM!( F, T, mesh, K_all, b )
     F[mesh.bcn.==1] .= 0.0
     return nothing
 end
+
+#----------------------------------------------------------#
+
+function ResidualPoissonElementalParallelFEM!( F, T, mesh, K_all, b )
+    F_th   = [similar(F) for _ = 1:nthreads()] # per thread
+    chunks = Iterators.partition(1:mesh.nel, mesh.nel ÷ nthreads())
+    # Residual
+    F .= 0.0
+    @sync for e_chunk in chunks
+        @spawn begin
+            tid = threadid()
+            fill!(phase_th[tid], 0)
+            fill!(weight_th[tid], 0)
+            for e in e_chunk
+                n_ele              = mesh.e2n[e,:]
+                T_ele              = T[n_ele]
+                K_ele              = K_all[e,:,:]
+                f_ele              = K_ele*T_ele .- b[e,:]
+                F_th[tid][n_ele] .-= f_ele[:] # This should be atomic
+            end
+        end
+    end
+    F .= reduce(+, F_th)
+    F[mesh.bcn.==1] .= 0.0
+    return nothing
+end
+
 
 #----------------------------------------------------------#
 
@@ -207,7 +235,7 @@ function main( n, nnel, θ, Δτ )
             if USE_NODAL
                 ResidualPoissonNodalFEM!( ΔTΔτ, T, mesh, K_all, b )
             else
-                ResidualPoissonElementalFEM!( ΔTΔτ, T, mesh, K_all, b )
+                ResidualPoissonElementalSerialFEM!( ΔTΔτ, T, mesh, K_all, b )
             end
             ΔTΔτ  .= (1.0 - θ).*ΔTΔτ0 .+ ΔTΔτ 
             T    .+= Δτ .* ΔTΔτ
