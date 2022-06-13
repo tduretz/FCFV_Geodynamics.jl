@@ -37,14 +37,14 @@ end
 
 function Node2ElementNumbering!( mesh )
 
-    nnel = 3 # HARD-CODE 3 node linear element
+    nnel = mesh.nnel # HARD-CODE 3 node linear element
 
     # Create node to element list
-    nnodes = mesh.nv
+    nnodes = mesh.nn
     nel_node = zeros(Int64,nnodes)
     for el=1:mesh.nel # count how many elements are connected to a node
         for in=1:nnel 
-            nel_node[mesh.e2v[el,in]] += 1 # atomic
+            nel_node[mesh.e2n[el,in]] += 1 # atomic
         end
     end
 
@@ -54,10 +54,10 @@ function Node2ElementNumbering!( mesh )
     nel_node     = zeros(Int64,nnodes)
     for el=1:mesh.nel # count how many elments are connected to a node
         for in=1:nnel
-            nel_node[mesh.e2v[el,in]] += 1
-            node = mesh.e2v[el,in]
-            mesh.n2e[node][nel_node[mesh.e2v[el,in]]]     = el
-            mesh.n2e_loc[node][nel_node[mesh.e2v[el,in]]] = in
+            nel_node[mesh.e2n[el,in]] += 1
+            node = mesh.e2n[el,in]
+            mesh.n2e[node][nel_node[mesh.e2n[el,in]]]     = el
+            mesh.n2e_loc[node][nel_node[mesh.e2n[el,in]]] = in
         end
     end
     return nothing
@@ -70,8 +70,8 @@ Base.@kwdef mutable struct FCFV_Mesh
     nv     ::Union{Int64,  Missing}          = missing
     nn_el  ::Union{Int64,  Missing}          = missing
     nf_el  ::Union{Int64,  Missing}          = missing
-    xv     ::Union{Vector{Float64}, Missing} = missing # node x coordinate
-    yv     ::Union{Vector{Float64}, Missing} = missing # node y coordinate
+    xv     ::Union{Vector{Float64}, Missing} = missing # vertex x coordinate
+    yv     ::Union{Vector{Float64}, Missing} = missing # vertex y coordinate
     xf     ::Union{Vector{Float64}, Missing} = missing # face x coordinate
     yf     ::Union{Vector{Float64}, Missing} = missing # face y coordinate
     bc     ::Union{Vector{Int64},   Missing} = missing # node tag
@@ -94,6 +94,12 @@ Base.@kwdef mutable struct FCFV_Mesh
     ke     ::Union{Vector{Float64}, Missing} = missing # diffusion coefficient
     phase  ::Union{Vector{Float64}, Missing} = missing # phase
     # ----- FEM
+    nn     ::Union{Int64,  Missing}                = missing # number of nodes
+    xn     ::Union{Vector{Float64}, Missing}       = missing # node x coordinate
+    yn     ::Union{Vector{Float64}, Missing}       = missing # node y coordinat
+    order  ::Union{Int64,  Missing}                = missing # order of elements/volumes
+    nnel   ::Union{Int64,  Missing}                = 3       # number of nodes per element
+    e2n    ::Union{Matrix{Int64},         Missing} = missing # element 2 node numbering
     n2e    ::Union{Vector{Vector{Int64}}, Missing} = missing # node 2 element
     bcn    ::Union{Vector{Int64},         Missing} = missing # node tag
     n2e_loc::Union{Vector{Vector{Int64}}, Missing} = missing # node 2 element
@@ -102,7 +108,7 @@ end
 
 #--------------------------------------------------------------------#
 
-function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC=[1; 1; 1; 1;], area = ((xmax-xmin)/nx)*((ymax-ymin)/ny), no_pts_incl = Int64(floor(1.0*pi*R/sqrt(((xmax-xmin)/nx)^2+((ymax-ymin)/ny)^2)))  )
+function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC=[1; 1; 1; 1;], area = ((xmax-xmin)/nx)*((ymax-ymin)/ny), no_pts_incl = Int64(floor(1.0*pi*R/sqrt(((xmax-xmin)/nx)^2+((ymax-ymin)/ny)^2))); nnel=3  )
 
     regions  = Array{Float64}(undef,4,0)
     holes    = Array{Float64}(undef,2,0)
@@ -326,8 +332,17 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
         mesh.n_y_f[ifac,2]  = -mesh.n_y_f[ifac,1]
     end
     ### FEM 
+    if nnel == 3
+        mesh.nn  = mesh.nv
+    elseif nnel == 6
+        mesh.nn  = mesh.nv + mesh.nf
+    end
+    mesh.xn   = trimesh.pointlist[1,1:mesh.nn]
+    mesh.yn   = trimesh.pointlist[2,1:mesh.nn]
+    mesh.nnel = nnel
+    mesh.e2n  = trimesh.trianglelist[1:mesh.nnel,:]'
+    mesh.bcn  = trimesh.pointmarkerlist[1:mesh.nn]
     Node2ElementNumbering!( mesh )
-    mesh.bcn = trimesh.pointmarkerlist[1:mesh.nv]
     ############# FOR THE PSEUDO-TRANSIENT PURPOSES ONLY #############
     return mesh
     
