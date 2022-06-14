@@ -1,8 +1,7 @@
 const USE_GPU = false # ACHTUNG -> uncomment PT loop !!
-const USE_DIRECT = true
+const USE_DIRECT = false
 
-import TriangleMesh
-using Printf, LoopVectorization, LinearAlgebra, SparseArrays
+using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT
 
 include("../CreateMeshFCFV.jl")
 include("../VisuFCFV.jl")
@@ -64,34 +63,35 @@ end
 
 #--------------------------------------------------------------------#    
 
-function StabParam(tau, dA, Vol, mesh_type) # ACHTUNG does not work on GPU (called from woithin kernel !)
-    if mesh_type=="Quadrangles";        taui = tau;    end
-    # if mesh_type=="UnstructTriangles";  taui = tau*dA; end
-    if mesh_type=="UnstructTriangles";  taui = tau end
-    return taui
+function StabParam(τ, Γ, Ω, mesh_type, ν) # ACHTUNG does not work on GPU (called from within kernel !)
+    if mesh_type=="Quadrangles";        τi = τ;    end
+    # if mesh_type=="UnstructTriangles";  τi = τ*dA; end
+    if mesh_type=="UnstructTriangles";  τi = τ end
+    return τi
 end
 
 #--------------------------------------------------------------------#
     
-@views function main()
+@views function main( mesh_type, n, θ, Δτ )
 
     println("\n******** FCFV POISSON ********")
     # Create sides of mesh
+    # n          = 2
     xmin, xmax = 0, 1
     ymin, ymax = 0, 1
-    nx, ny     = 20, 20
+    nx, ny     = Int16(n*20), Int16(n*20)
     R          = 0.5
     inclusion  = 0
     # mesh_type  = "Quadrangles"
-    mesh_type  = "UnstructTriangles"
+    # mesh_type  = "UnstructTriangles"
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
-        tau  = 1
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R )
+        τr   = 1
+        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R )
     elseif mesh_type=="UnstructTriangles"  
-        tau  = 100
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R ) 
+        τr   = 1
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R ) 
     end
     println("Number of elements: ", mesh.nel)
 
@@ -106,12 +106,12 @@ end
 
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
-    @time ae, be, ze = ComputeFCFV(mesh, se, Tdir, tau)
+    @time αe, βe, Ζe = ComputeFCFV(mesh, se, Tdir)
 
     if USE_DIRECT
         # Assemble element matrices and RHS
         println("Compute element matrices:")
-        @time Kv, fv = ElementAssemblyLoop(mesh, ae, be, ze, Tdir, Tneu, tau)
+        @time Kv, fv = ElementAssemblyLoop(mesh, αe, βe, Ζe, Tdir, Tneu)
 
         # Assemble triplets and sparse
         println("Assemble triplets and sparse:")
@@ -137,8 +137,8 @@ end
             Th  .+= dTh[:]
         end
         # Compute residual on faces -  This is check
-        @time Te, qx, qy = ComputeElementValues(mesh, Th, ae, be, ze, Tdir, tau)
-        @time F = ResidualOnFaces(mesh, Th, Te, qx, qy, tau)
+        @time Te, qx, qy = ComputeElementValues(mesh, Th, αe, βe, Ζe, Tdir)
+        @time F          = ResidualOnFaces(mesh, Th, Te, qx, qy)
         # println(F)
         println("Norm of matrix-free residual: ", norm(F)/length(F))
         Te2 = copy(Te)
@@ -155,8 +155,8 @@ end
         Te    = CUDA.zeros(Float64, mesh.nel)
         qx    = CUDA.zeros(Float64, mesh.nel)
         qy    = CUDA.zeros(Float64, mesh.nel)
-        F     = CUDA.zeros(Float64, mesh.nf)
-        F0    = CUDA.zeros(Float64, mesh.nf)
+        ΔTΔτ  = CUDA.zeros(Float64, mesh.nf)
+        ΔTΔτ0 = CUDA.zeros(Float64, mesh.nf)
         Th_PT = CUDA.zeros(Float64, mesh.nf)
         ae    = CuArray(ae)
         be    = CuArray(be)
@@ -182,39 +182,69 @@ end
         Te    = zeros(mesh.nel)
         qx    = zeros(mesh.nel)
         qy    = zeros(mesh.nel)
-        F     = zeros(mesh.nf)
-        F0    = zeros(mesh.nf)
+        ΔTΔτ  = zeros(mesh.nf)
+        ΔTΔτ0 = zeros(mesh.nf)
         Th_PT = zeros(mesh.nf)
     end
 
-    # Now a PT solve
-    dmp     = 0.8
-    dTdtau  = 0.05
-    nout    = 1e3
-    iterMax = 1e5
+    # # Now a PT solve
+    # θ       = 4.0*minimum(mesh.Γ)# 1.0/(3.0*pi)
+    # # Δτ      = 3.5*minimum(mesh.Γ)/1.01
+
+
+    # θ       = 2.9*minimum(mesh.Γ)# 1.0/(6*pi)
+    # Δτ      = 3.5*minimum(mesh.Γ)/1.01*2.9 # n=2
+
+    # println(θ)
+    # println(Δτ)
+
+    # θ       = 1.0/(12.0*pi)
+    # Δτ      = 3.5*minimum(mesh.Γ)/1.01*2.9*2.9 # n=4
+
+    nout    = 50#1e1
+    iterMax = 5e4
     ϵ_PT    = 1e-7
+    println(minimum(mesh.Γ))
+    println(maximum(mesh.Γ))
+    println(minimum(mesh.Ω))
+    println(maximum(mesh.Ω))
+    println("Δτ = ", Δτ)
+    Ωe = maximum(mesh.Ω)
+    Δx = minimum(mesh.Γ)
+    D  = 1.0
+    println("Δτ1 = ", Δx^2/(1.1*D) * 1.0/Ωe *2/3)
 
     # PT loop
-    @time for iter=1:iterMax
-         if USE_GPU
-              # @cuda blocks=cublocks threads=cuthreads ResidualOnFaces_v2_GPU!(F, Mesh_bc, Mesh_f2e, Mesh_dA_f, Mesh_n_x_f, Mesh_n_y_f, Mesh_vole_f, Mesh_vole, Mesh_e2f, Mesh_dA, Mesh_n_x, Mesh_n_y, Th_PT, Te, Tneu, qx, qy, ae, be, ze, tau, mesh_nf, mesh_nf_el) #mesh_type not ok because string
-              # synchronize()
-              # @cuda blocks=cublocks threads=cuthreads Update_F_GPU!(F, Th_PT, F0, dTdtau, dmp, mesh_nf)
-              # synchronize()
-         else
-            ResidualOnFaces_v2!(F, mesh, Th_PT, Te, qx, qy, ae, be, ze, tau, Tneu)
-            F     .= (1 - dmp).*F0 .+ F
-            Th_PT .= Th_PT .+ dTdtau.*F
-            F0    .= F
-         end
+    local iter = 0
+    success = 0
+    @time while (iter<iterMax)
+        iter +=1
+        if USE_GPU
+            # @cuda blocks=cublocks threads=cuthreads ResidualOnFaces_v2_GPU!(F, Mesh_bc, Mesh_f2e, Mesh_dA_f, Mesh_n_x_f, Mesh_n_y_f, Mesh_vole_f, Mesh_vole, Mesh_e2f, Mesh_dA, Mesh_n_x, Mesh_n_y, Th_PT, Te, Tneu, qx, qy, ae, be, ze, τ, mesh_nf, mesh_nf_el) #mesh_type not ok because string
+            # synchronize()
+            # @cuda blocks=cublocks threads=cuthreads Update_F_GPU!(F, Th_PT, ΔTΔτ0, Δτ, θ, mesh_nf)
+            # synchronize()
+        else
+        ΔTΔτ0 .= ΔTΔτ 
+        ResidualOnFaces_v2!(ΔTΔτ, mesh, Th_PT, αe, βe, Ζe, Tneu)
+        ΔTΔτ  .= (1.0 - θ).*ΔTΔτ0 .+ ΔTΔτ 
+        Th_PT .= Th_PT .+ Δτ .* ΔTΔτ
+        end
         if iter % nout == 0
-            err = norm(F)/length(F)
+            err = norm(ΔTΔτ)/sqrt(length(ΔTΔτ))
             println("PT Iter. ", iter, " --- Norm of matrix-free residual: ", err)
             if err < ϵ_PT
                 print("PT solve converged in")
+                success = true
+                break
+            elseif err>1e4
+                success = false
+                println("exploding !")
                 break
             elseif isnan(err)
-                error("NaN !")
+                success = false
+                println("NaN !")
+                break
             end
         end
     end
@@ -223,14 +253,14 @@ end
 
     # Reconstruct element values
     println("Compute element values:")
-    @time Te, qx, qy = ComputeElementValues(mesh, Array(Th), Array(ae), Array(be), Array(ze), Array(Tdir), tau)
-    @time Te1, qx1, qy1 = ComputeElementValuesFaces(mesh, Array(Th), Array(ae), Array(be), Array(ze), Array(Tdir), tau)
+    @time Te, qx, qy = ComputeElementValues(mesh, Array(Th), Array(αe), Array(βe), Array(Ζe), Array(Tdir))
+    @time Te1, qx1, qy1 = ComputeElementValuesFaces(mesh, Array(Th), Array(αe), Array(βe), Array(Ζe))
     if USE_DIRECT
         println(norm(Te.-Te2)/length(Te[:]))
+        println(norm(Te.-Te1)/length(Te[:]))
+        println(norm(qx.-qx1)/length(qx[:]))
+        println(norm(qy.-qy1)/length(qy[:]))
     end
-    println(norm(Te.-Te1)/length(Te[:]))
-    println(norm(qx.-qx1)/length(qx[:]))
-    println(norm(qy.-qy1)/length(qy[:]))
 
     # Compute discretisation errors
     err_T, err_qx, err_qy = ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
@@ -239,15 +269,66 @@ end
     println("Error in qy: ", err_qy)
 
     # Visualise
-    print("Visualisation:")
-    if USE_DIRECT
-        @time PlotMakie(mesh, Err, xmin, xmax, ymin, ymax; cmap = :batlow)
-    else
-        @time PlotMakie(mesh, Te1, xmin, xmax, ymin, ymax; cmap = :batlow)
+    # print("Visualisation:")
+    # if USE_DIRECT
+        # @time PlotMakie(mesh, Te,  xmin, xmax, ymin, ymax, cgrad(:roma, rev=true), 0.7, 1.5)
+    # else
+    #     @time PlotMakie(mesh, Te1, xmin, xmax, ymin, ymax, :batlow, 0.9, 1.2)
         # @time PlotMakie(mesh, Te1, xmin, xmax, ymin, ymax; cmap = :batlow, min_v = 0.9, max_v = 1.2)
-    end
+    # end
     print("Done! Total runtime:")
-    return
+    return iter, success, length(Th), nx
 end
 
-@time main()
+#########################################################
+
+# quads
+# main( "Quadrangles", 1, 0.19, 0.88 )
+# main( "Quadrangles",2, 0.11, 0.93 )
+# main( "Quadrangles",4, 0.057, 0.965 )
+# main( "Quadrangles",8, 0.029, 0.125*7.25 )
+# main( "Quadrangles",16, 0.014125, 0.125*7.25*1.0 ) #--> 1900
+
+# triangles (test were made with τ=100 which is inappropriate, need to remake)
+# main( "UnstructTriangles", 1.25, 0.095, 0.145 )
+# main( "UnstructTriangles",3, 0.04, 0.21 )
+# main( "UnstructTriangles",1.5, 0.082, 0.1575 )
+# main( "UnstructTriangles",6, 0.02, 0.24 )
+# main( "UnstructTriangles",8, 0.014, 0.25 )
+# main( "UnstructTriangles",2, 0.060, 0.180 )
+# main( "UnstructTriangles",4, 0.03, 0.22 )
+# main( "UnstructTriangles",10, 0.011, 0.256 )
+# main( "UnstructTriangles", 1, 0.12, 0.125 )
+
+
+# nv  = [1, 2, 4, 8]
+# tet  = 0.01:0.01/2:0.1
+# dtau =  0.1:0.05:1
+
+# sucv = zeros(length(nv), length(tet), length(dtau))
+# itv  = zeros(length(nv), length(tet), length(dtau))
+
+# for in=1:length(nv)
+#     for iθ=1:length(tet)
+#         for iΔ=1:length(dtau)
+#             @printf("n = %02d -- θ = %2.3f -- Δτ = %2.3f\n", nv[in], tet[iθ], dtau[iΔ] )
+#             iter, success = main( nv[in], tet[iθ], dtau[iΔ] )
+#             if success==true sucv[in,iθ,iΔ] = 1 end
+#             itv[in,iθ,iΔ]  = iter
+#         end
+#     end
+# end
+
+# file = matopen(string(@__DIR__,"/PT_syst.mat"), "w")
+# write(file, "n", nv)
+# write(file, "tet", Array(tet))
+# write(file, "dtau", Array(dtau))
+# write(file, "success", sucv)
+# write(file, "iter", itv)
+# close(file)
+
+main( "UnstructTriangles", 1, 0.11428, 0.28 )
+main( "UnstructTriangles", 2, 0.11428/2, 0.28 )
+main( "UnstructTriangles", 4, 0.11428/4, 0.28 )
+main( "UnstructTriangles", 8, 0.11428/8.0, 0.28 )
+main( "UnstructTriangles", 16, 0.11428/16, 0.28 )

@@ -3,29 +3,35 @@ using AlgebraicMultigrid
 import IterativeSolvers
 using SuiteSparse
 
-function StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
+function StokesSolvers(mesh, Kuu, Kup, fu, fp, M, solver)
     if solver==0
         # Coupled solve
         zero_p = spdiagm(mesh.nel, mesh.nel) 
         K      = [Kuu Kup; -Kup' zero_p]
         f      = [fu; fp]
-        xh     = lu(K)\f
+        # xh     = lu(K)\f
+        xh      = K\f
         Vxh    = xh[1:mesh.nf]
         Vyh    = xh[mesh.nf+1:2*mesh.nf]
         Pe     = xh[2*mesh.nf+1:end] 
         Pe     = Pe .- Statistics.mean(Pe)
     elseif solver==1
         # Decoupled solve
-        coef  = 1e3.*mesh.ke./mesh.vole#*ones(mesh.nel)
+        coef  = 1e4.*mesh.ke./mesh.Ω#*ones(mesh.nel)
         # file = matopen(string(@__DIR__,"/results/matrix_ppi.mat"), "w" )
         # write(file, "coef",    coef )
         # close(file)
         Kppi  = spdiagm(coef)
         Kpu   = -Kup'
         Kuusc = Kuu .- Kup*(Kppi*Kpu)
-        PC    =  0.5*(Kuusc .+ Kuusc') 
-        t = @elapsed Kf    = cholesky(Hermitian(PC),check = false)
-        @printf("Cholesky took = %02.2e s\n", t)
+        # PC    = Kuu .- diag(Kuu) .+ diag(M)
+
+        # PC    =  0.5*(M .+ M') 
+        # Kuusc1 = PC .- Kup*(Kppi*Kpu)
+        # PC     =  0.5*(Kuusc1 .+ Kuusc1') 
+        # t = @elapsed Kf    = cholesky(Hermitian(PC),check = false)
+        t = @elapsed Kf    = lu(Kuusc)
+        # @printf("Cholesky took = %02.2e s\n", t)
         u     = zeros(2*mesh.nf,1)
         ru    = zeros(2*mesh.nf, 1)
         fusc  = zeros(2*mesh.nf,1)
@@ -38,11 +44,13 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
             nrmu = norm(ru)
             nrmp = norm(rp)
             @printf("  --> Powell-Hestenes Iteration %02d\n  Momentum res.   = %2.2e\n  Continuity res. = %2.2e\n", rit, nrmu/sqrt(length(ru)), nrmp/sqrt(length(rp)))
-            if nrmu/sqrt(length(ru)) < 1e-10 && nrmp/sqrt(length(ru)) < 1e-10
+            if nrmu/sqrt(length(ru)) < 1e-11 && nrmp/sqrt(length(ru)) < 1e-11
                 break
             end
             fusc .= fu  .- Kup*(Kppi*fp .+ p)
             u    .= Kf\fusc
+            # u    .= Kuusc\fusc
+            # KSP_GCR_StokesFCFV!( u, Kuusc, fusc, 1e-10, 2, Kxxf, f, v, s, val, VV, SS, restart  )
             p   .+= Kppi*(fp .- Kpu*u)
         end
         # Post-process solve
@@ -90,18 +98,15 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
         Pe  = p[:]
     elseif solver==3
         # Decoupled solve
-        coef  = 1e3.*mesh.ke./mesh.vole#*ones(mesh.nel)
+        coef  = 1e3.*mesh.ke./mesh.Ω#*ones(mesh.nel)
         Kppi  = spdiagm(coef)
         Kpu   = .- Kup'
         Kuusc = Kuu .- Kup*(Kppi*Kpu)
         ndof  = size(Kuu,1)
         ndofx = Int64(ndof/2)
-        Kxx   = Kuu[1:ndofx,1:ndofx]
+        Kxx   = M[1:ndofx,1:ndofx]
         t = @elapsed Kxxf  = cholesky(Hermitian(Kxx),check = false)
         @printf("Cholesky took = %02.2e s\n", t)
-       
-
-        # @printf("Cholesky took = %02.2e s\n", t)
         u     = zeros(Float64, 2*mesh.nf)
         ru    = zeros(Float64, 2*mesh.nf)
         fusc  = zeros(Float64, 2*mesh.nf)

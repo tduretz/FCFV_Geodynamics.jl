@@ -1,5 +1,5 @@
-import TriangleMesh, UnicodePlots, Plots
-using Printf, LoopVectorization, LinearAlgebra, SparseArrays
+import UnicodePlots, Plots
+using Revise, Printf, LoopVectorization, LinearAlgebra, SparseArrays
 
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
@@ -63,7 +63,7 @@ end
     
 #--------------------------------------------------------------------#
 
-function StabParam(tau, dA, Vol, mesh_type)
+function StabParam(tau, dA, Vol, mesh_type, coeff)
     if mesh_type=="Quadrangles";        taui = tau;    end
     # if mesh_type=="UnstructTriangles";  taui = tau*dA; end
     if mesh_type=="UnstructTriangles";  taui = tau end
@@ -91,12 +91,12 @@ end
     # Generate mesh
     if mesh_type=="Quadrangles" 
         if o2==0 tau  = 1e0 end
-        if o2==1 tau  = 1e4 end
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
+        if o2==1 tau  = 1e3 end
+        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, tau, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles"  
-        if o2==0 tau  = 8e0 end
-        if o2==1 tau  = 1e6 end
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC ) 
+        if o2==0 tau  = 1e0 end
+        if o2==1 tau  = 1e3 end
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, tau, inclusion, R, BC ) 
     end
     println("Number of elements: ", mesh.nel)
 
@@ -147,7 +147,7 @@ function Run()
 #################### ORDER 1
 order = 1 
 
-N          = [8, 16, 32, 64, 128, 256 ]#, 512, 1024] 
+N          = [8, 16, 32, 64, 128, 256]# , 512, 1024] 
 mesh_type  = "Quadrangles"
 eT_quad    = zeros(size(N))
 eqx_quad   = zeros(size(N))
@@ -209,16 +209,24 @@ end
 
 #######################################
 
-p = Plots.plot(  log10.(1.0 ./ N) , log10.(eT_quad),    markershape=:rect,      color=:blue,      label="Quads O1 u"        )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eq_quad),    markershape=:rect,      linestyle = :dot, color=:blue,     label="Quads O1 q"        )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_tri),     markershape=:dtriangle, color=:blue, label="Triangles O1 u"    )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eq_tri),     markershape=:dtriangle, linestyle = :dot, color=:blue, label="Triangles O1 q"    )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_quad_o2), markershape=:rect,      color=:red,      label="Quads O2 u"     )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eq_quad_o2), markershape=:rect,      color=:red, linestyle = :dot,     label="Quads O2 q"     )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eT_tri_o2),  markershape=:dtriangle, color=:red, label="Triangles O2 u" )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eq_tri_o2),  markershape=:dtriangle, color=:red, linestyle = :dot, label="Triangles O2 q", legend=:outertopright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
-# p = Plots.plot(  ndof_quad[2:end], t_quad[2:end], markershape=:rect,      label="Quads"                          )
-# p = Plots.plot!( ndof_tri[2:end],  t_tri[2:end],  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "ndof", ylabel = "time" )
+h = 1.0 ./ N
+p = Plots.plot(  log10.(h) , log10.(eT_quad),    markershape=:rect,      color=:blue,      label="Quads O1 u"        )
+p = Plots.plot!( log10.(h) , log10.(eq_quad),    markershape=:rect,      linestyle = :dot, color=:blue,     label="Quads O1 q"        )
+p = Plots.plot!( log10.(h) , log10.(eT_tri),     markershape=:dtriangle, color=:blue, label="Triangles O1 u"    )
+p = Plots.plot!( log10.(h) , log10.(eq_tri),     markershape=:dtriangle, linestyle = :dot, color=:blue, label="Triangles O1 q"    )
+p = Plots.plot!( log10.(h) , log10.(eT_quad_o2), markershape=:rect,      color=:red,      label="Quads O2 u"     )
+p = Plots.plot!( log10.(h) , log10.(eq_quad_o2), markershape=:rect,      color=:red, linestyle = :dot,     label="Quads O2 q"     )
+p = Plots.plot!( log10.(h) , log10.(eT_tri_o2),  markershape=:dtriangle, color=:red, label="Triangles O2 u" )
+p = Plots.plot!( log10.(h) , log10.(eq_tri_o2),  markershape=:dtriangle, color=:red, linestyle = :dot, label="Triangles O2 q", legend=:outertopright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)", foreground_color_legend = nothing, background_color_legend = nothing )
+
+# order1 = [2e-4, 1e-4]
+# order2 = [4e-4, 1e-4]
+# n      = [35, 70]
+# p = Plots.plot!( log10.(1.0 ./ n) , log10.(order1), color=:black, label="Order 1")
+# p = Plots.plot!( log10.(1.0 ./ n) , log10.(order2), color=:black, label="Order 2", linestyle = :dash)
+# p = Plots.annotate!(log10.(1.0 ./ N[1]), log10(order1[1]), "O1", :black)
+# p = Plots.annotate!(log10.(1.0 ./ N[1]), log10(order2[1]), "O2", :black, legend=:bottomleft )
+
 display(p)
 
 end

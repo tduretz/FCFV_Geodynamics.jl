@@ -1,6 +1,6 @@
 using AlgebraicMultigrid
 import IterativeSolvers: cg
-import Metis
+# import Metis
 
 #--------------------------------------------------------------------#
 

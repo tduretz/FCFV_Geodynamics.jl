@@ -1,5 +1,5 @@
 import UnicodePlots, Plots
-using  Printf, LoopVectorization, LinearAlgebra, SparseArrays
+using  Revise, Printf, LoopVectorization, LinearAlgebra, SparseArrays
 
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")

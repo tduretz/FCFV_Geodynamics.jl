@@ -1,5 +1,5 @@
 import UnicodePlots, Plots
-using  Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT, Base.Threads
+using  Revise, Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT, Base.Threads
 
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
@@ -138,11 +138,7 @@ function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, Syy
         for ifac=1:mesh.nf_el
             # Face
             nodei  = mesh.e2f[iel,ifac]
-            xF     = mesh.xf[nodei]
-            yF     = mesh.yf[nodei]
             nodei  = mesh.e2f[iel,ifac]
-            bc     = mesh.bc[nodei]
-            dAi    = mesh.dA[iel,ifac]
             ni_x   = mesh.n_x[iel,ifac]
             ni_y   = mesh.n_y[iel,ifac]
             phase1 = Int64(mesh.phase[iel])
@@ -226,16 +222,16 @@ end
 
 #--------------------------------------------------------------------#
     
-function StabParam(tau, dA, Vol, mesh_type, coeff)
-    # if mesh_type=="Quadrangles";        taui = coeff*tau  end
-    if mesh_type=="Quadrangles";        taui = coeff*tau/dA  end
-    if mesh_type=="UnstructTriangles";  taui = coeff*tau*dA  end
-    return taui
+function StabParam(τr, dA, Vol, mesh_type, coeff)
+    # if mesh_type=="Quadrangles";        taui = coeff*τ  end
+    if mesh_type=="Quadrangles";        τi = coeff*τr/dA  end
+    if mesh_type=="UnstructTriangles";  τi = coeff*τr*dA  end
+    return τi
 end
 
 #--------------------------------------------------------------------#
 
-@views function main(n, mesh_type, order)
+@views function main(n, mesh_type, order, new)
 
     println("\n******** FCFV STOKES ********")
 
@@ -244,7 +240,7 @@ end
     ymin, ymax = -3.0, 3.0
     # n          = 1
     nx, ny     = n, n
-    solver     = 1
+    solver     = 0
     R          = 1.0
     inclusion  = 1
     eta        = [1.0 100.0]
@@ -252,25 +248,25 @@ end
     # mesh_type  = "UnstructTriangles"
     BC         = [2; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
     o2         = order-1
-    nmx        = 4            # 2 marker per cell in x
-    nmy        = 4            # 2 marker per cell in y
+    nmx        = 4            # marker per cell in x
+    nmy        = 4            # marker per cell in y
     # Generate mesh
     if mesh_type=="Quadrangles" 
         # tau  = 1.0
         # if o2==0 tau  = 5e0 end
         # if o2==1 tau  = 1e1 end
-        if o2==0 tau  = 6e-2 end
-        if o2==1 tau  = 6e-2 end    
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
+        if o2==0 τr  = 6e-3 end
+        if o2==1 τr  = 6e-3 end    
+        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles"  
-        if o2==0 tau  = 1.0 end
-        if o2==1 tau  = 1e4 end  
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
+        if o2==0 τr  = 1.0 end
+        if o2==1 τr  = 1e4 end  
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC )
         # area = 1.0 # area factor: SETTING REPRODUCE THE RESULTS OF MATLAB CODE USING TRIANGLE
         # ninc = 29  # number of points that mesh the inclusion: SETTING REPRODUCE THE RESULTS OF MATLAB CODE USING TRIANGLE
         # mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC, area, ninc ) 
     end
-    println("Number of elements: ", mesh.nel, " --- Number of dofs: ", 2*mesh.nf+mesh.nel, " --- tau0 =  ", tau)
+    println("Number of elements: ", mesh.nel, " --- Number of dofs: ", 2*mesh.nf+mesh.nel, " --- τr =  ", τr)
 
     # Initialise markers
     ncx, ncy  = nx, ny
@@ -302,9 +298,6 @@ end
     # Update cell info on markers
     LocateMarkers(p,dx,dy,xc,yc,xmin,xmax,ymin,ymax)
 
-
-
-
     # Source term and BCs etc...
     Pa     = zeros(mesh.nel)
     Vxa    = zeros(mesh.nel)
@@ -321,7 +314,7 @@ end
     SxyNeu = zeros(mesh.nf)
     SyxNeu = zeros(mesh.nf)
     gbar   = zeros(mesh.nel,mesh.nf_el,2)
-    println("Model configuration :")
+    println("Model configuration:")
     @time SetUpProblem!(mesh, Pa, Vxa, Vya, Sxxa, Syya, Sxya, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sex, sey, R, eta, gbar)
 
 
@@ -333,28 +326,20 @@ end
 
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
-    # @time ae, be, ze = ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, tau)
-    @time ae, be, be_o2, ze, pe, mei, pe, rjx, rjy = ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, tau, o2)
+    @time ae, be, be_o2, ze, pe, mei, pe, rjx, rjy = ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, o2)
 
     # Assemble element matrices and RHS
     println("Compute element matrices:")
-    # @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau)
-    @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau, o2)
-
-    # Assemble triplets and sparse
-    println("Assemble triplets and sparse:")
-    @time Kuu, fu, Kup = CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
-    # display(UnicodePlots.spy(Kuu))
-    # display(UnicodePlots.spy(Kup))
+    @time Kuu, Muu, Kup, fu, fp, tsparse = ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, o2, new)
 
     # Solve for hybrid variable
     println("Linear solve:")
-    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
+    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, Muu, solver)
 
     # # Reconstruct element values
     println("Compute element values:")
-    # @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
-    @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy, mei, VxDir, VyDir, tau, o2)
+    # @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir)
+    @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy, mei, VxDir, VyDir, o2)
 
     # # Compute discretisation errors
     err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii, Txxa, Tyya, Txya = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R, eta )
@@ -390,8 +375,8 @@ end
 
 
 #################### ORDER 1
+new   = 1
 order = 1 
-
 N             = 30 .* [1; 2; 3; 4]#;  5; 6; 7; 8; 9; 10; 11; 12; 13; 14 ] #
 println(N)
 mesh_type  = "Quadrangles"
@@ -401,7 +386,7 @@ eTau_quad  = zeros(size(N))
 t_quad     = zeros(size(N))
 ndof_quad  = zeros(size(N))
 for k=1:length(N)
-    t_quad[k]    = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = main( N[k], mesh_type, order )
+    t_quad[k]    = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = main( N[k], mesh_type, order, new )
     eV_quad[k]   = err_V
     eP_quad[k]   = err_P
     eTau_quad[k] = err_Tii
@@ -414,13 +399,13 @@ eP_tri     = zeros(size(N))
 eTau_tri   = zeros(size(N))
 t_tri      = zeros(size(N))
 ndof_tri   = zeros(size(N))
-for k=1:length(N)
-    t_tri[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N[k], mesh_type, order )
-    eV_tri[k]    = err_V
-    eP_tri[k]    = err_P
-    eTau_tri[k]  = err_Tii
-    ndof_tri[k]  = ndof
-end
+# for k=1:length(N)
+#     t_tri[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N[k], mesh_type, order, new )
+#     eV_tri[k]    = err_V
+#     eP_tri[k]    = err_P
+#     eTau_tri[k]  = err_Tii
+#     ndof_tri[k]  = ndof
+# end
 
 #################### ORDER 2
 order = 2 
@@ -432,7 +417,7 @@ eTau_quad_o2  = zeros(size(N))
 t_quad_o2     = zeros(size(N))
 ndof_quad_o2  = zeros(size(N))
 for k=1:length(N)
-    t_quad_o2[k]    = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = main( N[k], mesh_type, order )
+    t_quad_o2[k]    = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = main( N[k], mesh_type, order, new )
     eV_quad_o2[k]   = err_V
     eP_quad_o2[k]   = err_P
     eTau_quad_o2[k] = err_Tii
@@ -445,68 +430,68 @@ eP_tri_o2     = zeros(size(N))
 eTau_tri_o2   = zeros(size(N))
 t_tri_o2      = zeros(size(N))
 ndof_tri_o2   = zeros(size(N))
-for k=1:length(N)
-    t_tri_o2[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N[k], mesh_type, order )
-    eV_tri_o2[k]    = err_V
-    eP_tri_o2[k]    = err_P
-    eTau_tri_o2[k]  = err_Tii
-    ndof_tri_o2[k]  = ndof
-end
+# for k=1:length(N)
+#     t_tri_o2[k]     = @elapsed ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii  = main( N[k], mesh_type, order, new )
+#     eV_tri_o2[k]    = err_V
+#     eP_tri_o2[k]    = err_P
+#     eTau_tri_o2[k]  = err_Tii
+#     ndof_tri_o2[k]  = ndof
+# end
 
 #######################################
 
 p = Plots.plot(  log10.(1.0 ./ N) , log10.(eV_quad),   markershape=:rect,      color=:blue,                         label="Quads V O1"                          )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_quad),   markershape=:rect,      color=:blue,      linestyle = :dot,  label="Quads P O1"                          )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eTau_quad), markershape=:rect,      color=:blue,      linestyle = :dash, label="Quads Tau O1"                        )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eV_tri),    markershape=:dtriangle, color=:blue,                         label="Triangles V O1"                     )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_tri),    markershape=:dtriangle, color=:blue,      linestyle = :dot,  label="Triangles P O1"                     )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eTau_tri),  markershape=:dtriangle, color=:blue,      linestyle = :dash, label="Triangles Tau O1")#, legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
+# p = Plots.plot( log10.(1.0 ./ N) , log10.(eV_tri),    markershape=:dtriangle, color=:blue,                         label="Triangles V O1"                     )
+# p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_tri),    markershape=:dtriangle, color=:blue,      linestyle = :dot,  label="Triangles P O1"                     )
+# p = Plots.plot!( log10.(1.0 ./ N) , log10.(eTau_tri),  markershape=:dtriangle, color=:blue,      linestyle = :dash, label="Triangles Tau O1")#, legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
 
-p = Plots.plot!(  log10.(1.0 ./ N) , log10.(eV_quad_o2),   markershape=:rect,      color=:red,                         label="Quads V O2"                          )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eV_quad_o2),   markershape=:rect,      color=:red,                         label="Quads V O2"                          )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_quad_o2),   markershape=:rect,      color=:red,      linestyle = :dot,  label="Quads P O2"                          )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eTau_quad_o2), markershape=:rect,      color=:red,      linestyle = :dash, label="Quads Tau O2"                        )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eV_tri_o2),    markershape=:dtriangle, color=:red,                         label="Triangles V O2"                     )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_tri_o2),    markershape=:dtriangle, color=:red,      linestyle = :dot,  label="Triangles P O2"                     )
-p = Plots.plot!( log10.(1.0 ./ N) , log10.(eTau_tri_o2),  markershape=:dtriangle, color=:red,      linestyle = :dash, label="Triangles Tau O2", legend=:outertopright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
+# p = Plots.plot!( log10.(1.0 ./ N) , log10.(eV_tri_o2),    markershape=:dtriangle, color=:red,                         label="Triangles V O2"                     )
+# p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_tri_o2),    markershape=:dtriangle, color=:red,      linestyle = :dot,  label="Triangles P O2"                     )
+# p = Plots.plot!( log10.(1.0 ./ N) , log10.(eTau_tri_o2),  markershape=:dtriangle, color=:red,      linestyle = :dash, label="Triangles Tau O2", legend=:outertopright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
 order1 = [2e-4, 1e-4]
 order2 = [4e-4, 1e-4]
 n      = [35, 70]
 p = Plots.plot!( log10.(1.0 ./ n) , log10.(order1), color=:black, label="Order 1")
 p = Plots.plot!( log10.(1.0 ./ n) , log10.(order2), color=:black, label="Order 2", linestyle = :dash)
 p = Plots.annotate!(log10.(1.0 ./ N[1]), log10(order1[1]), "O1", :black)
-p = Plots.annotate!(log10.(1.0 ./ N[1]), log10(order2[1]), "O2", :black)
+p = Plots.annotate!(log10.(1.0 ./ N[1]), log10(order2[1]), "O2", :black, legend=:bottomleft )
 
 # p = Plots.plot(  ndof_quad[2:end], t_quad[2:end], markershape=:rect,      label="Quads"                          )
 # p = Plots.plot!( ndof_tri[2:end],  t_tri[2:end],  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "ndof", ylabel = "time" )
 display(p)
 
 
-# n = 2
-# tau = 1.0
-# main(n, tau)
+# # n = 2
+# # tau = 1.0
+# # main(n, tau)
 
-# # n    = collect(1:1:16)
-# # n    = collect(17:1:20) # p2
-# # tau  = collect(4:1:25)
-# n    = collect(1:1:20)
-# tau  = collect(1:1:4)
-# resu = zeros(length(n), length(tau))
-# resp = zeros(length(n), length(tau))
+# # # n    = collect(1:1:16)
+# # # n    = collect(17:1:20) # p2
+# # # tau  = collect(4:1:25)
+# # n    = collect(1:1:20)
+# # tau  = collect(1:1:4)
+# # resu = zeros(length(n), length(tau))
+# # resp = zeros(length(n), length(tau))
 
-# for in = 1:length(n)
-#     for it = 1:length(tau)
-#         rp, ru = main(n[in], tau[it])
-#         resu[in,it] = ru
-#         resp[in,it] = rp
-#     end
-# end
+# # for in = 1:length(n)
+# #     for it = 1:length(tau)
+# #         rp, ru = main(n[in], tau[it])
+# #         resu[in,it] = ru
+# #         resp[in,it] = rp
+# #     end
+# # end
 
-# # p2 = Plots.heatmap(n, tau, resp', c=:jet1 )
-# # display(Plots.plot(p2))
+# # # p2 = Plots.heatmap(n, tau, resp', c=:jet1 )
+# # # display(Plots.plot(p2))
 
-# file = matopen(string(@__DIR__,"/results/MaxPerr_p3.mat"), "w" )
-# write(file, "n",        n )
-# write(file, "tau",    tau )
-# write(file, "resu",  resu )
-# write(file, "resp",  resp )
-# close(file)
+# # file = matopen(string(@__DIR__,"/results/MaxPerr_p3.mat"), "w" )
+# # write(file, "n",        n )
+# # write(file, "tau",    tau )
+# # write(file, "resu",  resu )
+# # write(file, "resp",  resp )
+# # close(file)

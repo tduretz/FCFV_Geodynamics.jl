@@ -1,148 +1,211 @@
-function ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, tau)
-    ae = zeros(mesh.nel)
-    be = zeros(mesh.nel,2)
-    ze = zeros(mesh.nel,2,2)
+# @turbo was removed
+function ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu)
+
+    α = zeros(mesh.nel)
+    β = zeros(mesh.nel,2)
+    Ζ = zeros(mesh.nel,2,2)
 
     # Assemble FCFV elements
-    @tturbo for iel=1:mesh.nel  
+    @inbounds for e=1:mesh.nel  
 
-        be[iel,1] += mesh.vole[iel]*sex[iel]
-        be[iel,2] += mesh.vole[iel]*sey[iel]
+        β[e,1] += mesh.Ω[e]*sex[e]
+        β[e,2] += mesh.Ω[e]*sey[e]
         
-        for ifac=1:mesh.nf_el
+        for i=1:mesh.nf_el
             
-            nodei = mesh.e2f[iel,ifac]
+            nodei = mesh.e2f[e,i]
             bc    = mesh.bc[nodei]
-            dAi   = mesh.dA[iel,ifac]
-            ni_x  = mesh.n_x[iel,ifac]
-            ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau,dAi,mesh.vole[iel],mesh.type,mesh.ke[iel])                              # Stabilisation parameter for the face
+            Γi    = mesh.Γ[e,i]
+            ni_x  = mesh.n_x[e,i]
+            ni_y  = mesh.n_y[e,i]
+            τi    = mesh.τ[nodei]  # Stabilisation parameter for the face
 
             # Assemble
-            ze[iel,1,1] += (bc==1) * dAi*ni_x*VxDir[nodei] # Dirichlet
-            ze[iel,1,2] += (bc==1) * dAi*ni_x*VyDir[nodei] # Dirichlet
-            ze[iel,2,1] += (bc==1) * dAi*ni_y*VxDir[nodei] # Dirichlet
-            ze[iel,2,2] += (bc==1) * dAi*ni_y*VyDir[nodei] # Dirichlet
-            be[iel,1]   += (bc==1) * dAi*taui*VxDir[nodei] # Dirichlet
-            be[iel,2]   += (bc==1) * dAi*taui*VyDir[nodei] # Dirichlet
-            ae[iel]     +=           dAi*taui
+            Ζ[e,1,1] += (bc==1) * Γi*ni_x*VxDir[nodei] # Dirichlet
+            Ζ[e,1,2] += (bc==1) * Γi*ni_x*VyDir[nodei] # Dirichlet
+            Ζ[e,2,1] += (bc==1) * Γi*ni_y*VxDir[nodei] # Dirichlet
+            Ζ[e,2,2] += (bc==1) * Γi*ni_y*VyDir[nodei] # Dirichlet
+            β[e,1]   += (bc==1) * Γi*τi*VxDir[nodei]   # Dirichlet
+            β[e,2]   += (bc==1) * Γi*τi*VyDir[nodei]   # Dirichlet
+            α[e]     +=           Γi*τi
             
         end
     end
-    return ae, be, ze
+    return α, β, Ζ
 end
 
 #--------------------------------------------------------------------#
 
-function ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
+function ComputeElementValues(mesh, Vxh, Vyh, Pe, α, β, Ζ, VxDir, VyDir)
+
     Vxe         = zeros(mesh.nel);
     Vye         = zeros(mesh.nel);
     Txxe        = zeros(mesh.nel);
     Tyye        = zeros(mesh.nel);
     Txye        = zeros(mesh.nel);
 
-    @tturbo for iel=1:mesh.nel
+    @inbounds for e=1:mesh.nel
     
-        Vxe[iel]  =  be[iel,1]/ae[iel]
-        Vye[iel]  =  be[iel,2]/ae[iel]
-        Txxe[iel] =  mesh.ke[iel]/mesh.vole[iel]*ze[iel,1,1]
-        Tyye[iel] =  mesh.ke[iel]/mesh.vole[iel]*ze[iel,2,2] 
-        Txye[iel] =  mesh.ke[iel]/mesh.vole[iel]*0.5*(ze[iel,1,2]+ze[iel,2,1])
+        η       =  mesh.ke[e]
+        Ω       =  mesh.Ω[e]
+        Vxe[e]  =  β[e,1]/α[e]
+        Vye[e]  =  β[e,2]/α[e]
+        Txxe[e] =  η/Ω*Ζ[e,1,1]
+        Tyye[e] =  η/Ω*Ζ[e,2,2] 
+        Txye[e] =  η/Ω*0.5*(Ζ[e,1,2] + Ζ[e,2,1])
         
-        for ifac=1:mesh.nf_el
+        for i=1:mesh.nf_el
             
             # Face
-            nodei = mesh.e2f[iel,ifac]
+            nodei = mesh.e2f[e,i]
             bc    = mesh.bc[nodei]
-            dAi   = mesh.dA[iel,ifac]
-            ni_x  = mesh.n_x[iel,ifac]
-            ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau,dAi,mesh.vole[iel],mesh.type,mesh.ke[iel])      # Stabilisation parameter for the face
+            Γi    = mesh.Γ[e,i]
+            ni_x  = mesh.n_x[e,i]
+            ni_y  = mesh.n_y[e,i]
+            τi    = mesh.τ[nodei]  # Stabilisation parameter for the face
 
             # Assemble
-            Vxe[iel]  += (bc!=1) *  dAi*taui*Vxh[nodei]/ae[iel]
-            Vye[iel]  += (bc!=1) *  dAi*taui*Vyh[nodei]/ae[iel]
-            Txxe[iel] += (bc!=1) *  mesh.ke[iel]/mesh.vole[iel]*dAi*ni_x*Vxh[nodei]
-            Tyye[iel] += (bc!=1) *  mesh.ke[iel]/mesh.vole[iel]*dAi*ni_y*Vyh[nodei]
-            Txye[iel] += (bc!=1) *  mesh.ke[iel]*0.5*( 1.0/mesh.vole[iel]*dAi*( ni_x*Vyh[nodei] + ni_y*Vxh[nodei] ) )
+            Vxe[e]  += (bc!=1) *  Γi*τi*Vxh[nodei]/α[e]
+            Vye[e]  += (bc!=1) *  Γi*τi*Vyh[nodei]/α[e]
+            Txxe[e] += (bc!=1) *  η/Ω*Γi*ni_x*Vxh[nodei]
+            Tyye[e] += (bc!=1) *  η/Ω*Γi*ni_y*Vyh[nodei]
+            Txye[e] += (bc!=1) *  η*0.5*( 1.0/Ω*Γi*( ni_x*Vyh[nodei] + ni_y*Vxh[nodei] ) )
          end
-        Txxe[iel] *= 2.0
-        Tyye[iel] *= 2.0
-        Txye[iel] *= 2.0
+        Txxe[e] *= 2.0
+        Tyye[e] *= 2.0
+        Txye[e] *= 2.0
     end
     return Vxe, Vye, Txxe, Tyye, Txye
 end
 
 #--------------------------------------------------------------------#
 
-function ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau)
+function ElementAssemblyLoop(mesh, α, β, Ζ, VxDir, VyDir, σxxNeu, σyyNeu, σxyNeu, σyxNeu, gbar, new) 
+
     # Assemble element matrices and rhs
-    f   = zeros(mesh.nf)
-    Kuu = zeros(mesh.nel, 2*mesh.nf_el, 2*mesh.nf_el)
-    fu  = zeros(mesh.nel, 2*mesh.nf_el)
-    Kup = zeros(mesh.nel, 2*mesh.nf_el);
-    fp  = zeros(mesh.nel)
+    Kuui = zeros(2*mesh.nf_el, 2*mesh.nf_el, mesh.nel)
+    Kuuj = zeros(2*mesh.nf_el, 2*mesh.nf_el, mesh.nel)
+    Kuuv = zeros(2*mesh.nf_el, 2*mesh.nf_el, mesh.nel)
+    Muuv = zeros(2*mesh.nf_el, 2*mesh.nf_el, mesh.nel)
+    fu   = zeros(2*mesh.nf_el, mesh.nel)
+    Kupi = zeros(2*mesh.nf_el, mesh.nel)
+    Kupj = zeros(2*mesh.nf_el, mesh.nel)
+    Kupv = zeros(2*mesh.nf_el, mesh.nel)
+    fp   = zeros(mesh.nel)
+    nf   = mesh.nf_el
 
-    @tturbo for iel=1:mesh.nel 
+    @inbounds for e=1:mesh.nel 
 
-        for ifac=1:mesh.nf_el 
+        # Element properties
+        Ωe = mesh.Ω[e]
+        ηe = mesh.ke[e]
 
-            nodei = mesh.e2f[iel,ifac]
+        for i=1:mesh.nf_el 
+
+            ni_x, ni_y = mesh.n_x[e,i], mesh.n_y[e,i]
+            nodei = mesh.e2f[e,i]
             bci   = mesh.bc[nodei]
-            dAi   = mesh.dA[iel,ifac]
-            ni_x  = mesh.n_x[iel,ifac]
-            ni_y  = mesh.n_y[iel,ifac]
-            taui  = StabParam(tau,dAi,mesh.vole[iel], mesh.type,mesh.ke[iel])  
-                
-            for jfac=1:mesh.nf_el
+            ȷ     = 0.0 + (bci==3)*1.0 # indicates interface
+            Γi    = mesh.Γ[e,i]
+            τi    = mesh.τ[nodei]  
 
-                nodej = mesh.e2f[iel,jfac]
+            # if ȷ==1
+            # ηn = mesh.ke[mesh.e2e[e,i]]
+            #     if ηe==1.0
+            #         ηe = 2.0/(1.0 + 1.0/10.0)
+            #         ηe = (1.0 + 10.0)/2
+            #     else
+            #         ηe = (1.0 + 10.0)/2
+            #         # ηe = sqrt(1*10.0)
+            #     end
+            #     # println(ηe)
+            # end
+                
+            for j=1:mesh.nf_el
+
+                nj_x, nj_y  = mesh.n_x[e,j], mesh.n_y[e,j]
+                nodej = mesh.e2f[e,j]
                 bcj   = mesh.bc[nodej]   
-                dAj   = mesh.dA[iel,jfac]
-                nj_x  = mesh.n_x[iel,jfac]
-                nj_y  = mesh.n_y[iel,jfac]
-                tauj  = StabParam(tau,dAj,mesh.vole[iel], mesh.type,mesh.ke[iel])  
+                Γj    = mesh.Γ[e,j]
+                τj    = mesh.τ[nodej]  
+                δ     = 0.0 + (i==j)*1.0    # Delta operator
+                on    = (bci!=1) & (bcj!=1) # Activate nodal connection if not Dirichlet!
                         
-                # Delta
-                del = 0.0 + (ifac==jfac)*1.0
-                        
-                # Element matrix
-                nitnj = ni_x*nj_x + ni_y*nj_y;
-                Ke_ij =-dAi * (1.0/ae[iel] * dAj * taui*tauj - mesh.ke[iel]/mesh.vole[iel]*dAj*nitnj - taui*del)
-                yes   = (bci!=1) & (bcj!=1)
-                Kuu[iel,ifac,           jfac           ] = yes * Ke_ij
-                Kuu[iel,ifac+mesh.nf_el,jfac+mesh.nf_el] = yes * Ke_ij
-                # Kuu[iel,ifac,           jfac           ] = (bci!=1) * (bcj!=1) * Ke_ij
-                # Kuu[iel,ifac+mesh.nf_el,jfac+mesh.nf_el] = (bci!=1) * (bcj!=1) * Ke_ij
-            end
+                # Element matrix components
+                ninj = ni_x*nj_x + ni_y*nj_y
+
+                # Element matrix 
+                Kuuv[j   , i   , e] = on * -Γi * (α[e]^-1*τi*τj*Γj - ηe*Ωe^-1*Γj*(ninj + new*ȷ*ni_x*nj_x) - τi*δ) # u1u1
+                Kuuv[j+nf, i   , e] = on * -Γi * (                 - ηe*Ωe^-1*Γj*(       new*ȷ*ni_y*nj_x)       ) # u1u2
+                Kuuv[j   , i+nf, e] = on * -Γi * (                 - ηe*Ωe^-1*Γj*(       new*ȷ*ni_x*nj_y)       ) # u2u1
+                Kuuv[j+nf, i+nf, e] = on * -Γi * (α[e]^-1*τi*τj*Γj - ηe*Ωe^-1*Γj*(ninj + new*ȷ*ni_y*nj_y) - τi*δ) # u2u2
+
+                # PC - deactivate terms from new interface implementation
+                Muuv[j   , i   , e] = on * -Γi * (α[e]^-1*τi*τj*Γj - ηe*Ωe^-1*Γj*(ninj + 0*new*ȷ*ni_x*nj_x) - τi*δ) # u1u1
+                Muuv[j+nf, i+nf, e] = on * -Γi * (α[e]^-1*τi*τj*Γj - ηe*Ωe^-1*Γj*(ninj + 0*new*ȷ*ni_y*nj_y) - τi*δ) # u2u2
+
+                # Connectivity
+                Kuui[j   , i   , e]  = nodei;         Kuui[j+nf, i   , e]  = nodei
+                Kuuj[j   , i   , e]  = nodej;         Kuuj[j+nf, i   , e]  = nodej+mesh.nf
+                Kuui[j   , i+nf, e]  = nodei+mesh.nf; Kuui[j+nf, i+nf, e]  = nodei+mesh.nf
+                Kuuj[j   , i+nf, e]  = nodej;         Kuuj[j+nf, i+nf, e]  = nodej+mesh.nf
+            end 
             # RHS
-            Xi      = 0.0 + (bci==2)*1.0
-            Ji      = 0.0 + (bci==3)*1.0
-            tix     = ni_x*SxxNeu[nodei] + ni_y*SxyNeu[nodei]
-            tiy     = ni_x*SyxNeu[nodei] + ni_y*SyyNeu[nodei]
-            nitze_x = ni_x*ze[iel,1,1] + ni_y*ze[iel,2,1]
-            nitze_y = ni_x*ze[iel,1,2] + ni_y*ze[iel,2,2]
-            feix    = (bci!=1) * -dAi * (mesh.ke[iel]/mesh.vole[iel]*nitze_x - tix*Xi - gbar[iel,ifac,1]*Ji - 1.0/ae[iel]*be[iel,1]*taui)
-            feiy    = (bci!=1) * -dAi * (mesh.ke[iel]/mesh.vole[iel]*nitze_y - tiy*Xi - gbar[iel,ifac,2]*Ji - 1.0/ae[iel]*be[iel,2]*taui)
+            Xi    = 0.0 + (bci==2)*1.0
+            tix   = ni_x*σxxNeu[nodei] + ni_y*σxyNeu[nodei]
+            tiy   = ni_x*σyxNeu[nodei] + ni_y*σyyNeu[nodei]   
+            niΖ_x = ni_x*(Ζ[e,1,1] +  new*ȷ*Ζ[e,1,1]) + ni_y*(Ζ[e,2,1] + new*ȷ*Ζ[e,1,2]) 
+            niΖ_y = ni_x*(Ζ[e,1,2] +  new*ȷ*Ζ[e,2,1]) + ni_y*(Ζ[e,2,2] + new*ȷ*Ζ[e,2,2])
+            feix  = (bci!=1) * -Γi * (-α[e]^-1*τi*β[e,1] + ηe*Ωe^-1*niΖ_x - tix*Xi - (1-new)*ȷ*gbar[e,i,1])
+            feiy  = (bci!=1) * -Γi * (-α[e]^-1*τi*β[e,2] + ηe*Ωe^-1*niΖ_y - tiy*Xi - (1-new)*ȷ*gbar[e,i,2])
             # up block
-            Kup[iel,ifac]                            -= (bci!=1) * dAi*ni_x;
-            Kup[iel,ifac+mesh.nf_el]                 -= (bci!=1) * dAi*ni_y;
+            Kupv[i   , e] -= (bci!=1) * Γi*ni_x
+            Kupv[i+nf, e] -= (bci!=1) * Γi*ni_y
+            Kupi[i   , e]  = nodei
+            Kupj[i   , e]  = e
+            Kupi[i+nf, e]  = nodei + mesh.nf
+            Kupj[i+nf, e]  = e
             # Dirichlet nodes - uu block
-            Kuu[iel,ifac,ifac]                       += (bci==1) * 1e6
-            Kuu[iel,ifac+mesh.nf_el,ifac+mesh.nf_el] += (bci==1) * 1e6
-            fu[iel,ifac]                             += (bci!=1) * feix + (bci==1) * VxDir[nodei] * 1e6
-            fu[iel,ifac+mesh.nf_el]                  += (bci!=1) * feiy + (bci==1) * VyDir[nodei] * 1e6
+            Kuuv[i   , i   , e] += (bci==1) * 1e0
+            Kuuv[i+nf, i+nf, e] += (bci==1) * 1e0
+            Muuv[i   , i   , e] += (bci==1) * 1e0
+            Muuv[i+nf, i+nf, e] += (bci==1) * 1e0
+            fu[i   ,e]          += (bci!=1) * feix + (bci==1) * VxDir[nodei] * 1e0
+            fu[i+nf,e]          += (bci!=1) * feiy + (bci==1) * VyDir[nodei] * 1e0
             # Dirichlet nodes - pressure RHS
-            fp[iel]                                  += (bci==1) * -dAi*(VxDir[nodei]*ni_x + VyDir[nodei]*ni_y)
+            fp[e]               -= (bci==1) * Γi*(VxDir[nodei]*ni_x + VyDir[nodei]*ni_y)
         end
     end
-    return Kuu, fu, Kup, fp
+
+    # Call sparse assembly
+    tsparse = @elapsed Kuu, Muu, Kup, fu = Sparsify( Kuui, Kuuj, Kuuv, Muuv, Kupi, Kupj, Kupv, fu, mesh.nf, mesh.nel)
+
+    return Kuu, Muu, Kup, fu, fp, tsparse
+end
+
+#--------------------------------------------------------------------#
+
+function Sparsify( Kuui, Kuuj, Kuuv, Muuv, Kupi, Kupj, Kupv, fuv, nf, nel)
+
+    _one = ones(size(Kupi[:]))
+    Kuu  =       dropzeros(sparse(Kuui[:], Kuuj[:], Kuuv[:], nf*2, nf*2))
+    Muu  =       dropzeros(sparse(Kuui[:], Kuuj[:], Muuv[:], nf*2, nf*2))
+    Kup  =       dropzeros(sparse(Kupi[:], Kupj[:], Kupv[:], nf*2, nel ))
+    fu   = Array(dropzeros(sparse(Kupi[:],    _one,  fuv[:], nf*2,   1 )))
+
+    # file = matopen(string(@__DIR__,"/results/matrix_K.mat"), "w" )
+    # write(file, "Kuu",    Kuu )
+    # write(file, "Kup",    Kup )
+    # close(file)
+
+    return Kuu, Muu, Kup, fu
 end
 
 #--------------------------------------------------------------------#
 
 function CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
-    # Create triplets and assemble sparse matrix fo Kuu
+    # ACHTUNG: This function is deprecated since it gives wrong xy connectivity
+    # Create triplets and assemble sparse matrix for Kuu
     e2fu = mesh.e2f
     e2fv = mesh.e2f .+ mesh.nf 
     e2f  = hcat(e2fu, e2fv)
@@ -150,9 +213,10 @@ function CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
     ii   = repeat(idof, 1, length(idof))'
     ij   = repeat(idof, 1, length(idof))
     Ki   = e2f[:,ii]
-    Kif  = e2f[:,ii[1,:]]
+    Kif  = e2f[:,ii[1,:]] # for RHS
     Kj   = e2f[:,ij]
     @time Kuu  = sparse(Ki[:], Kj[:], Kuu_v[:], mesh.nf*2, mesh.nf*2)
+    
     # file = matopen(string(@__DIR__,"/results/matrix_uu.mat"), "w" )
     # write(file, "Ki",       Ki[:] )
     # write(file, "Kj",    Kj[:] )
@@ -161,7 +225,7 @@ function CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
     # write(file, "ncol",  mesh.nf*2 )
     # close(file)
     @time fu   = sparse(Kif[:], ones(size(Kif[:])), fu_v[:], mesh.nf*2, 1)
-    u   = Array(fu)
+    fu   = Array(fu)
     droptol!(Kuu, 1e-6)
     # Create triplets and assemble sparse matrix fo Kup
     idof = 1:mesh.nf_el*2  

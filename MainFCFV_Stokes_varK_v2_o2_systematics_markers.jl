@@ -1,5 +1,5 @@
 import UnicodePlots, Plots
-using  Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT, Base.Threads
+using  Revise, Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT, Base.Threads
 
 include("CreateMeshFCFV.jl")
 include("VisuFCFV.jl")
@@ -9,6 +9,14 @@ include("EvalAnalDani_v2.jl")
 include("DiscretisationFCFV_Stokes_o2.jl")
 BLAS.set_num_threads(4)
 # include("MarkerRoutines.jl") 
+
+#--------------------------------------------------------------------#
+    
+function StabParam(τr, dA, Ω, mesh_type, coeff)
+    if mesh_type=="Quadrangles";        τi = 1.0/coeff*τr*dA  end
+    if mesh_type=="UnstructTriangles";  τi = coeff*τr*dA  end
+    return τi
+end
 
 #--------------------------------------------------------------------#
 
@@ -142,7 +150,7 @@ function SetUpProblem!(mesh, P, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, Syy
             yF     = mesh.yf[nodei]
             nodei  = mesh.e2f[iel,ifac]
             bc     = mesh.bc[nodei]
-            dAi    = mesh.dA[iel,ifac]
+            dAi    = mesh.Γ[iel,ifac]
             ni_x   = mesh.n_x[iel,ifac]
             ni_y   = mesh.n_y[iel,ifac]
             phase1 = Int64(mesh.phase[iel])
@@ -213,50 +221,34 @@ function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, rc, eta )
 end
 
 #--------------------------------------------------------------------#
-    
-function StabParam(tau, dA, Vol, mesh_type, coeff)
-    # if mesh_type=="Quadrangles";        taui = coeff*tau  end
-    if mesh_type=="Quadrangles";        taui = coeff*tau  end
-    if mesh_type=="UnstructTriangles";  taui = coeff*tau*dA  end
-    return taui
-end
 
-#--------------------------------------------------------------------#
-
-@views function main(n, tau)
+@views function main(n, mesh_type, τr, new)
 
     println("\n******** FCFV STOKES ********")
 
     # Create sides of mesh
     xmin, xmax = -3.0, 3.0
     ymin, ymax = -3.0, 3.0
-    # n          = 1
     nx, ny     = 30*n, 30*n
+    println(nx)
     solver     = 1
     R          = 1.0
     inclusion  = 1
     eta        = [1.0 100.0]
-    # mesh_type  = "Quadrangles"
-    mesh_type  = "UnstructTriangles"
     BC         = [2; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
     o2         = 0
     nmx        = 4            # 2 marker per cell in x
     nmy        = 4            # 2 marker per cell in y
     # Generate mesh
     if mesh_type=="Quadrangles" 
-        # tau  = 1.0
-        if o2==0 tau  = 5e0 end
-        if o2==1 tau  = 1e1 end   
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
+        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles"  
-        if o2==0 tau  = 1.0 end
-        if o2==1 tau  = 1.0 end  
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC )
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC )
         # area = 1.0 # area factor: SETTING REPRODUCE THE RESULTS OF MATLAB CODE USING TRIANGLE
         # ninc = 29  # number of points that mesh the inclusion: SETTING REPRODUCE THE RESULTS OF MATLAB CODE USING TRIANGLE
         # mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC, area, ninc ) 
     end
-    println("Number of elements: ", mesh.nel, " --- Number of dofs: ", 2*mesh.nf+mesh.nel, " --- tau0 =  ", tau)
+    println("Number of elements: ", mesh.nel, " --- Number of dofs: ", 2*mesh.nf+mesh.nel, " --- tau0 =  ", τr )
 
     # Initialise markers
     ncx, ncy  = nx, ny
@@ -288,9 +280,6 @@ end
     # Update cell info on markers
     LocateMarkers(p,dx,dy,xc,yc,xmin,xmax,ymin,ymax)
 
-
-
-
     # Source term and BCs etc...
     Pa     = zeros(mesh.nel)
     Vxa    = zeros(mesh.nel)
@@ -310,36 +299,31 @@ end
     println("Model configuration :")
     @time SetUpProblem!(mesh, Pa, Vxa, Vya, Sxxa, Syya, Sxya, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sex, sey, R, eta, gbar)
 
-
     k2d = ones(ncx,ncy)
-    @time Markers2Cells2(p,k2d,xc,yc,dx,dy,ncx,ncy,eta,0)
-    # mesh.ke .= k2d[:]
+    @time Markers2Cells2(p,k2d,xc,yc,dx,dy,ncx,ncy,eta,1)
+    if mesh_type=="Quadrangles" 
+        mesh.ke .= k2d[:]
+    end
 
+    # Need to compute it after initialising viscosity field using markers
+    FaceStabParam( mesh, τr, mesh_type )
 
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
-    # @time ae, be, ze = ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, tau)
-    @time ae, be, be_o2, ze, pe, mei, pe, rjx, rjy = ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, tau, o2)
+    @time ae, be, be_o2, ze, pe, mei, pe, rjx, rjy = ComputeFCFV_o2(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, o2)
 
     # Assemble element matrices and RHS
     println("Compute element matrices:")
     # @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau)
-    @time Kuu_v, fu_v, Kup_v, fp = ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, tau, o2)
-
-    # Assemble triplets and sparse
-    println("Assemble triplets and sparse:")
-    @time Kuu, fu, Kup = CreateTripletsSparse(mesh, Kuu_v, fu_v, Kup_v)
-    # display(UnicodePlots.spy(Kuu))
-    # display(UnicodePlots.spy(Kup))
+    @time Kuu, Muu, Kup, fu, fp, tsparse = ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, o2, new)
 
     # Solve for hybrid variable
     println("Linear solve:")
-    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, solver)
+    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, Muu, solver)
 
     # # Reconstruct element values
     println("Compute element values:")
-    # @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir, tau)
-    @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy, mei, VxDir, VyDir, tau, o2)
+    @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy, mei, VxDir, VyDir, o2)
 
     # # Compute discretisation errors
     err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, Txxa, Tyya, Txya = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R, eta )
@@ -359,41 +343,21 @@ end
     # PlotMakie(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
     # @time PlotMakie( mesh, Vxe, xmin, xmax, ymin, ymax, :jet1, minimum(Vxe), maximum(Vxe) )
     # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
-    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :jet1, minimum(Pa), maximum(Pa) )
+    # @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1,  min_v=minimum(Pa),  max_v=maximum(Pa), writefig=false )
     # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
     # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
-    # @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax, :jet1 )
+    # @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax; cmap=:jet1 )
     # @time PlotMakie( mesh, mesh.phase, xmin, xmax, ymin, ymax, :jet1)
 
     return maximum(Perr), maximum(Verr)
 end
 
-n = 2
-tau = 1.0
-main(n, tau)
-
-# # n    = collect(1:1:16)
-# # n    = collect(17:1:20) # p2
-# # tau  = collect(4:1:25)
-# n    = collect(1:1:20)
-# tau  = collect(1:1:4)
-# resu = zeros(length(n), length(tau))
-# resp = zeros(length(n), length(tau))
-
-# for in = 1:length(n)
-#     for it = 1:length(tau)
-#         rp, ru = main(n[in], tau[it])
-#         resu[in,it] = ru
-#         resp[in,it] = rp
-#     end
-# end
-
-# # p2 = Plots.heatmap(n, tau, resp', c=:jet1 )
-# # display(Plots.plot(p2))
-
-# file = matopen(string(@__DIR__,"/results/MaxPerr_p3.mat"), "w" )
-# write(file, "n",        n )
-# write(file, "tau",    tau )
-# write(file, "resu",  resu )
-# write(file, "resp",  resp )
-# close(file)
+new = 1 
+n   = 2
+τ   = 1.0
+# main(2, "Quadrangles", 25, 1) # L_INF P 1.67 no-interp
+# main(2, "Quadrangles", 50, 1) # L_INF P 1.18 arith
+# main(4, "Quadrangles", 180, 1) # L_INF P 1.45 arith
+# main(8, "Quadrangles", 280, 1) # L_INF P 1.8 arith
+main(2, "Quadrangles", 25, 1)
+# main(n, "UnstructTriangles", tau, new)

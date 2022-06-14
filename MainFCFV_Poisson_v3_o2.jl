@@ -1,4 +1,4 @@
-import TriangleMesh, UnicodePlots, Plots
+import UnicodePlots
 using Printf, LoopVectorization, LinearAlgebra, SparseArrays
 
 include("CreateMeshFCFV.jl")
@@ -76,7 +76,7 @@ end
     nx, ny     = n*8, n*8
     R          = 0.5
     inclusion  = 0
-    solver     = 0
+    solver     = 1
     o2         = 1
     BC         = [1; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
     # mesh_type  = "Quadrangles"
@@ -129,9 +129,9 @@ end
     println("Error in qx: ", err_qx)
     println("Error in qy: ", err_qy)
 
-    # # Visualise
-    # println("Visualisation:")
-    # @time PlotMakie( mesh, Te, xmin, xmax, ymin, ymax, :viridis )
+    # Visualise
+    println("Visualisation:")
+    @time PlotMakie( mesh, Te, xmin, xmax, ymin, ymax, :viridis )
 
 end
 
