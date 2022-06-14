@@ -40,7 +40,7 @@ function Node2ElementNumbering!( mesh )
     nnel = mesh.nnel # HARD-CODE 3 node linear element
 
     # Create node to element list
-    nnodes = mesh.nn
+    nnodes   = mesh.nn
     nel_node = zeros(Int64,nnodes)
     for el=1:mesh.nel # count how many elements are connected to a node
         for in=1:nnel 
@@ -332,16 +332,34 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
         mesh.n_y_f[ifac,2]  = -mesh.n_y_f[ifac,1]
     end
     ### FEM 
+    mesh.nnel = nnel
     if nnel == 3
         mesh.nn  = mesh.nv
     elseif nnel == 6
         mesh.nn  = mesh.nv + mesh.nf
+    elseif nnel == 7
+        mesh.nn  = mesh.nv + mesh.nf + mesh.nel
     end
-    mesh.xn   = trimesh.pointlist[1,1:mesh.nn]
-    mesh.yn   = trimesh.pointlist[2,1:mesh.nn]
-    mesh.nnel = nnel
-    mesh.e2n  = trimesh.trianglelist[1:mesh.nnel,:]'
-    mesh.bcn  = trimesh.pointmarkerlist[1:mesh.nn]
+    if nnel == 3 || nnel == 6
+        mesh.xn   = trimesh.pointlist[1,1:mesh.nn]
+        mesh.yn   = trimesh.pointlist[2,1:mesh.nn]
+        mesh.e2n  = trimesh.trianglelist[1:mesh.nnel,:]'
+        mesh.bcn  = trimesh.pointmarkerlist[1:mesh.nn]
+    else
+        n1        = trimesh.trianglelist[1,:]
+        n2        = trimesh.trianglelist[2,:]
+        n3        = trimesh.trianglelist[3,:]
+        xc        = 1//3*(trimesh.pointlist[1,n1] .+ trimesh.pointlist[1,n2] .+ trimesh.pointlist[1,n3])
+        yc        = 1//3*(trimesh.pointlist[2,n1] .+ trimesh.pointlist[2,n2] .+ trimesh.pointlist[2,n3])
+        num7      = (1:mesh.nel) .+ mesh.nv .+ mesh.nf
+        mesh.xn   = [trimesh.pointlist[1,:]; xc]
+        mesh.yn   = [trimesh.pointlist[2,:]; yc]
+        mesh.e2n  = [trimesh.trianglelist[1:mesh.nnel-1,:]' num7]
+        println(maximum(trimesh.trianglelist[1:mesh.nnel-1,:]))
+        println(num7[1])
+        println(num7[end])
+        mesh.bcn  = [trimesh.pointmarkerlist[:]; zeros(mesh.nel)]
+    end
     Node2ElementNumbering!( mesh )
     ############# FOR THE PSEUDO-TRANSIENT PURPOSES ONLY #############
     return mesh
