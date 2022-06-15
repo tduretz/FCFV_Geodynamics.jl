@@ -132,7 +132,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
 
     if inclusion==1
         # 2. Inclusion
-        theta0       = collect(LinRange(0,2*pi,no_pts_incl+1));
+        theta0       = collect(LinRange(0.0,2.0*pi,no_pts_incl+1));
         theta        = theta0[1:end-1] # do not include last point (periodic 0 == 2pi)
         xx           = cos.(theta);
         yy           = sin.(theta);
@@ -355,9 +355,6 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
         mesh.xn   = [trimesh.pointlist[1,:]; xc]
         mesh.yn   = [trimesh.pointlist[2,:]; yc]
         mesh.e2n  = [trimesh.trianglelist[1:mesh.nnel-1,:]' num7]
-        println(maximum(trimesh.trianglelist[1:mesh.nnel-1,:]))
-        println(num7[1])
-        println(num7[end])
         mesh.bcn  = [trimesh.pointmarkerlist[:]; zeros(mesh.nel)]
     end
     Node2ElementNumbering!( mesh )
