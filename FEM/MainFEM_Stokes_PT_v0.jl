@@ -113,18 +113,15 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
         Q_ele  .= 0.0
         b_ele  .= 0.0
 
-
         if np==3  P[2:3,:] .= (x[1:3,:])' end
-
 
         # Integration loop
         for ip=1:nip
 
             if np==3 
-                Ni = N[ip,:,:]
+                Ni = N[ip,:,1]
                 Pb[2:3]     = x'*Ni 
                 Pi = P\Pb
-                # display(Pi)
             end
 
             dNdXi     = dNdX[ip,:,:]
@@ -144,8 +141,8 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
             # B[mesh.nnel+1:end,2] = dNdx[:,2]
             # B[1:mesh.nnel,3]     = dNdx[:,1]
             # B[mesh.nnel+1:end,3] = dNdx[:,2]
-            K_ele   .+= ipw[ip] .* detJ .* ke  .* (B*Dev*B')
-            if np==3 Q_ele   .-= ipw[ip] .* detJ .* Bvol[:]*Pi' end
+            K_ele .+= ipw[ip] .* detJ .* ke  .* (B*Dev*B')
+            if np==3 Q_ele   .-= ipw[ip] .* detJ .* (Bvol[:]*Pi') end
             if np==1 Q_ele   .-= ipw[ip] .* detJ .* 1.0 .* (B*m*Np') end
             # b_ele   .+= ipw[ip] .* detJ .* se[e] .* N[ip,:] 
         end
@@ -186,15 +183,7 @@ function DirectSolveFEM!(Vx, Vy, P, mesh, K_all, Q_all, b)
                         K[nodesVx[j]        , nodesVy[i]        ] += K_all[e,jj,ii+1]
                         K[nodesVy[j]        , nodesVx[i]        ] += K_all[e,jj+1,ii]
                         K[nodesVy[j]        , nodesVy[i]        ] += K_all[e,jj+1,ii+1]
-                    
-                        Q[nodesVx[j], nodesP] -= Q_all[e,jj,1]
-                        Q[nodesVy[j], nodesP] -= Q_all[e,jj+1,1]
-                        if np==3
-                            Q[nodesVx[j], nodesP+mesh.nel] -= Q_all[e,jj,2]
-                            Q[nodesVy[j], nodesP+mesh.nel] -= Q_all[e,jj+1,2]
-                            Q[nodesVx[j], nodesP+2*mesh.nel] -= Q_all[e,jj,3]
-                            Q[nodesVy[j], nodesP+2*mesh.nel] -= Q_all[e,jj+1,3]
-                        end
+                
                     # else
                     #     rhs[nodesVx[j]] -= K_all[e,jj,ii]*Vx[nodes[i]]
                     #     rhs[nodesVx[j]] -= K_all[e,jj,ii+1]*Vy[nodes[i]]
@@ -203,6 +192,12 @@ function DirectSolveFEM!(Vx, Vy, P, mesh, K_all, Q_all, b)
                     # end
                     ii = ii + 2;
                 end
+
+                for i=1:np
+                    Q[nodesVx[j], nodesP + (i-1)*mesh.nel] -= Q_all[e,jj,i]
+                    Q[nodesVy[j], nodesP + (i-1)*mesh.nel] -= Q_all[e,jj+1,i]
+                end
+
                 # rhs[nodes[j]] += b[e,j]
             else
                 # Deal with Dirichlet: set one on diagonal and value and RHS
