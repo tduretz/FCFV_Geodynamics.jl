@@ -1,5 +1,5 @@
 const USE_GPU      = false  # Not supported yet 
-const USE_DIRECT   = false  # Sparse matrix assembly + direct solver
+const USE_DIRECT   = true  # Sparse matrix assembly + direct solver
 const USE_NODAL    = false  # Nodal evaluation of residual
 const USE_PARALLEL = false  # Parallel residual evaluation
 const USE_MAKIE    = false  # Visualisation 
@@ -105,8 +105,8 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX )
             J        .= x'*dNdXi
             detJ      = J[1,1]*J[2,2] - J[1,2]*J[2,1]
             invJ[1,1] = +J[2,2] / detJ
-            invJ[1,2] = -J[2,1] / detJ
-            invJ[2,1] = -J[1,2] / detJ
+            invJ[1,2] = -J[1,2] / detJ
+            invJ[2,1] = -J[2,1] / detJ
             invJ[2,2] = +J[1,1] / detJ
             dNdx      = dNdXi*invJ
             K_ele   .+= ipw[ip] .* detJ .* ke .* (dNdx*dNdx')
@@ -148,7 +148,8 @@ function DirectSolveFEM!(T, mesh, K_all, b)
         end 
     end
     # Solve using CHOLDMOD
-    T .= cholesky(K)\rhs
+    L  = cholesky(K)
+    T .= L\rhs
     return nothing
 end
 
@@ -180,6 +181,9 @@ function main( n, nnel, θ, Δτ )
     end
     println("Number of elements: ", mesh.nel)
     println("Number of vertices: ", mesh.nn)
+    println(size(mesh.e2n))
+    println(size(mesh.xn))
+    println(size(mesh.yn))
 
     T  = zeros(mesh.nn)     # Solution on nodes 
     se = zeros(mesh.nel)    # Source term on elements
@@ -269,7 +273,7 @@ function main( n, nnel, θ, Δτ )
     Te = zeros(mesh.nel)
     for e=1:mesh.nel
         for in=1:mesh.nnel
-            Te[e] += 1.0/3.0 * T[mesh.e2n[e,in]]
+            Te[e] += 1.0/mesh.nnel * T[mesh.e2n[e,in]]
         end
     end
 

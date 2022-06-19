@@ -3,9 +3,10 @@ const USE_DIRECT   = true   # Sparse matrix assembly + direct solver
 const USE_NODAL    = false  # Nodal evaluation of residual
 const USE_PARALLEL = false  # Parallel residual evaluation
 const USE_MAKIE    = true   # Visualisation 
-np = 1
+np  = 1
+nip = 6
 
-using Plots
+import Plots
 
 using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT
 import Base.Threads: @threads, @sync, @spawn, nthreads, threadid
@@ -89,18 +90,21 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
     nip          = length(ipw)
     K_all        = zeros(mesh.nel, ndof, ndof) 
     Q_all        = zeros(mesh.nel, ndof, np)
+    Mi_all       = zeros(mesh.nel, np, np)
     b            = zeros(mesh.nel, ndof)
     K_ele        = zeros(ndof, ndof)
     Q_ele        = zeros(ndof, np)
+    M_ele        = zeros(np,np)
     b_ele        = zeros(ndof)
     B            = zeros(ndof,3)
     Np           = 1.0
     m            = [1.0;   1.0; 0.0]
-    Dev          = [ 4//3 -2//3 0.0;
-                    -2//3  4//3 0.0;
+    Dev          = [ 4/3 -2/3 0.0;
+                    -2/3  4/3 0.0;
                      0.0   0.0  1.0]
     P  = ones(np,np)
     Pb = ones(np)
+    PF = 1e3*maximum(mesh.ke)
     
     # Element loop
     for e = 1:mesh.nel #@inbounds
@@ -111,6 +115,7 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
         invJ    = zeros(2,2)
         K_ele  .= 0.0
         Q_ele  .= 0.0
+        M_ele  .= 0.0
         b_ele  .= 0.0
 
         if np==3  P[2:3,:] .= (x[1:3,:])' end
@@ -122,112 +127,158 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
                 Ni = N[ip,:,1]
                 Pb[2:3]     = x'*Ni 
                 Pi = P\Pb
+                # if e==1
+                # println(ip)
+                # display(Ni) 
+                # end
             end
 
             dNdXi     = dNdX[ip,:,:]
             J        .= x'*dNdXi
             detJ      = J[1,1]*J[2,2] - J[1,2]*J[2,1]
             invJ[1,1] = +J[2,2] / detJ
-            invJ[1,2] = -J[2,1] / detJ
-            invJ[2,1] = -J[1,2] / detJ
+            invJ[1,2] = -J[1,2] / detJ
+            invJ[2,1] = -J[2,1] / detJ
             invJ[2,2] = +J[1,1] / detJ
             dNdx      = dNdXi*invJ
             B[1:2:end,1] .= dNdx[:,1]
             B[2:2:end,2] .= dNdx[:,2]
             B[1:2:end,3] .= dNdx[:,2]
             B[2:2:end,3] .= dNdx[:,1]
-            Bvol         = dNdx'
+           
             # B[1:mesh.nnel,1]     = dNdx[:,1]
             # B[mesh.nnel+1:end,2] = dNdx[:,2]
             # B[1:mesh.nnel,3]     = dNdx[:,1]
             # B[mesh.nnel+1:end,3] = dNdx[:,2]
+
+            Bvol          = dNdx'
             K_ele .+= ipw[ip] .* detJ .* ke  .* (B*Dev*B')
-            if np==3 Q_ele   .-= ipw[ip] .* detJ .* (Bvol[:]*Pi') end
-            if np==1 Q_ele   .-= ipw[ip] .* detJ .* 1.0 .* (B*m*Np') end
+            if np==3 
+                Q_ele   .-= ipw[ip] .* detJ .* (Bvol[:]*Pi') 
+                M_ele   .+= ipw[ip] .* detJ .* Pi*Pi'
+            elseif np==1 
+                Q_ele   .-= ipw[ip] .* detJ .* 1.0 .* (B*m*Np') 
+            end
             # b_ele   .+= ipw[ip] .* detJ .* se[e] .* N[ip,:] 
         end
-        K_all[e,:,:] .= K_ele
-        Q_all[e,:,:] .= Q_ele
+        # display(PF.*Q_ele*inv(M_ele)*Q_ele')
+        # if e==3
+        #     println("Cholesky of K_ele")
+        #     cholesky(K_ele)
+        #     println("Cholesky of condensed K_ele")
+        # end
+
+        # K_ele .+=  PF.*Q_ele*inv(M_ele)*Q_ele'
+        if np==3 Mi_all[e,:,:] .= inv(M_ele) end
+        K_all[e,:,:]  .= K_ele
+        Q_all[e,:,:]  .= Q_ele
         # b[e,:]       .= b_ele
     end
-    return K_all, Q_all, b
+    return K_all, Q_all, Mi_all, b
 end 
 
 #----------------------------------------------------------#
 
-function DirectSolveFEM!(Vx, Vy, P, mesh, K_all, Q_all, b)
+function DirectSolveFEM!(Vx, Vy, P, mesh, K_all, Q_all, Mi_all, b)
 
     ndof = length(Vx) + length(Vy)
-    K    = sparse(Int64[], Int64[], Float64[], ndof, ndof)
     Q    = sparse(Int64[], Int64[], Float64[], ndof, mesh.nel*np)
     M0   = sparse(Int64[], Int64[], Float64[], mesh.nel*np, mesh.nel*np)
     
     rhs  = zeros(ndof+mesh.nel*np)
     sol  = zeros(ndof+mesh.nel*np)
 
+    Kuu    = sparse(Int64[], Int64[], Float64[], mesh.nn*2, mesh.nn*2)
+
     # Assembly of global sparse matrix
     for e=1:mesh.nel #@inbounds 
         nodes   = mesh.e2n[e,:]
         nodesVx = mesh.e2n[e,:]
-        nodesVy = nodesVx .+ mesh.nn
-        nodesP  = e # constant per element
+        nodesVy = nodesVx .+ mesh.nn 
+        nodesP  = e
         jj = 1
         for j=1:mesh.nnel
+
+            # if mesh.bcn[nodes[j]] == 0
+                for i=1:np
+                    Q[nodesVx[j], nodesP+(i-1)*mesh.nel] -= Q_all[e,jj,i]
+                    Q[nodesVy[j], nodesP+(i-1)*mesh.nel] -= Q_all[e,jj+1,i]
+                end
+            # end
+
             if mesh.bcn[nodes[j]] == 0
                 # If not Dirichlet, add connection
-                ii = 1;
+                ii = 1
                 for i=1:mesh.nnel
-                    
-                    # if mesh.bcn[nodes[i]] == 0 # Important to keep matrix symmetric
-                        K[nodesVx[j]        , nodesVx[i]        ] += K_all[e,jj,ii]
-                        K[nodesVx[j]        , nodesVy[i]        ] += K_all[e,jj,ii+1]
-                        K[nodesVy[j]        , nodesVx[i]        ] += K_all[e,jj+1,ii]
-                        K[nodesVy[j]        , nodesVy[i]        ] += K_all[e,jj+1,ii+1]
-                
-                    # else
-                    #     rhs[nodesVx[j]] -= K_all[e,jj,ii]*Vx[nodes[i]]
-                    #     rhs[nodesVx[j]] -= K_all[e,jj,ii+1]*Vy[nodes[i]]
-                    #     rhs[nodesVy[j]] -= K_all[e,jj+1,i]*Vx[nodes[i]]
-                    #     rhs[nodesVy[j]] -= K_all[e,jj+1,ii+1]*Vy[nodes[i]]
-                    # end
-                    ii = ii + 2;
+                    if mesh.bcn[nodes[i]] == 0 # Important to keep matrix symmetric
+                        Kuu[nodesVx[j]        , nodesVx[i]        ] += K_all[e,jj,ii]
+                        Kuu[nodesVx[j]        , nodesVy[i]        ] += K_all[e,jj,ii+1]
+                        Kuu[nodesVy[j]        , nodesVx[i]        ] += K_all[e,jj+1,ii]
+                        Kuu[nodesVy[j]        , nodesVy[i]        ] += K_all[e,jj+1,ii+1] 
+                    else
+                        rhs[nodesVx[j]] -= K_all[e,jj  ,ii  ]*Vx[nodes[i]]
+                        rhs[nodesVx[j]] -= K_all[e,jj  ,ii+1]*Vy[nodes[i]]
+                        rhs[nodesVy[j]] -= K_all[e,jj+1,ii  ]*Vx[nodes[i]]
+                        rhs[nodesVy[j]] -= K_all[e,jj+1,ii+1]*Vy[nodes[i]]
+                    end
+                    ii+=2
                 end
-
-                for i=1:np
-                    Q[nodesVx[j], nodesP + (i-1)*mesh.nel] -= Q_all[e,jj,i]
-                    Q[nodesVy[j], nodesP + (i-1)*mesh.nel] -= Q_all[e,jj+1,i]
-                end
-
                 # rhs[nodes[j]] += b[e,j]
             else
                 # Deal with Dirichlet: set one on diagonal and value and RHS
-                rhs[nodesVx[j]] = Vx[nodes[j]]
-                rhs[nodesVy[j]] = Vy[nodes[j]]
-                K[nodesVx[j], nodesVx[j]] = 1.0
-                K[nodesVy[j], nodesVy[j]] = 1.0
+                Kuu[nodesVx[j], nodesVx[j]] = 1.0
+                Kuu[nodesVy[j], nodesVy[j]] = 1.0
+                rhs[nodesVx[j]] = Vx[nodes[j]]* 1.0
+                rhs[nodesVy[j]] = Vy[nodes[j]]* 1.0
             end
-            jj = jj +2;
+            jj+=2
         end 
     end
 
-    println(size(K))
-    println(size(Q))
-    println(size(M0))
-    Qt = Q'
+
+    # println(size(K))
+    # println(size(Q))
+    # println(size(M0))
+    # Qt = Q'
 
     # Qt[1,:] .= 0.0
     # M0[1,1] = 1.0
-    for e=1:mesh.nel
-        M0[e,e] = 1e3
+    # for e=1:mesh.nel
+    #     M0[e,e] = 0*mesh.ke[e]
+    # end
+
+    M = [Kuu Q; Q' M0]
+
+    for ii=1:mesh.nn
+        if mesh.bcn[ii] ==1
+            M[ii,:] .= 0.0
+            M[ii+mesh.nn,:] .= 0.0
+            M[ii,ii] = 1.0 
+            M[ii+mesh.nn,ii+mesh.nn] = 1.0 
+        end
     end
 
-    M = [K Q; Qt M0]
+    # display(Plots.spy(Kuu))
 
+        # println(K[10,:])
+        # println(sum(K[10,:]))
+#  L = cholesky(Kuu)
+#     Div             = invM*(Q*Vel);                                        %COMPUTE QUASI-DIVERGENCE    
+#     Rhs             = Rhs - PF*(Q'*Div);
 
-    display(spy(M))
+#     for iter=1:10
+#         #FORWARD AND BACK SUBSTITUTION
+# V = K\rhs    #     #COMPUTE QUASI-DIVERGENCE Div = invM*(Q*Vel);
+#     #     #UPDATE RHS
+#          Rhs .= – PF*(Q’*Div);
+#     #     #UPDATE TOTAL PRESSURE
+#     #     Pressure = Pressure + PF*Div;
+#     #     #CHECK INCOMPRESSIBILITY
+#     #     div_max = max(abs(Div(:)));
+#      end
+
+    # display(Plots.spy(M))
     # # Solve using CHOLDMOD
- 
-
     sol .= M\rhs
     # println(size(sol))
     # println(size(sol[mesh.e2n]))
@@ -235,7 +286,8 @@ function DirectSolveFEM!(Vx, Vy, P, mesh, K_all, Q_all, b)
     Vx  .= sol[1:length(Vx)] 
     Vy  .= sol[(length(Vx)+1):(length(Vx)+length(Vy))]
     
-    println(size( sol[(length(Vx)+length(Vy)+1):(length(Vx)+length(Vy)+mesh.nel)]))
+    # println(size( sol[(length(Vx)+length(Vy)+1):(length(Vx)+length(Vy)+mesh.nel)]))
+    # # P   .= sol[(length(Vx)+length(Vy)+1):(length(Vx)+length(Vy)+mesh.nel)]
     P   .= sol[(length(Vx)+length(Vy)+1):(length(Vx)+length(Vy)+mesh.nel)]
     # # println(size(sol[(length(Vx)+length(Vy)+1):end]))
     return nothing
@@ -249,6 +301,7 @@ function main( n, nnel, θ, Δτ )
     # Create sides of mesh
     xmin, xmax = -0.5, 0.5
     ymin, ymax = -0.5, 0.5
+    nx, ny     = 3,3
     nx, ny     = Int16(n*20), Int16(n*20)
     R          = 0.2
     inclusion  = 1
@@ -256,7 +309,7 @@ function main( n, nnel, θ, Δτ )
 
     # Element data
     mesh_type  = "UnstructTriangles" 
-    nip       = 3
+
     ipx, ipw  = IntegrationTriangle(nip)
     N, dNdX   = ShapeFunctions(ipx, nip, nnel)
   
@@ -295,10 +348,10 @@ function main( n, nnel, θ, Δτ )
     # end
 
     #-----------------------------------------------------------------#
-    K_all, Q_all, b = ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX )
+    K_all, Q_all, Mi_all, b = ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX )
     #-----------------------------------------------------------------#
     if USE_DIRECT
-        @time DirectSolveFEM!(Vx, Vy, P, mesh, K_all, Q_all, b)
+        @time DirectSolveFEM!(Vx, Vy, P, mesh, K_all, Q_all, Mi_all, b)
     # else
     #     nout    = 50#1e1
     #     iterMax = 2e3#5e4
@@ -374,7 +427,8 @@ function main( n, nnel, θ, Δτ )
     # p1=Plots.plot(mesh.xn[mesh.bcn.==1], mesh.yn[mesh.bcn.==1], markershape=:cross, linewidth=0.0)
     # display(p1)
     if USE_MAKIE
-        PlotMakie(mesh, Vxe, xmin, xmax, ymin, ymax)
+        # PlotMakie(mesh, Vxe, xmin, xmax, ymin, ymax)
+        PlotMakie(mesh, P, xmin, xmax, ymin, ymax)
     end
    
 end
