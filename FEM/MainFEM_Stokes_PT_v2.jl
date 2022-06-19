@@ -90,10 +90,10 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
     b_ele        = zeros(ndof)
     B            = zeros(ndof,3)
     Np           = 1.0
-    m            = [1.0;   1.0; 0.0]
-    Dev          = [ 4/3 -2/3 0.0;
-                    -2/3  4/3 0.0;
-                     0.0   0.0  1.0]
+    m            = [ 1.0; 1.0; 0.0]
+    Dev          = [ 4/3 -2/3  0.0;
+                    -2/3  4/3  0.0;
+                     0.0  0.0  1.0]
     P  = ones(np,np)
     Pb = ones(np)
     PF = 1e3*maximum(mesh.ke)
