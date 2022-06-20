@@ -98,7 +98,8 @@ Base.@kwdef mutable struct FCFV_Mesh
     xn     ::Union{Vector{Float64}, Missing}       = missing # node x coordinate
     yn     ::Union{Vector{Float64}, Missing}       = missing # node y coordinat
     order  ::Union{Int64,  Missing}                = missing # order of elements/volumes
-    nnel   ::Union{Int64,  Missing}                = 3       # number of nodes per element
+    nnel   ::Union{Int64,  Missing}                = 3       # number of velocity nodes per element
+    npel   ::Union{Int64,  Missing}                = 1       # number of pressure nodes per element
     e2n    ::Union{Matrix{Int64},         Missing} = missing # element 2 node numbering
     n2e    ::Union{Vector{Vector{Int64}}, Missing} = missing # node 2 element
     bcn    ::Union{Vector{Int64},         Missing} = missing # node tag
@@ -108,7 +109,7 @@ end
 
 #--------------------------------------------------------------------#
 
-function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC=[1; 1; 1; 1;], area = ((xmax-xmin)/nx)*((ymax-ymin)/ny), no_pts_incl = Int64(floor(1.0*pi*R/sqrt(((xmax-xmin)/nx)^2+((ymax-ymin)/ny)^2))); nnel=3  )
+function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC=[1; 1; 1; 1;], area = ((xmax-xmin)/nx)*((ymax-ymin)/ny), no_pts_incl = Int64(floor(1.0*pi*R/sqrt(((xmax-xmin)/nx)^2+((ymax-ymin)/ny)^2))); nnel=3, npel=1  )
 
     regions  = Array{Float64}(undef,4,0)
     holes    = Array{Float64}(undef,2,0)
@@ -333,6 +334,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
     end
     ### FEM 
     mesh.nnel = nnel
+    mesh.npel = npel
     if nnel == 3
         mesh.nn  = mesh.nv
     elseif nnel == 6
