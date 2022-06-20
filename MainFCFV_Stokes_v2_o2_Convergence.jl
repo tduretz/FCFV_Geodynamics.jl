@@ -1,4 +1,4 @@
-import TriangleMesh, UnicodePlots, Plots
+import UnicodePlots, Plots
 using Revise, Printf, LoopVectorization, LinearAlgebra, SparseArrays
 
 include("CreateMeshFCFV.jl")

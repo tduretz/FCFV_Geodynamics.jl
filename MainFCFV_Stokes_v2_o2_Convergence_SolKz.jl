@@ -189,12 +189,7 @@ end
     # println("Visualisation:")
     @printf(" %2.2e %2.2e\n", minimum(log10.(mesh.ke)), maximum(log10.(mesh.ke)))
     @printf(" %2.2e %2.2e\n", minimum(sey), maximum(sey))
-    # @time PlotMakie( mesh, log10.(mesh.ke), xmin, xmax, ymin, ymax, cgrad(:lajolla, rev=true) )
-    # @time PlotMakie( mesh, Vye, xmin, xmax, ymin, ymax, cgrad(:lajolla, rev=true) )
-    # @time PlotMakie( mesh, sey, xmin, xmax, ymin, ymax, cgrad(:lajolla, rev=true) )
-    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, cgrad(:lajolla, rev=true) )
-
-    # PlotElements( mesh )
+    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=cgrad(:lajolla, rev=true) )
     ndof = 2*mesh.nf+mesh.nel
     return ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii
 end

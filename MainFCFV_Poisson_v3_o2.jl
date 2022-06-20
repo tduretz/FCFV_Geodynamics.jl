@@ -90,6 +90,8 @@ end
     elseif mesh_type=="UnstructTriangles"  
         if o2==0 tau  = 1e2 end
         if o2==1 tau  = 1e6 end
+        println(nx)
+        println(ny)
         mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, inclusion, R, BC ) 
     end
     println("Number of elements: ", mesh.nel)
@@ -131,7 +133,7 @@ end
 
     # Visualise
     println("Visualisation:")
-    @time PlotMakie( mesh, Te, xmin, xmax, ymin, ymax, :viridis )
+    @time PlotMakie( mesh, Te, xmin, xmax, ymin, ymax; cmap=:viridis )
 
 end
 
