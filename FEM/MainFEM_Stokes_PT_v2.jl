@@ -1,5 +1,5 @@
 const USE_GPU      = false  # Not supported yet 
-const USE_DIRECT   = true   # Sparse matrix assembly + direct solver
+const USE_DIRECT   = false  # Sparse matrix assembly + direct solver
 const USE_NODAL    = false  # Nodal evaluation of residual
 const USE_PARALLEL = false  # Parallel residual evaluation
 const USE_MAKIE    = true   # Visualisation 
@@ -60,8 +60,8 @@ function ResidualStokesElementalSerialFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, 
         P_ele      = P[nodesP] 
         K_ele      = K_all[e,:,:]
         Q_ele      = Q_all[e,:,:]
-        fv_ele     = K_ele*V_ele .- Q_ele*P_ele # .- b[e,:]
-        fp_ele     = Q_ele'*V_ele #.- b[e,:]
+        fv_ele     = K_ele*V_ele .+ Q_ele*P_ele # .- b[e,:]
+        fp_ele     = .-Q_ele'*V_ele #.- b[e,:]
         Fx[nodes] .-= fv_ele[1:2:end-1] # This should be atomic
         Fy[nodes] .-= fv_ele[2:2:end]
         if npel==1 Fp[nodesP]  -= fp_ele[:]    end
@@ -181,15 +181,15 @@ function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy )
             # Q: ∇ operator: BC for V equations
             if mesh.bcn[nodes[j]] != 1
                 for i=1:npel
-                    push!(I_Q, nodesVx[j]); push!(J_Q, nodesP+(i-1)*mesh.nel); push!(V_Q, -Q_all[e,jj  ,i])
-                    push!(I_Q, nodesVy[j]); push!(J_Q, nodesP+(i-1)*mesh.nel); push!(V_Q, -Q_all[e,jj+1,i])
+                    push!(I_Q, nodesVx[j]); push!(J_Q, nodesP+(i-1)*mesh.nel); push!(V_Q, Q_all[e,jj  ,i])
+                    push!(I_Q, nodesVy[j]); push!(J_Q, nodesP+(i-1)*mesh.nel); push!(V_Q, Q_all[e,jj+1,i])
                 end
             end
 
             # Qt: ∇⋅ operator: no BC for P equations
             for i=1:npel
-                push!(J_Qt, nodesVx[j]); push!(I_Qt, nodesP+(i-1)*mesh.nel); push!(V_Qt, -Q_all[e,jj  ,i])
-                push!(J_Qt, nodesVy[j]); push!(I_Qt, nodesP+(i-1)*mesh.nel); push!(V_Qt, -Q_all[e,jj+1,i])
+                push!(J_Qt, nodesVx[j]); push!(I_Qt, nodesP+(i-1)*mesh.nel); push!(V_Qt, Q_all[e,jj  ,i])
+                push!(J_Qt, nodesVy[j]); push!(I_Qt, nodesP+(i-1)*mesh.nel); push!(V_Qt, Q_all[e,jj+1,i])
             end
 
             if mesh.bcn[nodes[j]] != 1
@@ -255,7 +255,6 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     # Create sides of mesh
     xmin, xmax = -0.5, 0.5
     ymin, ymax = -0.5, 0.5
-    nx, ny     = 3,3
     nx, ny     = Int16(n*20), Int16(n*20)
     R          = 0.2
     inclusion  = 1
@@ -270,7 +269,8 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     println("Number of elements: ", mesh.nel)
     println("Number of vertices: ", mesh.nn)
 
-    mesh.ke[mesh.phase.==1] .= 5.0
+    mesh.ke[mesh.phase.==1] .= 1.0
+    mesh.ke[mesh.phase.==2] .= 5.0
 
     Vx = zeros(mesh.nn)       # Solution on nodes 
     Vy = zeros(mesh.nn)       # Solution on nodes 
@@ -296,7 +296,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         @time DirectSolveFEM!( M, K, Q, Qt, M0, rhs, Vx, Vy, P, mesh, b )
     else
         nout    = 100#1e1
-        iterMax = 4e3#5e4
+        iterMax = 5e3#5e4
         ϵ_PT    = 1e-7
         # θ       = 0.11428 *1.7
         # Δτ      = 0.28 /1.2
@@ -386,12 +386,9 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     #-----------------------------------------------------------------#
     if USE_MAKIE
         # PlotMakie(mesh, Vxe, xmin, xmax, ymin, ymax)
-        PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax)
+        PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1)
     end
 end
 
-# main(1, 7, 1, 6, 0.09179541000000001,  0.03333333333333334,  120) # 1450
-main(2, 7, 1, 6, 0.09179541000000001/2.0,  0.03333333333333334*1.1,  210) # 2100
-
-
-
+# main(1, 7, 1, 6, 0.030598470000000003,  0.03333333333333334*1.1,  20) # 2100
+main(2, 7, 1, 6, 0.030598470000000003/2,  0.03333333333333334*1.1,  20) # 2100

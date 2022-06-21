@@ -222,7 +222,7 @@ end
 
 #--------------------------------------------------------------------#
 
-@views function main(n, mesh_type, τr, new)
+@views function main(n, mesh_type, τr, o2, new)
 
     println("\n******** FCFV STOKES ********")
 
@@ -230,13 +230,11 @@ end
     xmin, xmax = -3.0, 3.0
     ymin, ymax = -3.0, 3.0
     nx, ny     = 30*n, 30*n
-    println(nx)
     solver     = 1
     R          = 1.0
     inclusion  = 1
     eta        = [1.0 100.0]
     BC         = [2; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
-    o2         = 0
     nmx        = 4            # 2 marker per cell in x
     nmy        = 4            # 2 marker per cell in y
     # Generate mesh
@@ -340,10 +338,9 @@ end
 
     # Visualise
     println("Visualisation:")
-    # PlotMakie(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
-    # @time PlotMakie( mesh, Vxe, xmin, xmax, ymin, ymax, :jet1, minimum(Vxe), maximum(Vxe) )
+    # @time PlotMakie( mesh, Vxe, xmin, xmax, ymin, ymax; cmap=:jet1,  min_v=minimum(Vxa),  max_v=maximum(Vxa), writefig=false)
     # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
-    # @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1,  min_v=minimum(Pa),  max_v=maximum(Pa), writefig=false )
+    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1,  min_v=minimum(Pa),  max_v=maximum(Pa), writefig=false )
     # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
     # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
     # @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax; cmap=:jet1 )
@@ -355,9 +352,10 @@ end
 new = 1 
 n   = 2
 τ   = 1.0
+o2  = 1
 # main(2, "Quadrangles", 25, 1) # L_INF P 1.67 no-interp
 # main(2, "Quadrangles", 50, 1) # L_INF P 1.18 arith
 # main(4, "Quadrangles", 180, 1) # L_INF P 1.45 arith
 # main(8, "Quadrangles", 280, 1) # L_INF P 1.8 arith
-main(2, "Quadrangles", 25, 1)
-# main(n, "UnstructTriangles", tau, new)
+# main(2, "Quadrangles", 25, 1)
+main(n, "UnstructTriangles", τ, o2, new)
