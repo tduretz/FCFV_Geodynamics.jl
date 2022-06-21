@@ -364,7 +364,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
                 @printf("  ||Fp|| = %3.3e\n", errP )
                 err = max(errVx, errVy, errP)
                 if err < ϵ_PT
-                    print("PT solve converged in")
+                    print("PT solve converged in ")
                     success = true
                     break
                 elseif err>1e4
@@ -402,8 +402,8 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     end
 end
 
-main(1//2, 7, 1, 6, 0.030598470000000003*2,  0.03333333333333334*1.1,  20) # 1450
-# main(2, 7, 3, 6, 0.09179541000000001/2.0,  0.03333333333333334*1.1,  210) # 2100
+main(1, 7, 1, 6, 0.030598470000000003, 0.03333333333333334*1.1,  1.0) # 1450
+# main(2, 7, 1, 6, 0.030598470000000003/2, 0.03333333333333334*1.1,  1.0) # 1450
 
 
 
