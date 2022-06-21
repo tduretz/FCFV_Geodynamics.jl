@@ -1,11 +1,8 @@
 const USE_GPU      = false  # Not supported yet 
-const USE_DIRECT   = false   # Sparse matrix assembly + direct solver
+const USE_DIRECT   = true   # Sparse matrix assembly + direct solver
 const USE_NODAL    = false  # Nodal evaluation of residual
 const USE_PARALLEL = false  # Parallel residual evaluation
 const USE_MAKIE    = true   # Visualisation 
-np  = 1
-nip = 6
-
 import Plots
 
 using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT
@@ -15,6 +12,7 @@ using MAT
 include("../CreateMeshFCFV.jl")
 include("../VisuFCFV.jl")
 include("../DiscretisationFCFV.jl")
+include("../EvalAnalDani.jl")
 include("IntegrationPoints.jl")
 
 #----------------------------------------------------------#
@@ -23,51 +21,31 @@ function StabParam(τ, Γ, Ω, mesh_type, ν)
     return 0. # Stabilisation is only needed for FCFV
 end
 
-# #----------------------------------------------------------#
-
-# function ResidualPoissonNodalFEM!( F, T, mesh, K_all, b )
-#     # Residual
-#     Threads.@threads for in = 1:mesh.nn
-#         F[in] = 0.0
-#         if mesh.bcn[in]==0
-#             @inbounds for ii=1:length(mesh.n2e[in])
-#                 e       = mesh.n2e[in][ii]
-#                 nodes   = mesh.e2n[e,:]
-#                 T_ele   = T[nodes]  
-#                 K       = K_all[e,:,:] 
-#                 f       = K*T_ele .- b[e,:]
-#                 inode   = mesh.n2e_loc[in][ii]
-#                 F[in]  -= f[inode]
-#             end
-#         end
-#     end
-#     return nothing
-# end
-
-# #----------------------------------------------------------#
+#----------------------------------------------------------#
 
 function ResidualStokesElementalSerialFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, Q_all, b )
     # Residual
-    Fx .= 0.0
-    Fy .= 0.0
-    Fp .= 0.0
-    nnel = mesh.nnel
+    Fx   .= 0.0
+    Fy   .= 0.0
+    Fp   .= 0.0
+    nnel  = mesh.nnel
+    npel  = mesh.npel
     V_ele = zeros(nnel*2)
     @inbounds for e = 1:mesh.nel
         nodes = mesh.e2n[e,:]
-        if np==1 nodesP = [e] end
-        if np==3 nodesP = [e; e+mesh.nel; e+2*mesh.nel]  end
+        if npel==1 nodesP = [e] end
+        if npel==3 nodesP = [e; e+mesh.nel; e+2*mesh.nel]  end
         V_ele[1:2:end-1] .= Vx[nodes]
         V_ele[2:2:end]   .= Vy[nodes]
         P_ele      = P[nodesP] 
         K_ele      = K_all[e,:,:]
         Q_ele      = Q_all[e,:,:]
-        fv_ele     = K_ele*V_ele .- Q_ele*P_ele # .- b[e,:]
-        fp_ele     = Q_ele'*V_ele #.- b[e,:]
+        fv_ele     = K_ele*V_ele .+ Q_ele*P_ele # .- bu[e,:]
+        fp_ele     = .-Q_ele'*V_ele #.- bp[e,:]
         Fx[nodes] .-= fv_ele[1:2:end-1] # This should be atomic
         Fy[nodes] .-= fv_ele[2:2:end]
-        if np==1 Fp[nodesP]  -= fp_ele[:]    end
-        if np==3 Fp[nodesP] .-= fp_ele[:] end
+        if npel==1 Fp[nodesP]  -= fp_ele[:]    end
+        if npel==3 Fp[nodesP] .-= fp_ele[:] end
     end
     Fx[mesh.bcn.==1] .= 0.0
     Fy[mesh.bcn.==1] .= 0.0
@@ -78,24 +56,24 @@ end
 
 function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN_1.0.1
     ndof         = 2*mesh.nnel
+    npel         = mesh.npel
     nip          = length(ipw)
     K_all        = zeros(mesh.nel, ndof, ndof) 
-    Q_all        = zeros(mesh.nel, ndof, np)
-    Mi_all       = zeros(mesh.nel, np, np)
+    Q_all        = zeros(mesh.nel, ndof, npel)
+    Mi_all       = zeros(mesh.nel, npel, npel)
     b            = zeros(mesh.nel, ndof)
     K_ele        = zeros(ndof, ndof)
-    Q_ele        = zeros(ndof, np)
-    M_ele        = zeros(np,np)
-    M_inv        = zeros(np,np)
+    Q_ele        = zeros(ndof, npel)
+    M_ele        = zeros(npel,npel)
+    M_inv        = zeros(npel,npel)
     b_ele        = zeros(ndof)
     B            = zeros(ndof,3)
-    Np           = 1.0
-    m            = [1.0;   1.0; 0.0]
-    Dev          = [ 4/3 -2/3 0.0;
-                    -2/3  4/3 0.0;
-                     0.0   0.0  1.0]
-    P  = ones(np,np)
-    Pb = ones(np)
+    m            = [ 1.0; 1.0; 0.0]
+    Dev          = [ 4/3 -2/3  0.0;
+                    -2/3  4/3  0.0;
+                     0.0  0.0  1.0]
+    P  = ones(npel,npel)
+    Pb = ones(npel)
     PF = 1e3*maximum(mesh.ke)
     
     # Element loop
@@ -110,12 +88,12 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
         M_ele  .= 0.0
         b_ele  .= 0.0
         M_inv  .= 0.0
-        if np==3  P[2:3,:] .= (x[1:3,:])' end
+        if npel==3  P[2:3,:] .= (x[1:3,:])' end
 
         # Integration loop
         for ip=1:nip
 
-            if np==3 
+            if npel==3 
                 Ni       = N[ip,:,1]
                 Pb[2:3] .= x'*Ni 
                 Pi       = P\Pb
@@ -135,17 +113,17 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
             B[2:2:end,3] .= dNdx[:,1]
             Bvol          = dNdx'
             K_ele .+= ipw[ip] .* detJ .* ke  .* (B*Dev*B')
-            if np==3 
+            if npel==3 
                 Q_ele   .-= ipw[ip] .* detJ .* (Bvol[:]*Pi') 
                 M_ele   .+= ipw[ip] .* detJ .* Pi*Pi'
-            elseif np==1 
-                Q_ele   .-= ipw[ip] .* detJ .* 1.0 .* (B*m*Np') 
+            elseif npel==1 
+                Q_ele   .-= ipw[ip] .* detJ .* 1.0 .* (B*m*npel') 
             end
             # b_ele   .+= ipw[ip] .* detJ .* se[e] .* N[ip,:] 
         end
-        if np==3 M_inv .= inv(M_ele) end
-        # if np==3 K_ele .+=  PF.*(Q_ele*M_inv*Q_ele') end
-        if np==3 Mi_all[e,:,:] .= M_inv end
+        if npel==3 M_inv .= inv(M_ele) end
+        # if npel==3 K_ele .+=  PF.*(Q_ele*M_inv*Q_ele') end
+        if npel==3 Mi_all[e,:,:] .= M_inv end
         K_all[e,:,:]  .= K_ele
         Q_all[e,:,:]  .= Q_ele
         # b[e,:]       .= b_ele
@@ -159,7 +137,8 @@ function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy )
 
     println("Assembly")
     ndof = mesh.nn*2
-    rhs  = zeros(ndof+mesh.nel*np)
+    npel = mesh.npel
+    rhs  = zeros(ndof+mesh.nel*npel)
     I_K  = Int64[]
     J_K  = Int64[]
     V_K  = Float64[]
@@ -181,16 +160,16 @@ function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy )
 
             # Q: ∇ operator: BC for V equations
             if mesh.bcn[nodes[j]] != 1
-                for i=1:np
-                    push!(I_Q, nodesVx[j]); push!(J_Q, nodesP+(i-1)*mesh.nel); push!(V_Q, -Q_all[e,jj  ,i])
-                    push!(I_Q, nodesVy[j]); push!(J_Q, nodesP+(i-1)*mesh.nel); push!(V_Q, -Q_all[e,jj+1,i])
+                for i=1:npel
+                    push!(I_Q, nodesVx[j]); push!(J_Q, nodesP+(i-1)*mesh.nel); push!(V_Q, Q_all[e,jj  ,i])
+                    push!(I_Q, nodesVy[j]); push!(J_Q, nodesP+(i-1)*mesh.nel); push!(V_Q, Q_all[e,jj+1,i])
                 end
             end
 
             # Qt: ∇⋅ operator: no BC for P equations
-            for i=1:np
-                push!(J_Qt, nodesVx[j]); push!(I_Qt, nodesP+(i-1)*mesh.nel); push!(V_Qt, -Q_all[e,jj  ,i])
-                push!(J_Qt, nodesVy[j]); push!(I_Qt, nodesP+(i-1)*mesh.nel); push!(V_Qt, -Q_all[e,jj+1,i])
+            for i=1:npel
+                push!(J_Qt, nodesVx[j]); push!(I_Qt, nodesP+(i-1)*mesh.nel); push!(V_Qt, Q_all[e,jj  ,i])
+                push!(J_Qt, nodesVy[j]); push!(I_Qt, nodesP+(i-1)*mesh.nel); push!(V_Qt, Q_all[e,jj+1,i])
             end
 
             if mesh.bcn[nodes[j]] != 1
@@ -221,16 +200,11 @@ function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy )
             jj+=2
         end 
     end
-    @time K  = sparse(I_K,  J_K,  V_K, mesh.nn*2, mesh.nn*2)
-    @time Q  = sparse(I_Q,  J_Q,  V_Q, ndof, mesh.nel*np)
-    @time Qt = sparse(I_Qt, J_Qt, V_Qt, mesh.nel*np, ndof)
-    M0   = sparse(Int64[], Int64[], Float64[], mesh.nel*np, mesh.nel*np)
-    println(size(K))
-    println(size(Q))
-    println(size(Qt))
-    println(size(M0))
-    @time M  = [K Q; Qt M0]
-
+    K  = sparse(I_K,  J_K,  V_K, mesh.nn*2, mesh.nn*2)
+    Q  = sparse(I_Q,  J_Q,  V_Q, ndof, mesh.nel*npel)
+    Qt = sparse(I_Qt, J_Qt, V_Qt, mesh.nel*npel, ndof)
+    M0 = sparse(Int64[], Int64[], Float64[], mesh.nel*npel, mesh.nel*npel)
+    M  = [K Q; Qt M0]
     return M, rhs, K, Q, Qt, M0
 end
 
@@ -239,55 +213,71 @@ end
 function DirectSolveFEM!( M, K, Q, Qt, M0, rhs, Vx, Vy, P, mesh, b)
     println("Direct solve")
     ndof       = mesh.nn*2
-    sol        = zeros(ndof+mesh.nel*np)
+    npel       = mesh.npel
+    sol        = zeros(ndof+mesh.nel*npel)
     M[end,:]  .= 0.0 # add one Dirichlet constraint on pressure
     M[end,end] = 1.0
     rhs[end]   = 0.0
     sol       .= M\rhs
     Vx        .= sol[1:length(Vx)] 
     Vy        .= sol[(length(Vx)+1):(length(Vx)+length(Vy))]
-    P         .= sol[ 2*mesh.nn+1:end]
+    println(size( P))
+    println(( mesh.nel*npel))
+    P         .= sol[(2*mesh.nn+1):end]
     return nothing
 end
 
 #----------------------------------------------------------#
 
-function main( n, nnel, θ, ΔτV, ΔτP )
+function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
 
     println("\n******** FEM STOKES ********")
     # Create sides of mesh
-    xmin, xmax = -0.5, 0.5
-    ymin, ymax = -0.5, 0.5
-    nx, ny     = 3,3
-    nx, ny     = Int16(n*20), Int16(n*20)
-    R          = 0.2
+    xmin, xmax = -3.0, 3.0
+    ymin, ymax = -3.0, 3.0
+    nx, ny     = n, n
+    R          = 1.0
     inclusion  = 1
     εBG        = 1.0
-
+    η          = [1.0 100.0]  
+    
     # Element data
     ipx, ipw  = IntegrationTriangle(nip)
     N, dNdX   = ShapeFunctions(ipx, nip, nnel)
   
     # Generate mesh
-    mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, 0.0, inclusion, R; nnel ) 
+    mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, 0.0, inclusion, R; nnel, npel ) 
     println("Number of elements: ", mesh.nel)
     println("Number of vertices: ", mesh.nn)
 
-    mesh.ke[mesh.phase.==1] .= 5.0
+    mesh.ke[mesh.phase.==1] .= η[1]
+    mesh.ke[mesh.phase.==2] .= η[2]
 
-    Vx = zeros(mesh.nn)     # Solution on nodes 
-    Vy = zeros(mesh.nn)     # Solution on nodes 
-    P  = zeros(mesh.nel*np) # Solution on nodes 
-    se = zeros(mesh.nel)    # Source term on elements
+    Vx = zeros(mesh.nn)       # Solution on nodes 
+    Vy = zeros(mesh.nn)       # Solution on nodes 
+    V  = zeros(mesh.nn)
+    P  = zeros(mesh.nel*npel) # Solution on elements 
+    se = zeros(mesh.nel)      # Source term on elements
+
+    Va  = zeros(mesh.nn)       # Solution on nodes 
+    Pa  = zeros(mesh.nel)      # Solution on elements 
 
     # Intial guess
     for in = 1:mesh.nn
+        x       = mesh.xn[in]
+        y       = mesh.yn[in]
+        vx, vy  = EvalAnalDani( x, y, R, η[1], η[2] )
+        Va[in]  = sqrt(vx^2+vy^2)
         if mesh.bcn[in]==1
-            x      = mesh.xn[in]
-            y      = mesh.yn[in]
-            Vx[in] = -εBG*x
-            Vy[in] =  εBG*y
+            Vx[in] = vx
+            Vy[in] = vy
         end
+    end
+    for e = 1:mesh.nel
+        x      = mesh.xc[e]
+        y      = mesh.yc[e]
+        vx, vy, p = EvalAnalDani( x, y, R, η[1], η[2] )
+        Pa[e] = p
     end
 
     #-----------------------------------------------------------------#
@@ -298,8 +288,8 @@ function main( n, nnel, θ, ΔτV, ΔτP )
         @time M, rhs, K, Q, Qt, M0 = SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy )
         @time DirectSolveFEM!( M, K, Q, Qt, M0, rhs, Vx, Vy, P, mesh, b )
     else
-        nout    = 100#1e1
-        iterMax = 4e3#5e4
+        nout    = 1000#1e1
+        iterMax = 2e4#5e4
         ϵ_PT    = 1e-7
         # θ       = 0.11428 *1.7
         # Δτ      = 0.28 /1.2
@@ -307,7 +297,7 @@ function main( n, nnel, θ, ΔτV, ΔτP )
         ΔVyΔτ = zeros(mesh.nn)
         ΔVxΔτ0= zeros(mesh.nn)
         ΔVyΔτ0= zeros(mesh.nn)
-        ΔPΔτ  = zeros(mesh.nel*np)
+        ΔPΔτ  = zeros(mesh.nel*npel)
     # #     # println(minimum(mesh.Γ))
     # #     # println(maximum(mesh.Γ))
     # #     # println(minimum(mesh.Ω))
@@ -330,18 +320,8 @@ function main( n, nnel, θ, ΔτV, ΔτP )
             ΔVxΔτ0 .= ΔVxΔτ 
             ΔVyΔτ0 .= ΔVyΔτ
             ResidualStokesElementalSerialFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b )
-
-    # #         if USE_NODAL
-    # #             ResidualPoissonNodalFEM!( ΔTΔτ, T, mesh, K_all, b )
-    # #         else
-    # #             if USE_PARALLEL==false
-    # #                 ResidualPoissonElementalSerialFEM!( ΔTΔτ, T, mesh, K_all, b )
-    # #             else
-    # #                 ResidualPoissonElementalParallelFEM!( ΔTΔτ, ΔTΔτ_th, chunks, T, mesh, K_all, b )
-    # #             end
-    # #         end
             ΔVxΔτ  .= (1.0 - θ).*ΔVxΔτ0 .+ ΔVxΔτ 
-            ΔVyΔτ  .= (1.0 - θ).*ΔVyΔτ0 .+ ΔVyΔτ 
+            ΔVyΔτ  .= (1.0 - θ).*ΔVyΔτ0 .+ ΔVyΔτ
             Vx    .+= ΔτV .* ΔVxΔτ
             Vy    .+= ΔτV .* ΔVyΔτ
             P     .+= ΔτP .* ΔPΔτ
@@ -355,7 +335,7 @@ function main( n, nnel, θ, ΔτV, ΔτP )
                 @printf("  ||Fp|| = %3.3e\n", errP )
                 err = max(errVx, errVy, errP)
                 if err < ϵ_PT
-                    print("PT solve converged in")
+                    print("PT solve converged in ")
                     success = true
                     break
                 elseif err>1e4
@@ -380,22 +360,71 @@ function main( n, nnel, θ, ΔτV, ΔτP )
             Vxe[e] += 1.0/mesh.nnel * Vx[mesh.e2n[e,in]]
             Vye[e] += 1.0/mesh.nnel * Vy[mesh.e2n[e,in]]
         end
-        if np==1 Pe[e] = P[e] end
-        if np==3 Pe[e] = 1.0/np * (P[e] + P[e+mesh.nel] + P[e+2*mesh.nel]) end
+        if npel==1 Pe[e] = P[e] end
+        if npel==3 Pe[e] = 1.0/npel * (P[e] + P[e+mesh.nel] + P[e+2*mesh.nel]) end
+    end
+    for in = 1:mesh.nn
+        V[in]  = sqrt(Vx[in]^2+Vy[in]^2)
     end
     @printf("%2.2e %2.2e\n", minimum(Vx), maximum(Vx))
     @printf("%2.2e %2.2e\n", minimum(Vy), maximum(Vy))
-    @printf("%2.2e %2.2e\n", minimum(P), maximum(P))
+    @printf("%2.2e %2.2e\n", minimum(P),  maximum(P) )
     #-----------------------------------------------------------------#
     if USE_MAKIE
-        # PlotMakie(mesh, Vxe, xmin, xmax, ymin, ymax)
-        PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax)
+        # PlotMakie(mesh, Vxe, xmin, xmax, ymin, ymax; cmap=:jet1)
+        PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1 )
     end
-   
+    return norm(V.-Va)/norm(Va), norm(Pe.-Pa)/norm(Pa)
 end
 
-# main(1, 7, 0.09179541000000001,  0.03333333333333334,  120) # 1450
-main(2, 7, 0.09179541000000001/2.0,  0.03333333333333334*1.1,  210) # 2100
+N          = 30 .* [1; 2; 3; 4; 8]
+eV_p2sp0   = zeros(size(N))
+eP_p2sp0   = zeros(size(N))
+eV_p2p0    = zeros(size(N))
+eP_p2p0    = zeros(size(N))
+eV_p2sp1   = zeros(size(N))
+eP_p2sp1   = zeros(size(N))
+eV_p2p1    = zeros(size(N))
+eP_p2p1    = zeros(size(N))
 
+for i=1:length(N)
+    err_V, err_P = main(N[i], 7, 1, 6, 0.030598470000000003, 0.03333333333333334*1.1,  1.0) # 1450
+    eV_p2sp0[i]  = err_V
+    eP_p2sp0[i]  = err_P
+
+    err_V, err_P = main(N[i], 6, 1, 6, 0.030598470000000003, 0.03333333333333334*1.1,  1.0) # 1450
+    eV_p2p0[i]   = err_V
+    eP_p2p0[i]   = err_P
+
+    #-------------------
+    err_V, err_P = main(N[i], 7, 3, 6, 0.030598470000000003, 0.03333333333333334*1.1,  1.0) # 1450
+    eV_p2sp1[i]  = err_V
+    eP_p2sp1[i]  = err_P
+
+    # err_V, err_P = main(N[i], 6, 3, 6, 0.030598470000000003, 0.03333333333333334*1.1,  1.0) # 1450
+    # eV_p2p1[i]   = err_V
+    # eP_p2p1[i]   = err_P
+end
+
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eV_p2sp1),   markershape=:rect,      color=:blue,      linestyle = :dot,  label="P2P1 P"                          )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_p2sp1),   markershape=:rect,      color=:blue,      linestyle = :dot,  label="P2P1 P"                          )
+
+p = Plots.plot(  log10.(1.0 ./ N) , log10.(eV_p2sp0),   markershape=:rect,      color=:red,                         label="P2*P0 V"                          )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_p2sp0),   markershape=:rect,      color=:red,      linestyle = :dot,  label="P2*P0 P"                          )
+
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eV_p2p0),   markershape=:rect,      color=:green,      linestyle = :dot,  label="P2P0 P"                          )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_p2p0),   markershape=:rect,      color=:green,      linestyle = :dot,  label="P2P0 P"                          )
+
+# p = Plots.plot!( log10.(1.0 ./ N) , log10.(eV_p2p1),   markershape=:rect,      color=:pink,      linestyle = :dot,  label="P2P1 P"                          )
+# p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_p2p1),   markershape=:rect,      color=:pink,      linestyle = :dot,  label="P2P1 P"                          )
+
+
+order1 = [2e-4, 1e-4]
+order2 = [4e-4, 1e-4]
+n      = [35, 70]
+p = Plots.plot!( log10.(1.0 ./ n) , log10.(order1), color=:black, label="Order 1")
+p = Plots.plot!( log10.(1.0 ./ n) , log10.(order2), color=:black, label="Order 2", linestyle = :dash)
+p = Plots.annotate!(log10.(1.0 ./ N[1]), log10(order1[1]), "O1", :black)
+p = Plots.annotate!(log10.(1.0 ./ N[1]), log10(order2[1]), "O2", :black, legend=:outertopright, xlabel = "log_10(h_x)", ylabel = "log_10(err)")
 
 
