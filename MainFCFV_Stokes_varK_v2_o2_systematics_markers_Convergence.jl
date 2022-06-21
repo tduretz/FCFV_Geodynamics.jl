@@ -355,15 +355,8 @@ end
     println("L_inf P error: ", maximum(Perr), " --- L_inf V error: ", maximum(Verr))
 
     # Visualise
-    # println("Visualisation:")
-    # PlotMakie(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
-    # @time PlotMakie( mesh, Vxe, xmin, xmax, ymin, ymax, :jet1, minimum(Vxe), maximum(Vxe) )
-    # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
+    println("Visualisation:")
     @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1, min_v=minimum(Pa), max_v=maximum(Pa) )
-    # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
-    # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
-    # @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax, :jet1 )
-    # @time PlotMakie( mesh, mesh.phase, xmin, xmax, ymin, ymax, :jet1)
 
     ndof = 2*mesh.nf+mesh.nel
     return ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii#, maximum(Perr), maximum(Verr)
@@ -443,7 +436,7 @@ end
 p = Plots.plot(  log10.(1.0 ./ N) , log10.(eV_quad),   markershape=:rect,      color=:blue,                         label="Quads V O1"                          )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_quad),   markershape=:rect,      color=:blue,      linestyle = :dot,  label="Quads P O1"                          )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eTau_quad), markershape=:rect,      color=:blue,      linestyle = :dash, label="Quads Tau O1"                        )
-p = Plots.plot( log10.(1.0 ./ N) , log10.(eV_tri),    markershape=:dtriangle, color=:blue,                         label="Triangles V O1"                     )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eV_tri),    markershape=:dtriangle, color=:blue,                         label="Triangles V O1"                     )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_tri),    markershape=:dtriangle, color=:blue,      linestyle = :dot,  label="Triangles P O1"                     )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eTau_tri),  markershape=:dtriangle, color=:blue,      linestyle = :dash, label="Triangles Tau O1")#, legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
 
@@ -459,7 +452,7 @@ n      = [35, 70]
 p = Plots.plot!( log10.(1.0 ./ n) , log10.(order1), color=:black, label="Order 1")
 p = Plots.plot!( log10.(1.0 ./ n) , log10.(order2), color=:black, label="Order 2", linestyle = :dash)
 p = Plots.annotate!(log10.(1.0 ./ N[1]), log10(order1[1]), "O1", :black)
-p = Plots.annotate!(log10.(1.0 ./ N[1]), log10(order2[1]), "O2", :black, legend=:bottomleft )
+p = Plots.annotate!(log10.(1.0 ./ N[1]), log10(order2[1]), "O2", :black)#, legend=:bottomleft )
 
 # p = Plots.plot(  ndof_quad[2:end], t_quad[2:end], markershape=:rect,      label="Quads"                          )
 # p = Plots.plot!( ndof_tri[2:end],  t_tri[2:end],  markershape=:dtriangle, label="Triangles", legend=:bottomright, xlabel = "ndof", ylabel = "time" )
