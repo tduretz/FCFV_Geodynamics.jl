@@ -8,7 +8,7 @@ include("SolversFCFV_Stokes.jl")
 include("EvalAnalDani_v2.jl")
 include("DiscretisationFCFV_Stokes_o2.jl")
 BLAS.set_num_threads(4)
-# include("MarkerRoutines.jl") 
+include("MarkerRoutines.jl") 
 
 #--------------------------------------------------------------------#
     
@@ -20,83 +20,11 @@ end
 
 #--------------------------------------------------------------------#
 
-mutable struct Markers
-    x         ::  Array{Float64,1}
-    y         ::  Array{Float64,1}
-    phase     ::  Array{Float64,1}
-    cellx     ::  Array{Int64,1}#Vector{CartesianIndex{2}}
-    celly     ::  Array{Int64,1}
-    nmark     ::  Int64
-    nmark_max ::  Int64
-end
-
-@views function LocateMarkers(p,dx,dy,xc,yc,xmin,xmax,ymin,ymax)
-    # Find marker cell indices
-    @threads for k=1:p.nmark
-        if (p.x[k]<xmin || p.x[k]>xmax || p.y[k]<ymin || p.y[k]>ymax) 
-            p.phase[k] = -1
-        end
-        if p.phase[k]>=0
-            dstx         = p.x[k] - xc[1]
-            i            = ceil(Int, dstx / dx + 0.5)
-            dsty         = p.y[k] - yc[1]
-            j            = ceil(Int, dsty / dy + 0.5)
-            p.cellx[k]   = i
-            p.celly[k]   = j
-        end
-    end
-end
-
-@views function Markers2Cells2(p,phase,xc,yc,dx,dy,ncx,ncy,prop,avg)
-    weight      = zeros(Float64, (ncx, ncy))
-    phase_th    = [similar(phase) for _ = 1:nthreads()] # per thread
-    weight_th   = [similar(weight) for _ = 1:nthreads()] # per thread
-    @threads for tid=1:nthreads()
-        fill!(phase_th[tid] , 0)
-        fill!(weight_th[tid], 0)
-    end
-    chunks = Iterators.partition(1:p.nmark, p.nmark ÷ nthreads())
-    @sync for chunk in chunks
-        Threads.@spawn begin
-            tid = threadid()
-            # fill!(phase_th[tid], 0)  # DON'T
-            # fill!(weight_th[tid], 0)
-            for k in chunk
-                if p.phase[k]>=0
-                # Get the indices:
-                i = p.cellx[k]
-                j = p.celly[k]
-                # Relative distances
-                dxm = 2.0 * abs(xc[i] - p.x[k])
-                dym = 2.0 * abs(yc[j] - p.y[k])
-                # Increment cell counts
-                area = (1.0 - dxm / dx) * (1.0 - dym / dy)
-                val  =  prop[Int64(p.phase[k])]
-                if avg==0 phase_th[tid][i,  j] += val       * area end
-                if avg==1 phase_th[tid][i,  j] += (1.0/val) * area end
-                if avg==2 phase_th[tid][i,  j] += log(val) * area end
-                weight_th[tid][i, j] += area
-                end
-            end
-        end
-    end
-    phase  .= reduce(+, phase_th)
-    weight .= reduce(+, weight_th)
-    phase ./= weight
-    if avg==1
-        phase .= 1.0 ./ phase
-    end
-    if avg==2
-        phase .= exp.(phase)
-    end
-    return
-end
-
 function SetMarkers!( p, R )
-@tturbo for k=1:p.nmark
-    in         = (p.x[k]^2 + p.y[k]^2) < R^2 
-    p.phase[k] = (in==0)* 1.0 + (in==1)*2.0
-end
+    @tturbo for k=1:p.nmark
+        in         = (p.x[k]^2 + p.y[k]^2) < R^2 
+        p.phase[k] = (in==0)* 1.0 + (in==1)*2.0
+    end
 end
 
 #--------------------------------------------------------------------#

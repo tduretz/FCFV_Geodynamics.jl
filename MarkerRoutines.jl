@@ -1,5 +1,16 @@
 using Base.Threads
 
+
+mutable struct Markers
+    x         ::  Array{Float64,1}
+    y         ::  Array{Float64,1}
+    phase     ::  Array{Float64,1}
+    cellx     ::  Array{Int64,1}#Vector{CartesianIndex{2}}
+    celly     ::  Array{Int64,1}
+    nmark     ::  Int64
+    nmark_max ::  Int64
+end
+
 @views function Markers2Cells(p,phase,xc,yc,dx,dy,ncx,ncy)
     weight      = zeros(Float64, (ncx, ncy))
     phase_th    = [similar(phase) for _ = 1:nthreads()] # per thread
@@ -112,3 +123,4 @@ for k in 1:p.nmark
 end
 return liste
 end
+
