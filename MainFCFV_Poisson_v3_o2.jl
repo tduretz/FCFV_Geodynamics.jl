@@ -143,6 +143,6 @@ end
 end
 
 n         = 8
-order     = 1
+order     = 2
 mesh_type = "Quadrangles"
 main( n, mesh_type, order )
