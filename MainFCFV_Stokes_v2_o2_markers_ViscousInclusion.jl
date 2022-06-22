@@ -344,7 +344,7 @@ end
     # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
     # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
     # @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax; cmap=:jet1 )
-    # @time PlotMakie( mesh, mesh.phase, xmin, xmax, ymin, ymax, :jet1)
+    # @time PlotMakie( mesh, mesh.phase, xmin, xmax, ymin, ymax; cmap=:jet1 )
 
     return maximum(Perr), maximum(Verr)
 end
@@ -358,4 +358,5 @@ o2  = 1
 # main(4, "Quadrangles", 180, 1) # L_INF P 1.45 arith
 # main(8, "Quadrangles", 280, 1) # L_INF P 1.8 arith
 # main(2, "Quadrangles", 25, 1)
-main(n, "UnstructTriangles", τ, o2, new)
+# main(n, "UnstructTriangles", τ, o2, new)
+main(n, "Quadrangles", 1000, o2, new)
