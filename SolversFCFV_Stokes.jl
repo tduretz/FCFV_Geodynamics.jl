@@ -159,7 +159,7 @@ function KSP_GCR_StokesFCFV!( x::Vector{Float64}, M::SparseMatrixCSC{Float64, In
     ncyc, its       = 0, 0
     i1, i2, success = 0, 0, 0
     # Initial residual
-    @tturbo f     .= b .- M*x 
+     f     .= b .- M*x 
     norm_r = sqrt(mydotavx( f, f ) )#norm(v)norm(f)
     norm0  = norm_r;
     ndof   = size(M,1)
@@ -172,25 +172,25 @@ function KSP_GCR_StokesFCFV!( x::Vector{Float64}, M::SparseMatrixCSC{Float64, In
             s[1:ndofu]     .= Kxxf \ @view f[1:ndofu]
             s[ndofu+1:end] .= Kxxf \ @view f[ndofu+1:end]
             # Action of Jacobian on s: v = J*s
-            @tturbo mul!(v, M, s)
+             mul!(v, M, s)
             # Approximation of the Jv product
             for i2=1:i1
                 val[i2] = mydotavx( v, view(VV, :, i2 ) )   
             end
             # Scaling
             for i2=1:i1
-                @tturbo v .-= val[i2] .* view(VV, :, i2 )
-                @tturbo s .-= val[i2] .* view(SS, :, i2 )
+                 v .-= val[i2] .* view(VV, :, i2 )
+                 s .-= val[i2] .* view(SS, :, i2 )
             end
             # -----------------
             nrm_inv = 1.0 / sqrt(mydotavx( v, v ) )
             r_dot_v = mydotavx( f, v )  * nrm_inv
             # -----------------
-            @tturbo v     .*= nrm_inv
-            @tturbo s     .*= nrm_inv
+             v     .*= nrm_inv
+             s     .*= nrm_inv
             # -----------------
-            @tturbo x     .+= r_dot_v.*s
-            @tturbo f     .-= r_dot_v.*v
+             x     .+= r_dot_v.*s
+             f     .-= r_dot_v.*v
             # -----------------
             norm_r  = sqrt(mydotavx( f, f ) )
             if norm_r/sqrt(length(f)) < eps || its==23
@@ -200,8 +200,8 @@ function KSP_GCR_StokesFCFV!( x::Vector{Float64}, M::SparseMatrixCSC{Float64, In
                 break
             end
             # Store 
-            @tturbo VV[:,i1] .= v
-            @tturbo SS[:,i1] .= s
+             VV[:,i1] .= v
+             SS[:,i1] .= s
             its      += 1
         end
         its  += 1
@@ -216,7 +216,7 @@ export KSP_GCR_Stokes!
 
 function mydotavx(A, B)
     s = zero(promote_type(eltype(A), eltype(B)))
-    @tturbo for i in eachindex(A,B)
+     for i in eachindex(A,B)
         s += A[i] * B[i]
     end
     s

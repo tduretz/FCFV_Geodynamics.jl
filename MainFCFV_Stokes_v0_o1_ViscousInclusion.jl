@@ -133,15 +133,15 @@ end
 
 #--------------------------------------------------------------------#
     
-function StabParam(tau, dA, Vol, mesh_type, coeff)
-    if mesh_type=="Quadrangles";        taui = tau end#coeff*tau
-    if mesh_type=="UnstructTriangles";  taui = 1.0 end#coeff*tau*dA 
-    return taui
+function StabParam(τr, Γ, Ω, mesh_type, coeff)
+    if mesh_type=="Quadrangles";        τ = τr end#coeff*tau
+    if mesh_type=="UnstructTriangles";  τ = τr end#coeff*tau*dA 
+    return τ
 end
 
 #--------------------------------------------------------------------#
 
-@views function main(τr=70.0)
+@views function main( n, mesh_type, τr, o2, new )
     # ```This version includes the jump condition derived from the analytical solution
     # The great thing is that pressure converges in L_infinity norm even with quadrangles - this rocks
     # # Test #1: For a contrast of:  eta        = [10.0 1.0] (weak inclusion), tau = 20.0
@@ -157,17 +157,16 @@ end
     # Create sides of mesh
     xmin, xmax = -3.0, 3.0
     ymin, ymax = -3.0, 3.0
-    n          = 1
     nx, ny     = 30*n, 30*n
     solver     = 0
     R          = 1.0
     inclusion  = 1
-    eta        = [10.0 1.0]
-    mesh_type  = "Quadrangles"
+    eta        = [1.0 100.0]
+    # mesh_type  = "Quadrangles"
     # mesh_type  = "UnstructTriangles" 
     # mesh_type  = "TrianglesSameMATLAB"
-    BC         = [1; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
-    new        = 1 # implementation if interface
+    BC         = [2; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
+    # new        = 1 # implementation if interface
 
     # Generate mesh
     if mesh_type=="Quadrangles" 
@@ -215,11 +214,6 @@ end
     println("Compute element matrices:")
     @time Kuu, Muu, Kup, fu, fp, tsparse = ElementAssemblyLoop(mesh, ae, be, ze, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, new)
     println("Sparsification: ", tsparse)
-    
-    # # display(UnicodePlots.spy(Kuu))
-    # # display(UnicodePlots.spy(Kuug))
-    # # display(UnicodePlots.spy(Kuua))
-    # # display(UnicodePlots.spy(Kup))
 
     # Solve for hybrid variable
     println("Linear solve:")
@@ -257,20 +251,26 @@ end
     # println("Visualisation:")
     # PlotMakie(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
     # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
-    @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax; cmap=:jet1, min_v =minimum(Pa), max_v =maximum(Pa) )
+    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1, min_v =minimum(Pa), max_v =maximum(Pa) )
     # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
     # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
-    # @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax, :jet1 )
+    # @time PlotMakie( mesh, mesh.ke, xmin, xmax, ymin, ymax; cmap=:jet1 )
     # @time PlotMakie( mesh, mesh.phase, xmin, xmax, ymin, ymax, :jet1)
 
     return maximum(Perr)
 end
 
-main( )
+new = 0 
+n   = 2
+τ   = 1.0
+o2  = 0
+
+main( n, "Quadrangles", 5.0, o2, new )
+# main( n, "UnstructTriangles", 0.1, o2, new )
 
 # τ    = 1:5:200
 # perr = zeros(size(τ))
 # for i=1:length(τ)
 #     perr[i] = main(τ[i])
 # end
-# display(Plots.plot(τ, perr, title=minimum(perr)))
+# display(Plots.plot(τ, perr, title=minimum(perr))

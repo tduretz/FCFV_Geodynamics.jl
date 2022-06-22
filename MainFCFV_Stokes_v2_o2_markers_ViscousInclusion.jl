@@ -7,7 +7,7 @@ include("DiscretisationFCFV_Stokes.jl")
 include("SolversFCFV_Stokes.jl")
 include("EvalAnalDani_v2.jl")
 include("DiscretisationFCFV_Stokes_o2.jl")
-BLAS.set_num_threads(4)
+BLAS.set_num_threads(1)
 include("MarkerRoutines.jl") 
 
 #--------------------------------------------------------------------#
@@ -268,23 +268,23 @@ end
     println("Visualisation:")
     # @time PlotMakie( mesh, Vxe, xmin, xmax, ymin, ymax; cmap=:jet1,  min_v=minimum(Vxa),  max_v=maximum(Vxa), writefig=false)
     # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
-    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1,  min_v=minimum(Pa),  max_v=maximum(Pa), writefig=false )
+    # @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1,  min_v=minimum(Pa),  max_v=maximum(Pa), writefig=false )
     # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
     # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
-    # @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax; cmap=:jet1 )
+    @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax; cmap=:jet1 )
     # @time PlotMakie( mesh, mesh.phase, xmin, xmax, ymin, ymax; cmap=:jet1 )
 
     return maximum(Perr), maximum(Verr)
 end
 
-new = 1 
-n   = 2
+new = 0 
+n   = 1
 τ   = 1.0
-o2  = 1
+o2  = 0
 # main(2, "Quadrangles", 25, 1) # L_INF P 1.67 no-interp
 # main(2, "Quadrangles", 50, 1) # L_INF P 1.18 arith
 # main(4, "Quadrangles", 180, 1) # L_INF P 1.45 arith
 # main(8, "Quadrangles", 280, 1) # L_INF P 1.8 arith
 # main(2, "Quadrangles", 25, 1)
 # main(n, "UnstructTriangles", τ, o2, new)
-main(n, "Quadrangles", 1000, o2, new)
+main(n, "Quadrangles", 10000, o2, new)
