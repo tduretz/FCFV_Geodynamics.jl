@@ -1,6 +1,6 @@
 const USE_GPU      = false  # Not supported yet 
 const USE_DIRECT   = false  # Sparse matrix assembly + direct solver
-const USE_NODAL    = false  # Nodal evaluation of residual
+const USE_NODAL    = true   # Nodal evaluation of residual
 const USE_PARALLEL = false  # Parallel residual evaluation
 const USE_MAKIE    = true   # Visualisation 
 import Plots
@@ -30,10 +30,9 @@ function ResidualStokesNodalFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, Q_all, b )
     Fp   .= 0.0
     nnel  = mesh.nnel
     npel  = mesh.npel
-    V_ele = zeros(nnel*2)
     ###################################### VELOCITY
     # Loop over nodes and elements connected to each node to avoid race condition - quite horrible
-    for in = 1:mesh.nn
+    Threads.@threads for in = 1:mesh.nn
         Fx[in] = 0.0
         Fy[in] = 0.0
         if mesh.bcn[in]==0
@@ -42,6 +41,7 @@ function ResidualStokesNodalFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, Q_all, b )
                 nodes   = mesh.e2n[e,:]
                 if npel==1 nodesP = [e] end
                 if npel==3 nodesP = [e; e+mesh.nel; e+2*mesh.nel]  end
+                V_ele             = zeros(nnel*2)
                 V_ele[1:2:end-1] .= Vx[nodes]
                 V_ele[2:2:end]   .= Vy[nodes]  
                 P_ele      = P[nodesP] 
@@ -56,6 +56,7 @@ function ResidualStokesNodalFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, Q_all, b )
     end
     ###################################### PRESSURE
     # Pressure is discontinuous across elements, the residual can be evaluated per element without race condition
+    V_ele = zeros(nnel*2)
     @inbounds for e = 1:mesh.nel
         Fp[e] = 0.0
         nodes = mesh.e2n[e,:]
