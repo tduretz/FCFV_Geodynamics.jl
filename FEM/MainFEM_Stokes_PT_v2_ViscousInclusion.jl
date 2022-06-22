@@ -13,9 +13,7 @@ include("../CreateMeshFCFV.jl")
 include("../VisuFCFV.jl")
 include("../DiscretisationFCFV.jl")
 include("../EvalAnalDani.jl")
-
 include("IntegrationPoints.jl")
-
 
 #----------------------------------------------------------#
 
@@ -402,8 +400,8 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     end
 end
 
-main(1, 7, 1, 6, 0.030598470000000003, 0.03333333333333334*1.1,  1.0) # 1450
-# main(2, 7, 1, 6, 0.030598470000000003/2, 0.03333333333333334*1.1,  1.0) # 1450
+# main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
+main(2, 7, 1, 6, 0.030598470000000003/2, 0.03666666667,  1.0) # nit = 9000
 
 
 
