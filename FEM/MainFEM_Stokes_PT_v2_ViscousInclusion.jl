@@ -21,28 +21,58 @@ function StabParam(τ, Γ, Ω, mesh_type, ν)
     return 0. # Stabilisation is only needed for FCFV
 end
 
-# #----------------------------------------------------------#
+#----------------------------------------------------------#
 
-# function ResidualPoissonNodalFEM!( F, T, mesh, K_all, b )
-#     # Residual
-#     Threads.@threads for in = 1:mesh.nn
-#         F[in] = 0.0
-#         if mesh.bcn[in]==0
-#             @inbounds for ii=1:length(mesh.n2e[in])
-#                 e       = mesh.n2e[in][ii]
-#                 nodes   = mesh.e2n[e,:]
-#                 T_ele   = T[nodes]  
-#                 K       = K_all[e,:,:] 
-#                 f       = K*T_ele .- b[e,:]
-#                 inode   = mesh.n2e_loc[in][ii]
-#                 F[in]  -= f[inode]
-#             end
-#         end
-#     end
-#     return nothing
-# end
+function ResidualStokesNodalFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, Q_all, b )
+    # Residual
+    Fx   .= 0.0
+    Fy   .= 0.0
+    Fp   .= 0.0
+    nnel  = mesh.nnel
+    npel  = mesh.npel
+    V_ele = zeros(nnel*2)
+    ###################################### VELOCITY
+    # Loop over nodes and elements connected to each node to avoid race condition - quite horrible
+    for in = 1:mesh.nn
+        Fx[in] = 0.0
+        Fy[in] = 0.0
+        if mesh.bcn[in]==0
+            for ii=1:length(mesh.n2e[in])
+                e       = mesh.n2e[in][ii]
+                nodes   = mesh.e2n[e,:]
+                if npel==1 nodesP = [e] end
+                if npel==3 nodesP = [e; e+mesh.nel; e+2*mesh.nel]  end
+                V_ele[1:2:end-1] .= Vx[nodes]
+                V_ele[2:2:end]   .= Vy[nodes]  
+                P_ele      = P[nodesP] 
+                K_ele      = K_all[e,:,:]
+                Q_ele      = Q_all[e,:,:]
+                fv_ele     = K_ele*V_ele .+ Q_ele*P_ele # .- bu[e,:]
+                inode      = mesh.n2e_loc[in][ii]
+                Fx[in]    -= fv_ele[2*inode-1]
+                Fy[in]    -= fv_ele[2*inode]
+            end
+        end
+    end
+    ###################################### PRESSURE
+    # Pressure is discontinuous across elements, the residual can be evaluated per element without race condition
+    @inbounds for e = 1:mesh.nel
+        Fp[e] = 0.0
+        nodes = mesh.e2n[e,:]
+        if npel==1 nodesP = [e] end
+        if npel==3 nodesP = [e; e+mesh.nel; e+2*mesh.nel]  end
+        V_ele[1:2:end-1] .= Vx[nodes]
+        V_ele[2:2:end]   .= Vy[nodes]
+        Q_ele      = Q_all[e,:,:]
+        fp_ele     = .-Q_ele'*V_ele #.- bp[e,:]
+        for p=1:npel
+            Fp[e+(p-1)*mesh.nel] = - fp_ele[:][p]
+        end
+    end
+    return nothing
+end
 
-# #----------------------------------------------------------#
+#----------------------------------------------------------#
 
 function ResidualStokesElementalSerialFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, Q_all, b )
     # Residual
@@ -65,7 +95,7 @@ function ResidualStokesElementalSerialFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, 
         fp_ele     = .-Q_ele'*V_ele #.- bp[e,:]
         Fx[nodes] .-= fv_ele[1:2:end-1] # This should be atomic
         Fy[nodes] .-= fv_ele[2:2:end]
-        if npel==1 Fp[nodesP]  -= fp_ele[:]    end
+        if npel==1 Fp[nodesP]  -= fp_ele[:] end
         if npel==3 Fp[nodesP] .-= fp_ele[:] end
     end
     Fx[mesh.bcn.==1] .= 0.0
@@ -336,17 +366,11 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             iter  += 1
             ΔVxΔτ0 .= ΔVxΔτ 
             ΔVyΔτ0 .= ΔVyΔτ
-            ResidualStokesElementalSerialFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b )
-
-    # #         if USE_NODAL
-    # #             ResidualPoissonNodalFEM!( ΔTΔτ, T, mesh, K_all, b )
-    # #         else
-    # #             if USE_PARALLEL==false
-    # #                 ResidualPoissonElementalSerialFEM!( ΔTΔτ, T, mesh, K_all, b )
-    # #             else
-    # #                 ResidualPoissonElementalParallelFEM!( ΔTΔτ, ΔTΔτ_th, chunks, T, mesh, K_all, b )
-    # #             end
-    # #         end
+            # if USE_NODAL
+                ResidualStokesNodalFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b )
+            # else
+                ResidualStokesElementalSerialFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b )
+            # end
             ΔVxΔτ  .= (1.0 - θ).*ΔVxΔτ0 .+ ΔVxΔτ 
             ΔVyΔτ  .= (1.0 - θ).*ΔVyΔτ0 .+ ΔVyΔτ
             Vx    .+= ΔτV .* ΔVxΔτ
@@ -397,11 +421,13 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     if USE_MAKIE
         # PlotMakie(mesh, Vxe, xmin, xmax, ymin, ymax; cmap=:jet1)
         PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1 )
+    else
+        PlotPyPlot(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1 )
     end
 end
 
-# main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
-main(2, 7, 1, 6, 0.030598470000000003/2, 0.03666666667,  1.0) # nit = 9000
+main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
+# main(2, 7, 1, 6, 0.030598470000000003/2, 0.03666666667,  1.0) # nit = 9000
 
 
 
