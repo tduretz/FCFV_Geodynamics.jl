@@ -1,6 +1,6 @@
 const USE_GPU      = false  # Not supported yet 
-const USE_DIRECT   = false  # Sparse matrix assembly + direct solver
-const USE_NODAL    = true   # Nodal evaluation of residual
+const USE_DIRECT   = true   # Sparse matrix assembly + direct solver
+const USE_NODAL    = false  # Nodal evaluation of residual
 const USE_PARALLEL = false  # Parallel residual evaluation
 const USE_MAKIE    = true   # Visualisation 
 import Plots
@@ -108,6 +108,7 @@ end
 
 function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN_1.0.1
     ndof         = 2*mesh.nnel
+    nnel         = mesh.nnel
     npel         = mesh.npel
     nip          = length(ipw)
     K_all        = zeros(mesh.nel, ndof, ndof) 
@@ -120,6 +121,7 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
     M_inv        = zeros(npel,npel)
     b_ele        = zeros(ndof)
     B            = zeros(ndof,3)
+    Np           = zeros(ndof,3)
     m            = [ 1.0; 1.0; 0.0]
     Dev          = [ 4/3 -2/3  0.0;
                     -2/3  4/3  0.0;
@@ -140,15 +142,18 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
         M_ele  .= 0.0
         b_ele  .= 0.0
         M_inv  .= 0.0
-        if npel==3  P[2:3,:] .= (x[1:3,:])' end
+        if npel==3 && nnel!=4 P[2:3,:] .= (x[1:3,:])' end
 
         # Integration loop
         for ip=1:nip
 
-            if npel==3 
+            if npel==3 && nnel!=4 
                 Ni       = N[ip,:,1]
                 Pb[2:3] .= x'*Ni 
                 Pi       = P\Pb
+            else
+                Np[1:2:end,1] .= N[ip,:,1:3]
+                Np[2:2:end,1] .= N[ip,:,1:3]
             end
 
             dNdXi     = dNdX[ip,:,:]
@@ -165,17 +170,23 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
             B[2:2:end,3] .= dNdx[:,1]
             Bvol          = dNdx'
             K_ele .+= ipw[ip] .* detJ .* ke  .* (B*Dev*B')
-            if npel==3 
+            if npel==3 && nnel!=4 
                 Q_ele   .-= ipw[ip] .* detJ .* (Bvol[:]*Pi') 
                 M_ele   .+= ipw[ip] .* detJ .* Pi*Pi'
-            elseif npel==1 
+            elseif npel==1 && nnel!=4
                 Q_ele   .-= ipw[ip] .* detJ .* 1.0 .* (B*m*npel') 
+            else
+                println(size(Q_ele))
+                println(size(B*Np''))
+                Q_ele   .-= ipw[ip] .* detJ .* 1.0 .* (B*Np') 
             end
             # b_ele   .+= ipw[ip] .* detJ .* se[e] .* N[ip,:] 
         end
-        if npel==3 M_inv .= inv(M_ele) end
-        # if npel==3 K_ele .+=  PF.*(Q_ele*M_inv*Q_ele') end
-        if npel==3 Mi_all[e,:,:] .= M_inv end
+        if npel==3 && nnel!=4 
+            M_inv .= inv(M_ele) 
+            # if npel==3 K_ele .+=  PF.*(Q_ele*M_inv*Q_ele') end
+            Mi_all[e,:,:] .= M_inv 
+        end
         K_all[e,:,:]  .= K_ele
         Q_all[e,:,:]  .= Q_ele
         # b[e,:]       .= b_ele
@@ -427,8 +438,9 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     end
 end
 
-main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
+# main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
 # main(2, 7, 1, 6, 0.030598470000000003/2, 0.03666666667,  1.0) # nit = 9000
+main(1, 7, 3, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
 
 
 

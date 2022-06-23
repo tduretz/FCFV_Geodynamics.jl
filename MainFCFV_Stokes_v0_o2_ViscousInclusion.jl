@@ -259,8 +259,8 @@ end
     # println("Visualisation:")
     # PlotMakie(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v))
     # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
-    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1, min_v =minimum(Pa), max_v =maximum(Pa) )
-    # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
+    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1, min_v=minimum(Pa), max_v=maximum(Pa) )
+    # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax; cmap=:jet1, min_v=minimum(Perr), max_v=maximum(Perr) )
     # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
     # @time PlotMakie( mesh, mesh.ke, xmin, xmax, ymin, ymax; cmap=:jet1 )
     # @time PlotMakie( mesh, mesh.phase, xmin, xmax, ymin, ymax, :jet1)
@@ -278,20 +278,20 @@ o2      = 0
 markers = false
 avg     = 0
 
-eP_quad_o1_Linf_c = zeros(length(N))
-eP_quad_o1_Linf_f = zeros(length(N))
+# eP_quad_o1_Linf_c = zeros(length(N))
+# eP_quad_o1_Linf_f = zeros(length(N))
 
-for i=1:length(N)
-    res = main( N[i], "Quadrangles", 1/4.0, o2, new, markers, avg )
-    eP_quad_o1_Linf_c[i] = res[1]
-    eP_quad_o1_Linf_f[i] = res[2]
-    # main( n, "UnstructTriangles", 0.1, o2, new, markers, avg )
+# for i=1:length(N)
+#     res = main( N[i], "Quadrangles", 1/4.0, o2, new, markers, avg )
+#     eP_quad_o1_Linf_c[i] = res[1]
+#     eP_quad_o1_Linf_f[i] = res[2]
+#     # main( n, "UnstructTriangles", 0.1, o2, new, markers, avg )
 
-    p = Plots.plot(  log10.(1.0 ./ N[1:i]) , log10.(eP_quad_o1_Linf_c[1:i]),   markershape=:rect,      color=:red,      linestyle = :dot,  label="Quads P O1 c"                          )
-    p = Plots.plot!( log10.(1.0 ./ N[1:i]) , log10.(eP_quad_o1_Linf_f[1:i]),   markershape=:rect,      color=:blue,      linestyle = :dot,  label="Quads P O1 f"                          )
-    p = Plots.plot!( legend=:outertopright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
-    display(p)
-end
+#     p = Plots.plot(  log10.(1.0 ./ N[1:i]) , log10.(eP_quad_o1_Linf_c[1:i]),   markershape=:rect,      color=:red,      linestyle = :dot,  label="Quads P O1 c"                          )
+#     p = Plots.plot!( log10.(1.0 ./ N[1:i]) , log10.(eP_quad_o1_Linf_f[1:i]),   markershape=:rect,      color=:blue,      linestyle = :dot,  label="Quads P O1 f"                          )
+#     p = Plots.plot!( legend=:outertopright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
+#     display(p)
+# end
 
 #--------------------------------------------------------------------#
 
@@ -302,4 +302,4 @@ end
 # end
 # display(Plots.plot(τ, perr, title=minimum(perr))
 
-# main( 1, "Quadrangles", 1.0, o2, new, markers, avg )
+main( 4, "Quadrangles", 1/10, o2, 1, false, 1 )
