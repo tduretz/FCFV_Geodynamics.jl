@@ -15,8 +15,6 @@ function FaceStabParam( mesh, τr, mesh_type )
     # Assemble FCFV elements
     for iel=1:mesh.nel  
             
-        # println("element: ",  iel)
-
         for ifac=1:mesh.nf_el
             
             nodei  = mesh.e2f[iel,ifac]
@@ -25,13 +23,35 @@ function FaceStabParam( mesh, τr, mesh_type )
             vert1  = mesh.e2v[iel,nodeA[ifac]]
             vert2  = mesh.e2v[iel,nodeB[ifac]]
             bc     = mesh.bc[nodei]
-            dx     = abs(mesh.xv[vert1] - mesh.xv[vert2] );
-            dy     = abs(mesh.yv[vert1] - mesh.yv[vert2] );
-            Γi     = sqrt(dx^2 + dy^2);
+            dx     = abs(mesh.xv[vert1] - mesh.xv[vert2] )
+            dy     = abs(mesh.yv[vert1] - mesh.yv[vert2] )
+            Γi     = sqrt(dx^2 + dy^2)
 
             # Face stabilisation
             mesh.τ[nodei] = StabParam(τr, Γi, mesh.Ω[iel], mesh.type, mesh.ke[iel]) 
         end
+    end
+end
+
+function FaceStabParam2( mesh, τr )
+
+    for i=1:mesh.nf
+            # Check values of the 2 adjacent volumes
+            ne   = 1
+            sumk = 0.0
+            sumΩ = 0.0
+            for e=1:2
+                if mesh.f2e[i,e]>0
+                    # println( mesh.ke[e] )
+                    sumk += mesh.ke[e] 
+                    sumk += mesh.Ω[e] 
+                    ne   += 1
+                end
+            end
+            Ω = sumΩ/ne
+            k = sumk/ne
+            # Face stabilisation
+            mesh.τ[i] = StabParam(τr, mesh.Γ[i], Ω, mesh.type, k) 
     end
 end
 
