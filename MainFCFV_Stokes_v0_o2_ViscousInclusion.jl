@@ -7,39 +7,40 @@ include("DiscretisationFCFV_Stokes.jl")
 include("SolversFCFV_Stokes.jl")
 include("EvalAnalDani.jl")
 include("DiscretisationFCFV_Stokes_o2.jl")
+include("MarkerRoutines.jl") 
 
 #--------------------------------------------------------------------#
     
 function StabParam(τr, Γ, Ω, mesh_type, k)
-    if mesh_type=="Quadrangles";        τ = k end#coeff*tau
-    if mesh_type=="UnstructTriangles";  τ = τr end#coeff*tau*dA 
+    if mesh_type=="Quadrangles";        τ = k*τr/Γ end
+    if mesh_type=="UnstructTriangles";  τ = τr   end 
     return τ
 end
 
 #--------------------------------------------------------------------#
 
-function SetUpProblem!(mesh, P, P_f, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sx, sy, R, eta, gbar)
+function SetUpProblem!(mesh, P, P_f, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sx, sy, R,  η, gbar)
     # Evaluate T analytic on cell faces
-    etam, etai = eta[1], eta[2]
+     ηm,  ηi =  η[1],  η[2]
     for in=1:mesh.nf
         x        = mesh.xf[in]
         y        = mesh.yf[in]
-        vx, vy, p, sxx, syy, sxy = EvalAnalDani( x, y, R, etam, etai )
+        vx, vy, p, sxx, syy, sxy = EvalAnalDani( x, y, R,  ηm,  ηi )
         VxDir[in] = vx
         VyDir[in] = vy
         # Stress at faces - Pseudo-tractions
-        p, dVxdx, dVxdy, dVydx, dVydy = Tractions( x, y, R, etam, etai, 1 )
-        SxxNeu[in] = - p + etam*dVxdx 
-        SyyNeu[in] = - p + etam*dVydy 
-        SxyNeu[in] =       etam*dVxdy
-        SyxNeu[in] =       etam*dVydx
+        p, dVxdx, dVxdy, dVydx, dVydy = Tractions( x, y, R,  ηm,  ηi, 1 )
+        SxxNeu[in] = - p +  ηm*dVxdx 
+        SyyNeu[in] = - p +  ηm*dVydy 
+        SxyNeu[in] =        ηm*dVxdy
+        SyxNeu[in] =        ηm*dVydx
         P_f[in]    = p
     end
     # Evaluate T analytic on barycentres
     for iel=1:mesh.nel
         x        = mesh.xc[iel]
         y        = mesh.yc[iel]
-        vx, vy, pre, sxx, syy, sxy = EvalAnalDani( x, y, R, etam, etai )
+        vx, vy, pre, sxx, syy, sxy = EvalAnalDani( x, y, R,  ηm,  ηi )
         P[iel]   = pre
         Vx[iel]  = vx
         Vy[iel]  = vy
@@ -49,7 +50,7 @@ function SetUpProblem!(mesh, P, P_f, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu
         sx[iel]  = 0.0
         sy[iel]  = 0.0
         out          = mesh.phase[iel] == 1.0
-        mesh.ke[iel] = (out==1) * 1.0*etam + (out!=1) * 1.0*etai
+        mesh.ke[iel] = (out==1) * 1.0* ηm + (out!=1) * 1.0* ηi
         # Compute jump condition
         for ifac=1:mesh.nf_el
             # Face
@@ -60,17 +61,17 @@ function SetUpProblem!(mesh, P, P_f, Vx, Vy, Sxx, Syy, Sxy, VxDir, VyDir, SxxNeu
             ni_x   = mesh.n_x[iel,ifac]
             ni_y   = mesh.n_y[iel,ifac]
             phase1 = Int64(mesh.phase[iel])
-            pre1, dVxdx1, dVxdy1, dVydx1, dVydy1 = Tractions( xF, yF, R, etam, etai, phase1 )
-            eta_face1 = eta[phase1]
-            tL_x  = ni_x*(-pre1 + eta_face1*dVxdx1) + ni_y*eta_face1*dVxdy1
-            tL_y  = ni_y*(-pre1 + eta_face1*dVydy1) + ni_x*eta_face1*dVydx1
+            pre1, dVxdx1, dVxdy1, dVydx1, dVydy1 = Tractions( xF, yF, R,  ηm,  ηi, phase1 )
+             η_face1 =  η[phase1]
+            tL_x  = ni_x*(-pre1 +  η_face1*dVxdx1) + ni_y* η_face1*dVxdy1
+            tL_y  = ni_y*(-pre1 +  η_face1*dVydy1) + ni_x* η_face1*dVydx1
             # From element 2
             ineigh = (mesh.e2e[iel,ifac]>0) * mesh.e2e[iel,ifac] + (mesh.e2e[iel,ifac]<1) * iel
             phase2 = Int64(mesh.phase[ineigh])
-            pre2, dVxdx2, dVxdy2, dVydx2, dVydy2 = Tractions( xF, yF, R, etam, etai, phase2)
-            eta_face2 = eta[phase2]
-            tR_x = ni_x*(-pre2 + eta_face2*dVxdx2) + ni_y*eta_face2*dVxdy2
-            tR_y = ni_y*(-pre2 + eta_face2*dVydy2) + ni_x*eta_face2*dVydx2
+            pre2, dVxdx2, dVxdy2, dVydx2, dVydy2 = Tractions( xF, yF, R,  ηm,  ηi, phase2)
+             η_face2 =  η[phase2]
+            tR_x = ni_x*(-pre2 +  η_face2*dVxdx2) + ni_y* η_face2*dVxdy2
+            tR_y = ni_y*(-pre2 +  η_face2*dVydy2) + ni_x* η_face2*dVydx2
             gbar[iel,ifac,1] = 0.5 * (tL_x - tR_x)
             gbar[iel,ifac,2] = 0.5 * (tL_y - tR_y)
         end          
@@ -80,8 +81,8 @@ end
 
 #--------------------------------------------------------------------#
 
-function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R, eta )
-    etam, etai = eta[1], eta[2]
+function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R,  η )
+     ηm,  ηi =  η[1],  η[2]
     eVx  = zeros(mesh.nel)
     eVy  = zeros(mesh.nel)
     eTxx = zeros(mesh.nel)
@@ -111,13 +112,13 @@ function ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R, eta )
             cc  += 1
         end
         P_f /= cc
-        vx, vy, pre, sxx, syy, sxy = EvalAnalDani( mesh.xf[in], mesh.yf[in], R, etam, etai )
+        vx, vy, pre, sxx, syy, sxy = EvalAnalDani( mesh.xf[in], mesh.yf[in], R,  ηm,  ηi )
         Pe_f[in] = P_f - pre
     end
     for iel=1:mesh.nel
         x         = mesh.xc[iel]
         y         = mesh.yc[iel]
-        vx, vy, pre, sxx, syy, sxy = EvalAnalDani( x, y, R, etam, etai )
+        vx, vy, pre, sxx, syy, sxy = EvalAnalDani( x, y, R,  ηm,  ηi )
         Pa[iel]   = pre
         Vxa[iel]  = vx
         Vya[iel]  = vy
@@ -142,13 +143,13 @@ end
 
 #--------------------------------------------------------------------#
 
-@views function main( n, mesh_type, τr, o2, new )
+@views function main( n, mesh_type, τr, o2, new, markers, avg )
     # ```This version includes the jump condition derived from the analytical solution
     # The great thing is that pressure converges in L_infinity norm even with quadrangles - this rocks
-    # # Test #1: For a contrast of:  eta        = [10.0 1.0] (weak inclusion), tau = 20.0
+    # # Test #1: For a contrast of:   η        = [10.0 1.0] (weak inclusion), tau = 20.0
     #     res = [1 2 4 8]*30 elements per dimension 
     #     err = [4.839 3.944 2.811 1.798]
-    # # Test #2: For a contrast of:  eta        = [1.0 100.0] (strong inclusion), tau = 1.0/5.0
+    # # Test #2: For a contrast of:   η        = [1.0 100.0] (strong inclusion), tau = 1.0/5.0
     #     res = [1 2 4 8]*30 elements per dimension 
     #     err = [4.169 2.658 1.628 0.83]
     # ```
@@ -159,10 +160,10 @@ end
     xmin, xmax = -3.0, 3.0
     ymin, ymax = -3.0, 3.0
     nx, ny     = 30*n, 30*n
-    solver     = 0
+    solver     = 1
     R          = 1.0
     inclusion  = 1
-    eta        = [1.0 100.0]
+    η          = [1.0 100.0]
     # mesh_type  = "Quadrangles"
     # mesh_type  = "UnstructTriangles" 
     # mesh_type  = "TrianglesSameMATLAB"
@@ -205,7 +206,9 @@ end
     SyxNeu = zeros(mesh.nf)
     gbar   = zeros(mesh.nel,mesh.nf_el, 2)
     println("Model configuration :")
-    @time SetUpProblem!(mesh, Pa, Pa_f, Vxa, Vya, Sxxa, Syya, Sxya, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sex, sey, R, eta, gbar)
+    @time SetUpProblem!(mesh, Pa, Pa_f, Vxa, Vya, Sxxa, Syya, Sxya, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sex, sey, R,  η, gbar)
+
+    if markers DoTheMarkerThing!( mesh, nx, ny, 4, 4, xmin, xmax, ymin, ymax, R,  η, avg ) end
 
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
@@ -230,10 +233,8 @@ end
     if o2==0 @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues(mesh, Vxh, Vyh, Pe, ae, be, ze, VxDir, VyDir) end
     if o2==1 @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy, mei, VxDir, VyDir, o2) end
 
-    println("max. P :  ", maximum(Pe) )
-
     # Compute discretisation errors
-    err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, Txxa, Tyya, Txya, Perr_f = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R, eta )
+    err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, Txxa, Tyya, Txya, Perr_f = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe, R,  η )
     @printf("Error in Vx : %2.2e\n", err_Vx )
     @printf("Error in Vy : %2.2e\n", err_Vy )
     @printf("Error in Txx: %2.2e\n", err_Txx)
@@ -264,16 +265,35 @@ end
     # @time PlotMakie( mesh, mesh.ke, xmin, xmax, ymin, ymax; cmap=:jet1 )
     # @time PlotMakie( mesh, mesh.phase, xmin, xmax, ymin, ymax, :jet1)
 
-    return maximum(Perr)
+    return maximum(Perr), maximum(Perr_f)
 end
 
-new = 1
-n   = 2
-τ   = 1.0
-o2  = 1
+#--------------------------------------------------------------------#
 
-main( n, "Quadrangles", 5.0, o2, new )
-# main( n, "UnstructTriangles", 0.1, o2, new )
+N       = 1:16
+new     = 0
+n       = 8
+τ       = 50.0
+o2      = 0
+markers = false
+avg     = 0
+
+eP_quad_o1_Linf_c = zeros(length(N))
+eP_quad_o1_Linf_f = zeros(length(N))
+
+for i=1:length(N)
+    res = main( N[i], "Quadrangles", 1/4.0, o2, new, markers, avg )
+    eP_quad_o1_Linf_c[i] = res[1]
+    eP_quad_o1_Linf_f[i] = res[2]
+    # main( n, "UnstructTriangles", 0.1, o2, new, markers, avg )
+
+    p = Plots.plot(  log10.(1.0 ./ N[1:i]) , log10.(eP_quad_o1_Linf_c[1:i]),   markershape=:rect,      color=:red,      linestyle = :dot,  label="Quads P O1 c"                          )
+    p = Plots.plot!( log10.(1.0 ./ N[1:i]) , log10.(eP_quad_o1_Linf_f[1:i]),   markershape=:rect,      color=:blue,      linestyle = :dot,  label="Quads P O1 f"                          )
+    p = Plots.plot!( legend=:outertopright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
+    display(p)
+end
+
+#--------------------------------------------------------------------#
 
 # τ    = 1:5:200
 # perr = zeros(size(τ))
@@ -281,3 +301,5 @@ main( n, "Quadrangles", 5.0, o2, new )
 #     perr[i] = main(τ[i])
 # end
 # display(Plots.plot(τ, perr, title=minimum(perr))
+
+# main( 1, "Quadrangles", 1.0, o2, new, markers, avg )

@@ -35,21 +35,27 @@ end
 
 function FaceStabParam2( mesh, τr )
 
+    itp = 0
     for i=1:mesh.nf
             # Check values of the 2 adjacent volumes
             ne   = 1
             sumk = 0.0
             sumΩ = 0.0
-            for e=1:2
-                if mesh.f2e[i,e]>0
-                    # println( mesh.ke[e] )
-                    sumk += mesh.ke[e] 
-                    sumk += mesh.Ω[e] 
+            for ie=1:2
+                if mesh.f2e[i,ie]>0
+                    e     = mesh.f2e[i,ie]
+                    if itp==0 sumk += mesh.ke[e]      end
+                    if itp==1 sumk += 1.0/mesh.ke[e]  end
+                    if itp==2 sumk += log(mesh.ke[e]) end
+                    sumΩ += mesh.Ω[e] 
                     ne   += 1
                 end
             end
-            Ω = sumΩ/ne
-            k = sumk/ne
+            w = 1.0/ne
+            Ω = w*sumΩ
+            if itp==0 k = w*sumk      end
+            if itp==1 k = w/sumk      end
+            if itp==2 k = exp(sumk)^w end
             # Face stabilisation
             mesh.τ[i] = StabParam(τr, mesh.Γ[i], Ω, mesh.type, k) 
     end
