@@ -126,7 +126,8 @@ Base.@kwdef mutable struct FCFV_Mesh
     order  ::Union{Int64,  Missing}                = missing # order of elements/volumes
     nnel   ::Union{Int64,  Missing}                = 3       # number of velocity nodes per element
     npel   ::Union{Int64,  Missing}                = 1       # number of pressure nodes per element
-    e2n    ::Union{Matrix{Int64},         Missing} = missing # element 2 node numbering
+    e2n    ::Union{Matrix{Int64},         Missing} = missing # element 2 velocity node numbering
+    e2p    ::Union{Matrix{Int64},         Missing} = missing # element 2 pressure node numbering
     n2e    ::Union{Vector{Vector{Int64}}, Missing} = missing # node 2 element
     bcn    ::Union{Vector{Int64},         Missing} = missing # node tag
     n2e_loc::Union{Vector{Vector{Int64}}, Missing} = missing # node 2 element
@@ -398,6 +399,14 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
         mesh.e2n  = [trimesh.trianglelist[1:mesh.nnel-1,:]' num7]
         mesh.bcn  = [trimesh.pointmarkerlist[:]; zeros(mesh.nel)]
     end
+    # Discontinuous pressure
+    if npel==1 
+        mesh.e2p        = zeros(mesh.nel, 1)
+        mesh.e2p[:,1]  .= collect(1:mesh.nel) 
+    end
+    if npel==3 mesh.e2p  = [1:mesh.nel (mesh.nel+1):2*mesh.nel (2*mesh.nel+1):3*mesh.nel] end
+    # Continuous pressure
+    if nnel==4 mesh.e2p = trimesh.trianglelist[1:mesh.npel,:]' end
     Node2ElementNumbering!( mesh )
     ############# FOR THE PSEUDO-TRANSIENT PURPOSES ONLY #############
     return mesh

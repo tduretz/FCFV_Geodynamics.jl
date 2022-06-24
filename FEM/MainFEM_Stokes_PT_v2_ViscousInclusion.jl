@@ -121,7 +121,6 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
     M_inv        = zeros(npel,npel)
     b_ele        = zeros(ndof)
     B            = zeros(ndof,3)
-    Np           = zeros(ndof,3)
     m            = [ 1.0; 1.0; 0.0]
     Dev          = [ 4/3 -2/3  0.0;
                     -2/3  4/3  0.0;
@@ -152,8 +151,7 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
                 Pb[2:3] .= x'*Ni 
                 Pi       = P\Pb
             else
-                Np[1:2:end,1] .= N[ip,:,1:3]
-                Np[2:2:end,1] .= N[ip,:,1:3]
+                Np = N[ip,:,1:3]
             end
 
             dNdXi     = dNdX[ip,:,:]
@@ -284,8 +282,6 @@ function DirectSolveFEM!( M, K, Q, Qt, M0, rhs, Vx, Vy, P, mesh, b)
     sol       .= M\rhs
     Vx        .= sol[1:length(Vx)] 
     Vy        .= sol[(length(Vx)+1):(length(Vx)+length(Vy))]
-    println(size( P))
-    println(( mesh.nel*npel))
     P         .= sol[(2*mesh.nn+1):end]
     return nothing
 end
@@ -419,12 +415,15 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     Vye = zeros(mesh.nel)
     Pe  = zeros(mesh.nel)
     for e=1:mesh.nel
-        for in=1:mesh.nnel
-            Vxe[e] += 1.0/mesh.nnel * Vx[mesh.e2n[e,in]]
-            Vye[e] += 1.0/mesh.nnel * Vy[mesh.e2n[e,in]]
+        for i=1:mesh.nnel
+            Vxe[e] += 1.0/mesh.nnel * Vx[mesh.e2n[e,i]]
+            Vye[e] += 1.0/mesh.nnel * Vy[mesh.e2n[e,i]]
         end
-        if npel==1 Pe[e] = P[e] end
-        if npel==3 Pe[e] = 1.0/npel * (P[e] + P[e+mesh.nel] + P[e+2*mesh.nel]) end
+        # if npel==1 Pe[e] = P[e] end
+        # if npel==3 Pe[e] = 1.0/npel * (P[e] + P[e+mesh.nel] + P[e+2*mesh.nel]) end
+        for i=1:mesh.npel
+            Pe[e] += 1.0/mesh.npel * ( P[mesh.e2p[e,i]] )
+        end
     end
     @printf("%2.2e %2.2e\n", minimum(Vx), maximum(Vx))
     @printf("%2.2e %2.2e\n", minimum(Vy), maximum(Vy))
@@ -440,7 +439,4 @@ end
 
 # main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
 # main(2, 7, 1, 6, 0.030598470000000003/2, 0.03666666667,  1.0) # nit = 9000
-main(1, 7, 3, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
-
-
-
+main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
