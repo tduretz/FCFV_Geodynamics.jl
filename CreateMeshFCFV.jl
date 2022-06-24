@@ -405,8 +405,8 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
         mesh.e2p[:,1]  .= collect(1:mesh.nel) 
     end
     if npel==3 mesh.e2p  = [1:mesh.nel (mesh.nel+1):2*mesh.nel (2*mesh.nel+1):3*mesh.nel] end
-    # Continuous pressure
-    if nnel==4 mesh.e2p = trimesh.trianglelist[1:mesh.npel,:]' end
+    # Continuous pressure (only for mini-element)
+    if nnel==4 && npel==3 mesh.e2p = trimesh.trianglelist[1:mesh.npel,:]' end
     Node2ElementNumbering!( mesh )
     ############# FOR THE PSEUDO-TRANSIENT PURPOSES ONLY #############
     return mesh

@@ -151,7 +151,8 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
                 Pb[2:3] .= x'*Ni 
                 Pi       = P\Pb
             else
-                Np = N[ip,:,1:3]
+                if npel==1 Np = 1.0         end
+                if npel==3 Np = N[ip,1:3,:] end
             end
 
             dNdXi     = dNdX[ip,:,:]
@@ -171,19 +172,15 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
             if npel==3 && nnel!=4 
                 Q_ele   .-= ipw[ip] .* detJ .* (Bvol[:]*Pi') 
                 M_ele   .+= ipw[ip] .* detJ .* Pi*Pi'
-            elseif npel==1 && nnel!=4
-                Q_ele   .-= ipw[ip] .* detJ .* 1.0 .* (B*m*npel') 
             else
-                println(size(Q_ele))
-                println(size(B*Np''))
-                Q_ele   .-= ipw[ip] .* detJ .* 1.0 .* (B*Np') 
+                Q_ele   .-= ipw[ip] .* detJ .* 1.0 .* (B*m*Np') 
             end
             # b_ele   .+= ipw[ip] .* detJ .* se[e] .* N[ip,:] 
         end
         if npel==3 && nnel!=4 
             M_inv .= inv(M_ele) 
-            # if npel==3 K_ele .+=  PF.*(Q_ele*M_inv*Q_ele') end
             Mi_all[e,:,:] .= M_inv 
+            # if npel==3 K_ele .+=  PF.*(Q_ele*M_inv*Q_ele') end # static condensation
         end
         K_all[e,:,:]  .= K_ele
         Q_all[e,:,:]  .= Q_ele
@@ -215,22 +212,22 @@ function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy )
         nodes   = mesh.e2n[e,:]
         nodesVx = mesh.e2n[e,:]
         nodesVy = nodesVx .+ mesh.nn 
-        nodesP  = e
+        nodesP  = mesh.e2p[e,:]
         jj = 1
         for j=1:mesh.nnel
 
             # Q: ∇ operator: BC for V equations
             if mesh.bcn[nodes[j]] != 1
                 for i=1:npel
-                    push!(I_Q, nodesVx[j]); push!(J_Q, nodesP+(i-1)*mesh.nel); push!(V_Q, Q_all[e,jj  ,i])
-                    push!(I_Q, nodesVy[j]); push!(J_Q, nodesP+(i-1)*mesh.nel); push!(V_Q, Q_all[e,jj+1,i])
+                    push!(I_Q, nodesVx[j]); push!(J_Q, nodesP[i]); push!(V_Q, Q_all[e,jj  ,i])
+                    push!(I_Q, nodesVy[j]); push!(J_Q, nodesP[i]); push!(V_Q, Q_all[e,jj+1,i])
                 end
             end
 
             # Qt: ∇⋅ operator: no BC for P equations
             for i=1:npel
-                push!(J_Qt, nodesVx[j]); push!(I_Qt, nodesP+(i-1)*mesh.nel); push!(V_Qt, Q_all[e,jj  ,i])
-                push!(J_Qt, nodesVy[j]); push!(I_Qt, nodesP+(i-1)*mesh.nel); push!(V_Qt, Q_all[e,jj+1,i])
+                push!(J_Qt, nodesVx[j]); push!(I_Qt, nodesP[i]); push!(V_Qt, Q_all[e,jj  ,i])
+                push!(J_Qt, nodesVy[j]); push!(I_Qt, nodesP[i]); push!(V_Qt, Q_all[e,jj+1,i])
             end
 
             if mesh.bcn[nodes[j]] != 1
@@ -419,8 +416,6 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             Vxe[e] += 1.0/mesh.nnel * Vx[mesh.e2n[e,i]]
             Vye[e] += 1.0/mesh.nnel * Vy[mesh.e2n[e,i]]
         end
-        # if npel==1 Pe[e] = P[e] end
-        # if npel==3 Pe[e] = 1.0/npel * (P[e] + P[e+mesh.nel] + P[e+2*mesh.nel]) end
         for i=1:mesh.npel
             Pe[e] += 1.0/mesh.npel * ( P[mesh.e2p[e,i]] )
         end
@@ -439,4 +434,4 @@ end
 
 # main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
 # main(2, 7, 1, 6, 0.030598470000000003/2, 0.03666666667,  1.0) # nit = 9000
-main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
+main(1, 6, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
