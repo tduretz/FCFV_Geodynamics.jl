@@ -1,4 +1,4 @@
-const USE_MAKIE = false
+const USE_MAKIE    = false
 # import Plots
 # include("../VisuFCFV.jl")
 
@@ -208,7 +208,7 @@ function main(n, nnel, npel, nip, θ, ΔτV, ΔτP)
         @cuda blocks=blocks_e threads=threads glob2loc!(V,P,Vx,Vy,Pr,E2N,nel); synchronize()
         @cuda blocks=blocks_e threads=threads elem_op!(Fv,Fp,K,Q,V,P,nel); synchronize()
         @cuda blocks=blocks_e threads=threads loc2glob!(ΔVxΔτ,ΔVyΔτ,ΔPΔτ,Fv,Fp,E2N,nel); synchronize()
-        @cuda blocks=blocks_n threads=threads set_bc_nodes_v!(ΔVxΔτ,ΔVyΔτ,bcn,nn)
+        @cuda blocks=blocks_n threads=threads set_bc_nodes_v!(ΔVxΔτ,ΔVyΔτ,bcn,nn); synchronize()
         # Check error
         if iter % nout == 0 || iter==1
             errVx = norm(ΔVxΔτ)/sqrt(length(ΔVxΔτ))
@@ -224,14 +224,14 @@ function main(n, nnel, npel, nip, θ, ΔτV, ΔτP)
             elseif isnan(err) println("NaN !");               success = false; break
             end
         end
-        @cuda blocks=blocks_n threads=threads update_nodes_v!(Vx,Vy,ΔVxΔτ0,ΔVyΔτ0,ΔVxΔτ,ΔVyΔτ,θ,ΔτV,nn)
-        @cuda blocks=blocks_e threads=threads update_nodes_p!(Pr,ΔPΔτ,ΔτP,nel)
+        @cuda blocks=blocks_n threads=threads update_nodes_v!(Vx,Vy,ΔVxΔτ0,ΔVyΔτ0,ΔVxΔτ,ΔVyΔτ,θ,ΔτV,nn); synchronize()
+        @cuda blocks=blocks_e threads=threads update_nodes_p!(Pr,ΔPΔτ,ΔτP,nel); synchronize()
     end
     # Postprocessing
     Vxe = CUDA.zeros(nel)
     Vye = CUDA.zeros(nel)
     Pe  = CUDA.zeros(nel)
-    @cuda blocks=blocks_e threads=threads postprocess!(Vxe,Vye,Pe,Vx,Vy,Pr,e2n,nnel,nel)
+    @cuda blocks=blocks_e threads=threads postprocess!(Vxe,Vye,Pe,Vx,Vy,Pr,e2n,nnel,nel); synchronize()
 
     @printf("min, max Vx: %2.2e %2.2e\n", minimum(Vxe), maximum(Vx))
     @printf("min, max Vy: %2.2e %2.2e\n", minimum(Vye), maximum(Vy))
@@ -250,4 +250,4 @@ end
 
 main(18, 7, 1, 6, 0.03/5, 0.036, 6.0) # nit = 14000 <- MILAMIN/4
 
-# main(120, 7, 1, 6, 0.03/5, 0.036, 6.0) # nit =  <- BILAMIN
+# main(160, 7, 1, 6, 0.03/5, 0.036, 6.0) # nit =  <- BILAMIN
