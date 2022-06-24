@@ -59,15 +59,14 @@ function ResidualStokesNodalFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, Q_all, b )
     V_ele = zeros(nnel*2)
     @inbounds for e = 1:mesh.nel
         Fp[e] = 0.0
-        nodes = mesh.e2n[e,:]
-        if npel==1 nodesP = [e] end
-        if npel==3 nodesP = [e; e+mesh.nel; e+2*mesh.nel]  end
+        nodes  = mesh.e2n[e,:]
+        nodesP = mesh.e2p[e,:]
         V_ele[1:2:end-1] .= Vx[nodes]
         V_ele[2:2:end]   .= Vy[nodes]
         Q_ele      = Q_all[e,:,:]
         fp_ele     = .-Q_ele'*V_ele #.- bp[e,:]
         for p=1:npel
-            Fp[e+(p-1)*mesh.nel] = - fp_ele[:][p]
+            Fp[e] = - fp_ele[:][p]
         end
     end
     return nothing
@@ -84,9 +83,9 @@ function ResidualStokesElementalSerialFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, 
     npel  = mesh.npel
     V_ele = zeros(nnel*2)
     @inbounds for e = 1:mesh.nel
-        nodes = mesh.e2n[e,:]
-        if npel==1 nodesP = [e] end
-        if npel==3 nodesP = [e; e+mesh.nel; e+2*mesh.nel]  end
+        nodes  = mesh.e2n[e,:]
+        nodesP = mesh.e2p[e,:]
+        println(nodesP)
         V_ele[1:2:end-1] .= Vx[nodes]
         V_ele[2:2:end]   .= Vy[nodes]
         P_ele      = P[nodesP] 
@@ -106,7 +105,7 @@ end
 
 #----------------------------------------------------------#
 
-function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN_1.0.1
+function ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX ) # Adapted from MILAMIN_1.0.1
     ndof         = 2*mesh.nnel
     nnel         = mesh.nnel
     npel         = mesh.npel
@@ -127,8 +126,16 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
                      0.0  0.0  1.0]
     P  = ones(npel,npel)
     Pb = ones(npel)
-    PF = 1e3*maximum(mesh.ke)
+    # PF = 1e3*maximum(mesh.ke)
+    Np0 = N[:,1:3,:]
+    # Np0, dNdXp   = ShapeFunctions(ipx, nip, 3)
+    # if nnel==4 # load linear basis function for pressure (3 nodes)
+    #     Np0, dNdXp   = ShapeFunctions(ipx, nip, 3)
+    # end 
     
+    # display(N)
+    # display(Np0)
+
     # Element loop
     @inbounds for e = 1:mesh.nel
         nodes   = mesh.e2n[e,:]
@@ -151,8 +158,8 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
                 Pb[2:3] .= x'*Ni 
                 Pi       = P\Pb
             else
-                if npel==1 Np = 1.0         end
-                if npel==3 Np = N[ip,1:3,:] end
+                if npel==1 Np = 1.0        end
+                if npel==3 Np = Np0[ip,:,:] end
             end
 
             dNdXi     = dNdX[ip,:,:]
@@ -171,17 +178,17 @@ function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN
             K_ele .+= ipw[ip] .* detJ .* ke  .* (B*Dev*B')
             if npel==3 && nnel!=4 
                 Q_ele   .-= ipw[ip] .* detJ .* (Bvol[:]*Pi') 
-                M_ele   .+= ipw[ip] .* detJ .* Pi*Pi'
+                # M_ele   .+= ipw[ip] .* detJ .* Pi*Pi' # mass matrix P, not needed sor incompressible
             else
-                Q_ele   .-= ipw[ip] .* detJ .* 1.0 .* (B*m*Np') 
+                Q_ele   .-= ipw[ip] .* detJ .* (B*m*Np') 
             end
             # b_ele   .+= ipw[ip] .* detJ .* se[e] .* N[ip,:] 
         end
-        if npel==3 && nnel!=4 
-            M_inv .= inv(M_ele) 
-            Mi_all[e,:,:] .= M_inv 
+        # if npel==3 && nnel!=4 
+            # M_inv .= inv(M_ele) 
+            # Mi_all[e,:,:] .= M_inv 
             # if npel==3 K_ele .+=  PF.*(Q_ele*M_inv*Q_ele') end # static condensation
-        end
+        # end
         K_all[e,:,:]  .= K_ele
         Q_all[e,:,:]  .= Q_ele
         # b[e,:]       .= b_ele
@@ -317,13 +324,13 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
 
     # Intial guess
     for in = 1:mesh.nn
-        if mesh.bcn[in]==1
+        # if mesh.bcn[in]==1
             x      = mesh.xn[in]
             y      = mesh.yn[in]
             vx, vy = EvalAnalDani( x, y, R, η[1], η[2] )
             Vx[in] = vx
             Vy[in] = vy
-        end
+        # end
     end
     for e = 1:mesh.nel
         x      = mesh.xc[e]
@@ -333,7 +340,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     end
 
     #-----------------------------------------------------------------#
-    @time  K_all, Q_all, Mi_all, b = ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX )
+    @time  K_all, Q_all, Mi_all, b = ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX )
     #-----------------------------------------------------------------#
     
     if USE_DIRECT
@@ -341,7 +348,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         @time DirectSolveFEM!( M, K, Q, Qt, M0, rhs, Vx, Vy, P, mesh, b )
     else
         nout    = 1000#1e1
-        iterMax = 2e4#5e4
+        iterMax = 1#3e4
         ϵ_PT    = 1e-7
         # θ       = 0.11428 *1.7
         # Δτ      = 0.28 /1.2
@@ -350,19 +357,6 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         ΔVxΔτ0= zeros(mesh.nn)
         ΔVyΔτ0= zeros(mesh.nn)
         ΔPΔτ  = zeros(mesh.nel*npel)
-    # #     # println(minimum(mesh.Γ))
-    # #     # println(maximum(mesh.Γ))
-    # #     # println(minimum(mesh.Ω))
-    # #     # println(maximum(mesh.Ω))
-    # #     # println("Δτ = ", Δτ)
-    # #     # Ωe = maximum(mesh.Ω)
-    # #     # Δx = minimum(mesh.Γ)
-    # #     # D  = 1.0
-    # #     # println("Δτ1 = ", Δx^2/(1.1*D) * 1.0/Ωe *2/3)
-    # #     ΔTΔτ    = zeros(mesh.nn) # Residual
-    # #     ΔTΔτ_th = [similar(ΔTΔτ) for _ = 1:nthreads()]                   # Parallel: per thread
-    # #     chunks  = Iterators.partition(1:mesh.nel, mesh.nel ÷ nthreads()) # Parallel: chunks of elements
-    # #     ΔTΔτ0   = zeros(mesh.nn)
 
         # PT loop
         local iter = 0
@@ -371,11 +365,11 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             iter  += 1
             ΔVxΔτ0 .= ΔVxΔτ 
             ΔVyΔτ0 .= ΔVyΔτ
-            # if USE_NODAL
+            if USE_NODAL
                 ResidualStokesNodalFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b )
-            # else
+            else
                 ResidualStokesElementalSerialFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b )
-            # end
+            end
             ΔVxΔτ  .= (1.0 - θ).*ΔVxΔτ0 .+ ΔVxΔτ 
             ΔVyΔτ  .= (1.0 - θ).*ΔVyΔτ0 .+ ΔVyΔτ
             Vx    .+= ΔτV .* ΔVxΔτ
@@ -417,7 +411,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             Vye[e] += 1.0/mesh.nnel * Vy[mesh.e2n[e,i]]
         end
         for i=1:mesh.npel
-            Pe[e] += 1.0/mesh.npel * ( P[mesh.e2p[e,i]] )
+            Pe[e] += 1.0/mesh.npel * P[mesh.e2p[e,i]]
         end
     end
     @printf("%2.2e %2.2e\n", minimum(Vx), maximum(Vx))
@@ -425,8 +419,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     @printf("%2.2e %2.2e\n", minimum(P),  maximum(P) )
     #-----------------------------------------------------------------#
     if USE_MAKIE
-        # PlotMakie(mesh, Vxe, xmin, xmax, ymin, ymax; cmap=:jet1)
-        PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1 )
+        PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1)
     else
         PlotPyPlot(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1 )
     end
@@ -434,4 +427,4 @@ end
 
 # main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
 # main(2, 7, 1, 6, 0.030598470000000003/2, 0.03666666667,  1.0) # nit = 9000
-main(1, 6, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
+main(1, 7, 3, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
