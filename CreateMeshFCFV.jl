@@ -126,6 +126,7 @@ Base.@kwdef mutable struct FCFV_Mesh
     order  ::Union{Int64,  Missing}                = missing # order of elements/volumes
     nnel   ::Union{Int64,  Missing}                = 3       # number of velocity nodes per element
     npel   ::Union{Int64,  Missing}                = 1       # number of pressure nodes per element
+    np     ::Union{Int64,  Missing}                = missing # total number of pressure nodes 
     e2n    ::Union{Matrix{Int64},         Missing} = missing # element 2 velocity node numbering
     e2p    ::Union{Matrix{Int64},         Missing} = missing # element 2 pressure node numbering
     n2e    ::Union{Vector{Vector{Int64}}, Missing} = missing # node 2 element
@@ -376,6 +377,8 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
         mesh.yn   = trimesh.pointlist[2,1:mesh.nn]
         mesh.e2n  = trimesh.trianglelist[1:mesh.nnel,:]'
         mesh.bcn  = trimesh.pointmarkerlist[1:mesh.nn]
+        if npel==1 mesh.np   =   mesh.nel end
+        if npel==3 mesh.np   = 3*mesh.nel end
     elseif nnel==4
         n1        = trimesh.trianglelist[1,:]
         n2        = trimesh.trianglelist[2,:]
@@ -387,6 +390,8 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
         mesh.yn   = [trimesh.pointlist[2,1:mesh.nv]; yc]
         mesh.e2n  = [trimesh.trianglelist[1:mesh.nnel-1,:]' num7]
         mesh.bcn  = [trimesh.pointmarkerlist[1:mesh.nv]; zeros(mesh.nel)]
+        if npel==1 mesh.np   = mesh.nel end
+        if npel==3 mesh.np   = mesh.nv  end
     elseif nnel==7
         n1        = trimesh.trianglelist[1,:]
         n2        = trimesh.trianglelist[2,:]
@@ -398,6 +403,8 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
         mesh.yn   = [trimesh.pointlist[2,:]; yc]
         mesh.e2n  = [trimesh.trianglelist[1:mesh.nnel-1,:]' num7]
         mesh.bcn  = [trimesh.pointmarkerlist[:]; zeros(mesh.nel)]
+        if npel==1 mesh.np   =   mesh.nel end
+        if npel==3 mesh.np   = 3*mesh.nel end
     end
     # Discontinuous pressure
     if npel==1 

@@ -85,7 +85,6 @@ function ResidualStokesElementalSerialFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, 
     @inbounds for e = 1:mesh.nel
         nodes  = mesh.e2n[e,:]
         nodesP = mesh.e2p[e,:]
-        println(nodesP)
         V_ele[1:2:end-1] .= Vx[nodes]
         V_ele[2:2:end]   .= Vy[nodes]
         P_ele      = P[nodesP] 
@@ -127,8 +126,8 @@ function ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX ) # Adapted from MI
     P  = ones(npel,npel)
     Pb = ones(npel)
     # PF = 1e3*maximum(mesh.ke)
-    Np0 = N[:,1:3,:]
-    # Np0, dNdXp   = ShapeFunctions(ipx, nip, 3)
+    # Np0 = N[:,1:3,:]
+    Np0, dNdXp   = ShapeFunctions(ipx, nip, 3)
     # if nnel==4 # load linear basis function for pressure (3 nodes)
     #     Np0, dNdXp   = ShapeFunctions(ipx, nip, 3)
     # end 
@@ -153,15 +152,6 @@ function ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX ) # Adapted from MI
         # Integration loop
         for ip=1:nip
 
-            if npel==3 && nnel!=4 
-                Ni       = N[ip,:,1]
-                Pb[2:3] .= x'*Ni 
-                Pi       = P\Pb
-            else
-                if npel==1 Np = 1.0        end
-                if npel==3 Np = Np0[ip,:,:] end
-            end
-
             dNdXi     = dNdX[ip,:,:]
             J        .= x'*dNdXi
             detJ      = J[1,1]*J[2,2] - J[1,2]*J[2,1]
@@ -177,9 +167,14 @@ function ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX ) # Adapted from MI
             Bvol          = dNdx'
             K_ele .+= ipw[ip] .* detJ .* ke  .* (B*Dev*B')
             if npel==3 && nnel!=4 
+                Ni       = N[ip,:,1]
+                Pb[2:3] .= x'*Ni 
+                Pi       = P\Pb
                 Q_ele   .-= ipw[ip] .* detJ .* (Bvol[:]*Pi') 
                 # M_ele   .+= ipw[ip] .* detJ .* Pi*Pi' # mass matrix P, not needed sor incompressible
             else
+                if npel==1 Np = 1.0        end
+                if npel==3 Np = Np0[ip,:,:] end
                 Q_ele   .-= ipw[ip] .* detJ .* (B*m*Np') 
             end
             # b_ele   .+= ipw[ip] .* detJ .* se[e] .* N[ip,:] 
@@ -198,12 +193,12 @@ end
 
 #----------------------------------------------------------#
 
-function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy )
+function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy, P )
 
     println("Assembly")
     ndof = mesh.nn*2
     npel = mesh.npel
-    rhs  = zeros(ndof+mesh.nel*npel)
+    rhs  = zeros(ndof+mesh.np)
     I_K  = Int64[]
     J_K  = Int64[]
     V_K  = Float64[]
@@ -213,6 +208,9 @@ function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy )
     I_Qt = Int64[]
     J_Qt = Int64[]
     V_Qt = Float64[]
+    I_M  = Int64[]
+    J_M  = Int64[]
+    V_M  = Float64[]
 
     # Assembly of global sparse matrix
     @inbounds for e=1:mesh.nel
@@ -231,11 +229,13 @@ function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy )
                 end
             end
 
-            # Qt: ∇⋅ operator: no BC for P equations
+            # Qt: ∇⋅ operator: no BC for P 
+        # if mesh.bcn[nodes[j]] != 1
             for i=1:npel
                 push!(J_Qt, nodesVx[j]); push!(I_Qt, nodesP[i]); push!(V_Qt, Q_all[e,jj  ,i])
                 push!(J_Qt, nodesVy[j]); push!(I_Qt, nodesP[i]); push!(V_Qt, Q_all[e,jj+1,i])
             end
+        # end
 
             if mesh.bcn[nodes[j]] != 1
                 # If not Dirichlet, add connection
@@ -263,12 +263,22 @@ function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy )
                 rhs[nodesVy[j]] += Vy[nodes[j]]
             end
             jj+=2
+            if mesh.nnel==4 && mesh.npel==3 # only for mini-element
+                for j=1:mesh.npel
+                    if mesh.bcn[nodes[j]] == 1
+                        push!(I_M, nodesP[j]); push!(J_M, nodesP[j]); push!(V_M, -1.0)
+                        rhs[nodesP[j]] += P[nodes[j]]
+                    end
+                end
+            end
         end 
     end
-    K  = sparse(I_K,  J_K,  V_K, mesh.nn*2, mesh.nn*2)
-    Q  = sparse(I_Q,  J_Q,  V_Q, ndof, mesh.nel*npel)
-    Qt = sparse(I_Qt, J_Qt, V_Qt, mesh.nel*npel, ndof)
-    M0 = sparse(Int64[], Int64[], Float64[], mesh.nel*npel, mesh.nel*npel)
+    K  = sparse(I_K,  J_K,  V_K, ndof, ndof)
+    Q  = sparse(I_Q,  J_Q,  V_Q, ndof, mesh.np)
+    Qt = sparse(I_Qt, J_Qt, V_Qt, mesh.np, ndof)
+    # M0 = sparse(Int64[], Int64[], Float64[], mesh.np, mesh.np)
+    M0 = sparse(I_M,  J_M,  V_M, mesh.np, mesh.np)
+
     M  = [K Q; Qt M0]
     return M, rhs, K, Q, Qt, M0
 end
@@ -278,15 +288,14 @@ end
 function DirectSolveFEM!( M, K, Q, Qt, M0, rhs, Vx, Vy, P, mesh, b)
     println("Direct solve")
     ndof       = mesh.nn*2
-    npel       = mesh.npel
-    sol        = zeros(ndof+mesh.nel*npel)
+    sol        = zeros(ndof+mesh.np)
     M[end,:]  .= 0.0 # add one Dirichlet constraint on pressure
     M[end,end] = 1.0
     rhs[end]   = 0.0
     sol       .= M\rhs
     Vx        .= sol[1:length(Vx)] 
     Vy        .= sol[(length(Vx)+1):(length(Vx)+length(Vy))]
-    P         .= sol[(2*mesh.nn+1):end]
+    P         .= sol[(ndof+1):end]
     return nothing
 end
 
@@ -312,25 +321,26 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, 0.0, inclusion, R; nnel, npel ) 
     println("Number of elements: ", mesh.nel)
     println("Number of vertices: ", mesh.nn)
+    println("Number of p nodes:  ", mesh.np)
 
     mesh.ke[mesh.phase.==1] .= η[1]
     mesh.ke[mesh.phase.==2] .= η[2]
 
     Vx = zeros(mesh.nn)       # Solution on nodes 
     Vy = zeros(mesh.nn)       # Solution on nodes 
-    P  = zeros(mesh.nel*npel) # Solution on elements 
+    P  = zeros(mesh.np)       # Solution on either elements or nodes 
     se = zeros(mesh.nel)      # Source term on elements
     Pa = zeros(mesh.nel)      # Solution on elements 
 
     # Intial guess
     for in = 1:mesh.nn
-        # if mesh.bcn[in]==1
+        if mesh.bcn[in]==1
             x      = mesh.xn[in]
             y      = mesh.yn[in]
             vx, vy = EvalAnalDani( x, y, R, η[1], η[2] )
             Vx[in] = vx
             Vy[in] = vy
-        # end
+        end
     end
     for e = 1:mesh.nel
         x      = mesh.xc[e]
@@ -338,17 +348,25 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         vx, vy, p = EvalAnalDani( x, y, R, η[1], η[2] )
         Pa[e] = p
     end
+    for in = 1:mesh.nv
+        if mesh.bcn[in]==1
+            x      = mesh.xn[in]
+            y      = mesh.yn[in]
+            vx, vy, p = EvalAnalDani( x, y, R, η[1], η[2] )
+            P[in] = p
+        end
+    end
 
     #-----------------------------------------------------------------#
     @time  K_all, Q_all, Mi_all, b = ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX )
     #-----------------------------------------------------------------#
     
     if USE_DIRECT
-        @time M, rhs, K, Q, Qt, M0 = SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy )
+        @time M, rhs, K, Q, Qt, M0 = SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy, P )
         @time DirectSolveFEM!( M, K, Q, Qt, M0, rhs, Vx, Vy, P, mesh, b )
     else
         nout    = 1000#1e1
-        iterMax = 1#3e4
+        iterMax = 3e4
         ϵ_PT    = 1e-7
         # θ       = 0.11428 *1.7
         # Δτ      = 0.28 /1.2
@@ -356,7 +374,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         ΔVyΔτ = zeros(mesh.nn)
         ΔVxΔτ0= zeros(mesh.nn)
         ΔVyΔτ0= zeros(mesh.nn)
-        ΔPΔτ  = zeros(mesh.nel*npel)
+        ΔPΔτ  = zeros(mesh.np)
 
         # PT loop
         local iter = 0
@@ -378,7 +396,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             if iter % nout == 0 || iter==1
                 errVx = norm(ΔVxΔτ)/sqrt(length(ΔVxΔτ))
                 errVy = norm(ΔVyΔτ)/sqrt(length(ΔVyΔτ))
-                errP  = norm(ΔPΔτ)/sqrt(length(ΔPΔτ))
+                errP  = norm(ΔPΔτ) /sqrt(length(ΔPΔτ))
                 @printf("PT Iter. %05d:\n", iter)
                 @printf("  ||Fx|| = %3.3e\n", errVx)
                 @printf("  ||Fy|| = %3.3e\n", errVy)
@@ -427,4 +445,4 @@ end
 
 # main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
 # main(2, 7, 1, 6, 0.030598470000000003/2, 0.03666666667,  1.0) # nit = 9000
-main(1, 7, 3, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
+main(1, 4, 3, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
