@@ -15,8 +15,6 @@ function FaceStabParam( mesh, τr, mesh_type )
     # Assemble FCFV elements
     for iel=1:mesh.nel  
             
-        # println("element: ",  iel)
-
         for ifac=1:mesh.nf_el
             
             nodei  = mesh.e2f[iel,ifac]
@@ -25,13 +23,41 @@ function FaceStabParam( mesh, τr, mesh_type )
             vert1  = mesh.e2v[iel,nodeA[ifac]]
             vert2  = mesh.e2v[iel,nodeB[ifac]]
             bc     = mesh.bc[nodei]
-            dx     = abs(mesh.xv[vert1] - mesh.xv[vert2] );
-            dy     = abs(mesh.yv[vert1] - mesh.yv[vert2] );
-            Γi     = sqrt(dx^2 + dy^2);
+            dx     = abs(mesh.xv[vert1] - mesh.xv[vert2] )
+            dy     = abs(mesh.yv[vert1] - mesh.yv[vert2] )
+            Γi     = sqrt(dx^2 + dy^2)
 
             # Face stabilisation
             mesh.τ[nodei] = StabParam(τr, Γi, mesh.Ω[iel], mesh.type, mesh.ke[iel]) 
         end
+    end
+end
+
+function FaceStabParam2( mesh, τr )
+
+    itp = 0
+    for i=1:mesh.nf
+            # Check values of the 2 adjacent volumes
+            ne   = 1
+            sumk = 0.0
+            sumΩ = 0.0
+            for ie=1:2
+                if mesh.f2e[i,ie]>0
+                    e     = mesh.f2e[i,ie]
+                    if itp==0 sumk += mesh.ke[e]      end
+                    if itp==1 sumk += 1.0/mesh.ke[e]  end
+                    if itp==2 sumk += log(mesh.ke[e]) end
+                    sumΩ += mesh.Ω[e] 
+                    ne   += 1
+                end
+            end
+            w = 1.0/ne
+            Ω = w*sumΩ
+            if itp==0 k = w*sumk      end
+            if itp==1 k = w/sumk      end
+            if itp==2 k = exp(sumk)^w end
+            # Face stabilisation
+            mesh.τ[i] = StabParam(τr, mesh.Γ[i], Ω, mesh.type, k) 
     end
 end
 
@@ -41,7 +67,7 @@ function Node2ElementNumbering!( mesh )
 
     # Create node to element list
     nnodes   = mesh.nn
-    nel_node = zeros(Int64,nnodes)
+    nel_node = zeros(Int64, nnodes)
     for el=1:mesh.nel # count how many elements are connected to a node
         for in=1:nnel 
             nel_node[mesh.e2n[el,in]] += 1 # atomic
@@ -100,7 +126,9 @@ Base.@kwdef mutable struct FCFV_Mesh
     order  ::Union{Int64,  Missing}                = missing # order of elements/volumes
     nnel   ::Union{Int64,  Missing}                = 3       # number of velocity nodes per element
     npel   ::Union{Int64,  Missing}                = 1       # number of pressure nodes per element
-    e2n    ::Union{Matrix{Int64},         Missing} = missing # element 2 node numbering
+    np     ::Union{Int64,  Missing}                = missing # total number of pressure nodes 
+    e2n    ::Union{Matrix{Int64},         Missing} = missing # element 2 velocity node numbering
+    e2p    ::Union{Matrix{Int64},         Missing} = missing # element 2 pressure node numbering
     n2e    ::Union{Vector{Vector{Int64}}, Missing} = missing # node 2 element
     bcn    ::Union{Vector{Int64},         Missing} = missing # node tag
     n2e_loc::Union{Vector{Vector{Int64}}, Missing} = missing # node 2 element
@@ -337,7 +365,9 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
     mesh.npel = npel
     if nnel == 3
         mesh.nn  = mesh.nv
-    elseif nnel == 6
+    elseif nnel == 4
+        mesh.nn  = mesh.nv + mesh.nel
+    elseif nnel == 6 
         mesh.nn  = mesh.nv + mesh.nf
     elseif nnel == 7
         mesh.nn  = mesh.nv + mesh.nf + mesh.nel
@@ -347,7 +377,22 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
         mesh.yn   = trimesh.pointlist[2,1:mesh.nn]
         mesh.e2n  = trimesh.trianglelist[1:mesh.nnel,:]'
         mesh.bcn  = trimesh.pointmarkerlist[1:mesh.nn]
-    else
+        if npel==1 mesh.np   =   mesh.nel end
+        if npel==3 mesh.np   = 3*mesh.nel end
+    elseif nnel==4
+        n1        = trimesh.trianglelist[1,:]
+        n2        = trimesh.trianglelist[2,:]
+        n3        = trimesh.trianglelist[3,:]
+        xc        = 1//3*(trimesh.pointlist[1,n1] .+ trimesh.pointlist[1,n2] .+ trimesh.pointlist[1,n3])
+        yc        = 1//3*(trimesh.pointlist[2,n1] .+ trimesh.pointlist[2,n2] .+ trimesh.pointlist[2,n3])
+        num7      = (1:mesh.nel) .+ mesh.nv
+        mesh.xn   = [trimesh.pointlist[1,1:mesh.nv]; xc]
+        mesh.yn   = [trimesh.pointlist[2,1:mesh.nv]; yc]
+        mesh.e2n  = [trimesh.trianglelist[1:mesh.nnel-1,:]' num7]
+        mesh.bcn  = [trimesh.pointmarkerlist[1:mesh.nv]; zeros(mesh.nel)]
+        if npel==1 mesh.np   = mesh.nel end
+        if npel==3 mesh.np   = mesh.nv  end
+    elseif nnel==7
         n1        = trimesh.trianglelist[1,:]
         n2        = trimesh.trianglelist[2,:]
         n3        = trimesh.trianglelist[3,:]
@@ -358,7 +403,17 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
         mesh.yn   = [trimesh.pointlist[2,:]; yc]
         mesh.e2n  = [trimesh.trianglelist[1:mesh.nnel-1,:]' num7]
         mesh.bcn  = [trimesh.pointmarkerlist[:]; zeros(mesh.nel)]
+        if npel==1 mesh.np   =   mesh.nel end
+        if npel==3 mesh.np   = 3*mesh.nel end
     end
+    # Discontinuous pressure
+    if npel==1 
+        mesh.e2p        = zeros(mesh.nel, 1)
+        mesh.e2p[:,1]  .= collect(1:mesh.nel) 
+    end
+    if nnel!=4 && npel==3 mesh.e2p = [1:mesh.nel (mesh.nel+1):2*mesh.nel (2*mesh.nel+1):3*mesh.nel] end
+    # Continuous pressure (only for mini-element)
+    if nnel==4 && npel==3 mesh.e2p = trimesh.trianglelist[1:mesh.npel,:]' end
     Node2ElementNumbering!( mesh )
     ############# FOR THE PSEUDO-TRANSIENT PURPOSES ONLY #############
     return mesh

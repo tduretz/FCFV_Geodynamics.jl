@@ -1,9 +1,10 @@
 const USE_GPU      = false  # Not supported yet 
-const USE_DIRECT   = false   # Sparse matrix assembly + direct solver
+const USE_DIRECT   = false  # Sparse matrix assembly + direct solver
 const USE_NODAL    = false  # Nodal evaluation of residual
 const USE_PARALLEL = false  # Parallel residual evaluation
 const USE_MAKIE    = true   # Visualisation 
 import Plots
+import Statistics:mean
 
 using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT
 import Base.Threads: @threads, @sync, @spawn, nthreads, threadid
@@ -125,15 +126,7 @@ function ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX ) # Adapted from MI
                      0.0  0.0  1.0]
     P  = ones(npel,npel)
     Pb = ones(npel)
-    # PF = 1e3*maximum(mesh.ke)
-    # Np0 = N[:,1:3,:]
     Np0, dNdXp   = ShapeFunctions(ipx, nip, 3)
-    # if nnel==4 # load linear basis function for pressure (3 nodes)
-    #     Np0, dNdXp   = ShapeFunctions(ipx, nip, 3)
-    # end 
-    
-    # display(N)
-    # display(Np0)
 
     # Element loop
     @inbounds for e = 1:mesh.nel
@@ -179,11 +172,6 @@ function ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX ) # Adapted from MI
             end
             # b_ele   .+= ipw[ip] .* detJ .* se[e] .* N[ip,:] 
         end
-        # if npel==3 && nnel!=4 
-            # M_inv .= inv(M_ele) 
-            # Mi_all[e,:,:] .= M_inv 
-            # if npel==3 K_ele .+=  PF.*(Q_ele*M_inv*Q_ele') end # static condensation
-        # end
         K_all[e,:,:]  .= K_ele
         Q_all[e,:,:]  .= Q_ele
         # b[e,:]       .= b_ele
@@ -199,18 +187,10 @@ function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy, P )
     ndof = mesh.nn*2
     npel = mesh.npel
     rhs  = zeros(ndof+mesh.np)
-    I_K  = Int64[]
-    J_K  = Int64[]
-    V_K  = Float64[]
-    I_Q  = Int64[]
-    J_Q  = Int64[]
-    V_Q  = Float64[]
-    I_Qt = Int64[]
-    J_Qt = Int64[]
-    V_Qt = Float64[]
-    I_M  = Int64[]
-    J_M  = Int64[]
-    V_M  = Float64[]
+    I_K,  J_K,  V_K  = Int64[], Int64[], Float64[]
+    I_Q,  J_Q,  V_Q  = Int64[], Int64[], Float64[]
+    I_Qt, J_Qt, V_Qt = Int64[], Int64[], Float64[] 
+    I_M,  J_M,  V_M  = Int64[], Int64[], Float64[]
 
     # Assembly of global sparse matrix
     @inbounds for e=1:mesh.nel
@@ -230,12 +210,10 @@ function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy, P )
             end
 
             # Qt: ∇⋅ operator: no BC for P 
-        # if mesh.bcn[nodes[j]] != 1
             for i=1:npel
                 push!(J_Qt, nodesVx[j]); push!(I_Qt, nodesP[i]); push!(V_Qt, Q_all[e,jj  ,i])
                 push!(J_Qt, nodesVy[j]); push!(I_Qt, nodesP[i]); push!(V_Qt, Q_all[e,jj+1,i])
             end
-        # end
 
             if mesh.bcn[nodes[j]] != 1
                 # If not Dirichlet, add connection
@@ -263,22 +241,12 @@ function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy, P )
                 rhs[nodesVy[j]] += Vy[nodes[j]]
             end
             jj+=2
-            if mesh.nnel==4 && mesh.npel==3 # only for mini-element
-                for j=1:mesh.npel
-                    if mesh.bcn[nodes[j]] == 1
-                        push!(I_M, nodesP[j]); push!(J_M, nodesP[j]); push!(V_M, -1.0)
-                        rhs[nodesP[j]] += P[nodes[j]]
-                    end
-                end
-            end
         end 
     end
     K  = sparse(I_K,  J_K,  V_K, ndof, ndof)
     Q  = sparse(I_Q,  J_Q,  V_Q, ndof, mesh.np)
     Qt = sparse(I_Qt, J_Qt, V_Qt, mesh.np, ndof)
-    # M0 = sparse(Int64[], Int64[], Float64[], mesh.np, mesh.np)
     M0 = sparse(I_M,  J_M,  V_M, mesh.np, mesh.np)
-
     M  = [K Q; Qt M0]
     return M, rhs, K, Q, Qt, M0
 end
@@ -311,7 +279,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     R          = 1.0
     inclusion  = 1
     εBG        = 1.0
-    η          = [1.0 5.0]  
+    η          = [1.0 100.0]  
     
     # Element data
     ipx, ipw  = IntegrationTriangle(nip)
@@ -366,15 +334,55 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         @time DirectSolveFEM!( M, K, Q, Qt, M0, rhs, Vx, Vy, P, mesh, b )
     else
         nout    = 1000#1e1
-        iterMax = 3e4
-        ϵ_PT    = 1e-7
-        # θ       = 0.11428 *1.7
-        # Δτ      = 0.28 /1.2
+        iterMax = 10e3#3e4
+        ϵ_PT    = 5e-7
         ΔVxΔτ = zeros(mesh.nn)
         ΔVyΔτ = zeros(mesh.nn)
         ΔVxΔτ0= zeros(mesh.nn)
         ΔVyΔτ0= zeros(mesh.nn)
         ΔPΔτ  = zeros(mesh.np)
+
+        #-----------------------------------------------#
+        # Local Δτ for momentum equations (local Δτ for continuity does not seem to help)
+        #-----------------------------------------------#
+        ΔτVv  = zeros(mesh.nn)
+        ΔτPv  = zeros(mesh.np)
+        ηv    = zeros(mesh.nn)
+        ηe    = zeros(mesh.nel)
+        ηe   .= mesh.ke
+        ΔτVv .= ΔτV
+        ΔτPv .= ΔτP
+        nludo = 1 # more than 1 does not seem to help
+        itp   = 0 # only 0 and 3 seem to work
+
+        for iludo=1:nludo
+            # Compute nodal viscosities
+            for i=1:mesh.nn
+                n = 0
+                η = 0.0
+                for ii=1:length(mesh.n2e[i])
+                    e       = mesh.n2e[i][ii]
+                    n   += 1
+                    if itp==3 η  = max(η, ηe[e]) end # Local maximum
+                    if itp==0 η += ηe[e]         end # arithmetic mean
+                    if itp==1 η += 1.0/ηe[e]     end # harmonic mean
+                    if itp==2 η += log(ηe[e])    end # geometric mean
+                end
+                w = 1.0/n
+                if itp==0 ηv[i] = w*η      end
+                if itp==1 ηv[i] = w/η      end
+                if itp==2 ηv[i] = exp(η)^w end
+                if itp==3 ηv[i] = η        end
+            end
+            # Compute element viscosities
+            for e=1:mesh.nel
+                nodes = mesh.e2n[e,:]
+                if itp==3 ηe[e] = max(ηv[nodes]...)  end
+                if itp==0 ηe[e] = mean(ηv[nodes]) end
+            end
+        end
+        ΔτVv ./= ηv
+        #-----------------------------------------------#
 
         # PT loop
         local iter = 0
@@ -390,9 +398,9 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             end
             ΔVxΔτ  .= (1.0 - θ).*ΔVxΔτ0 .+ ΔVxΔτ 
             ΔVyΔτ  .= (1.0 - θ).*ΔVyΔτ0 .+ ΔVyΔτ
-            Vx    .+= ΔτV .* ΔVxΔτ
-            Vy    .+= ΔτV .* ΔVyΔτ
-            P     .+= ΔτP .* ΔPΔτ
+            Vx    .+= ΔτVv .* ΔVxΔτ
+            Vy    .+= ΔτVv .* ΔVyΔτ
+            P     .+= ΔτPv .* ΔPΔτ
             if iter % nout == 0 || iter==1
                 errVx = norm(ΔVxΔτ)/sqrt(length(ΔVxΔτ))
                 errVy = norm(ΔVyΔτ)/sqrt(length(ΔVyΔτ))
@@ -443,6 +451,4 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     end
 end
 
-# main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
-# main(2, 7, 1, 6, 0.030598470000000003/2, 0.03666666667,  1.0) # nit = 9000
-main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
+main(1, 7, 3, 6, 0.0382, 0.1833, 7.0) # nit = xxxxx

@@ -1,24 +1,37 @@
 const USE_GPU      = false  # Not supported yet 
-const USE_DIRECT   = false   # Sparse matrix assembly + direct solver
+const USE_DIRECT   = true   # Sparse matrix assembly + direct solver
 const USE_NODAL    = false  # Nodal evaluation of residual
 const USE_PARALLEL = false  # Parallel residual evaluation
 const USE_MAKIE    = true   # Visualisation 
 import Plots
 
-using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT
+using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT#, StaticArrays
 import Base.Threads: @threads, @sync, @spawn, nthreads, threadid
 using MAT
 
 include("../CreateMeshFCFV.jl")
 include("../VisuFCFV.jl")
-include("../DiscretisationFCFV.jl")
-include("../EvalAnalDani.jl")
+# include("../EvalAnalDani.jl")
 include("IntegrationPoints.jl")
 
 #----------------------------------------------------------#
 
 function StabParam(τ, Γ, Ω, mesh_type, ν) 
     return 0. # Stabilisation is only needed for FCFV
+end
+
+#----------------------------------------------------------#
+
+function EvalSolSevilla2018( x, y )
+    p   =  x*(1-x)
+    Vx  =  x^2*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y)
+    Vy  = -y^2*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)
+    Sxx = -8*p*y*(x - 1)*(2*y^2 - 3*y + 1) - p + 8*x^2*y*(x - 1)*(2*y^2 - 3*y + 1)
+    Syy = -p - 8*x*y^2*(y - 1)*(2*x^2 - 3*x + 1) - 8*x*y*(y - 1)^2*(2*x^2 - 3*x + 1)
+    Sxy = p^2*(12*y^2 - 12*y + 2) + y^2*(y - 1)^2*(-12.0*x^2 + 12.0*x - 2.0)
+    sx  = -p^2*(24*y - 12) - 4*x^2*(4*y^3 - 6*y^2 + 2*y) - 8*x*(2*x - 2)*(4*y^3 - 6*y^2 + 2*y) - 2*x + 1.0*y^2*(2*y - 2)*(12*x^2 - 12*x + 2) + 2.0*y*(1 - y)^2*(12*x^2 - 12*x + 2) - 4*(1 - x)^2*(4*y^3 - 6*y^2 + 2*y) + 1
+    sy  = -2*p*(1 - x)*(12*y^2 - 12*y + 2) - x^2*(2*x - 2)*(12*y^2 - 12*y + 2) + 1.0*y^2*(1 - y)^2*(24*x - 12) + 4*y^2*(4*x^3 - 6*x^2 + 2*x) + 8*y*(2*y - 2)*(4*x^3 - 6*x^2 + 2*x) + 4*(1 - y)^2*(4*x^3 - 6*x^2 + 2*x)
+    return Vx, Vy, p, Sxx, Syy, Sxy, sx, sy
 end
 
 #----------------------------------------------------------#
@@ -47,7 +60,8 @@ function ResidualStokesNodalFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, Q_all, b )
                 P_ele      = P[nodesP] 
                 K_ele      = K_all[e,:,:]
                 Q_ele      = Q_all[e,:,:]
-                fv_ele     = K_ele*V_ele .+ Q_ele*P_ele # .- bu[e,:]
+                b_ele      = b_all[e,:]
+                fv_ele     = K_ele*V_ele .+ Q_ele*P_ele .- b_ele
                 inode      = mesh.n2e_loc[in][ii]
                 Fx[in]    -= fv_ele[2*inode-1]
                 Fy[in]    -= fv_ele[2*inode]
@@ -74,7 +88,7 @@ end
 
 #----------------------------------------------------------#
 
-function ResidualStokesElementalSerialFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, Q_all, b )
+function ResidualStokesElementalSerialFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, Q_all, b_all )
     # Residual
     Fx   .= 0.0
     Fy   .= 0.0
@@ -82,6 +96,7 @@ function ResidualStokesElementalSerialFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, 
     nnel  = mesh.nnel
     npel  = mesh.npel
     V_ele = zeros(nnel*2)
+    b_ele = zeros(nnel*2)
     @inbounds for e = 1:mesh.nel
         nodes  = mesh.e2n[e,:]
         nodesP = mesh.e2p[e,:]
@@ -90,7 +105,8 @@ function ResidualStokesElementalSerialFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, 
         P_ele      = P[nodesP] 
         K_ele      = K_all[e,:,:]
         Q_ele      = Q_all[e,:,:]
-        fv_ele     = K_ele*V_ele .+ Q_ele*P_ele # .- bu[e,:]
+        b_ele      = b_all[e,:]
+        fv_ele     = K_ele*V_ele .+ Q_ele*P_ele .- b_ele
         fp_ele     = .-Q_ele'*V_ele #.- bp[e,:]
         Fx[nodes] .-= fv_ele[1:2:end-1] # This should be atomic
         Fy[nodes] .-= fv_ele[2:2:end]
@@ -112,29 +128,20 @@ function ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX ) # Adapted from MI
     K_all        = zeros(mesh.nel, ndof, ndof) 
     Q_all        = zeros(mesh.nel, ndof, npel)
     Mi_all       = zeros(mesh.nel, npel, npel)
-    b            = zeros(mesh.nel, ndof)
-    K_ele        = zeros(ndof, ndof)
-    Q_ele        = zeros(ndof, npel)
-    M_ele        = zeros(npel,npel)
-    M_inv        = zeros(npel,npel)
-    b_ele        = zeros(ndof)
-    B            = zeros(ndof,3)
-    m            = [ 1.0; 1.0; 0.0]
-    Dev          = [ 4/3 -2/3  0.0;
-                    -2/3  4/3  0.0;
-                     0.0  0.0  1.0]
+    b_all        = zeros(mesh.nel, ndof )
+    K_ele        =  zeros(ndof, ndof)
+    Q_ele        =  zeros(ndof, npel)
+    M_ele        =  zeros(npel ,npel)
+    M_inv        =  zeros(npel ,npel)
+    b_ele        =  zeros(ndof)
+    B            =  zeros(ndof, 3)
+    m            =  [ 1.0; 1.0; 0.0]
+    Dev          =  [ 4/3 -2/3  0.0;
+                     -2/3  4/3  0.0;
+                      0.0  0.0  1.0]
     P  = ones(npel,npel)
     Pb = ones(npel)
-    # PF = 1e3*maximum(mesh.ke)
-    # Np0 = N[:,1:3,:]
     Np0, dNdXp   = ShapeFunctions(ipx, nip, 3)
-    # if nnel==4 # load linear basis function for pressure (3 nodes)
-    #     Np0, dNdXp   = ShapeFunctions(ipx, nip, 3)
-    # end 
-    
-    # display(N)
-    # display(Np0)
-
     # Element loop
     @inbounds for e = 1:mesh.nel
         nodes   = mesh.e2n[e,:]
@@ -167,33 +174,29 @@ function ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX ) # Adapted from MI
             Bvol          = dNdx'
             K_ele .+= ipw[ip] .* detJ .* ke  .* (B*Dev*B')
             if npel==3 && nnel!=4 
-                Ni       = N[ip,:,1]
-                Pb[2:3] .= x'*Ni 
+                Np       = N[ip,:,1]
+                Pb[2:3] .= x'*Np 
                 Pi       = P\Pb
                 Q_ele   .-= ipw[ip] .* detJ .* (Bvol[:]*Pi') 
-                # M_ele   .+= ipw[ip] .* detJ .* Pi*Pi' # mass matrix P, not needed sor incompressible
+                # M_ele   .+= ipw[ip] .* detJ .* Pi*Pi' # mass matrix P, not needed for incompressible
             else
                 if npel==1 Np = 1.0        end
                 if npel==3 Np = Np0[ip,:,:] end
                 Q_ele   .-= ipw[ip] .* detJ .* (B*m*Np') 
             end
-            # b_ele   .+= ipw[ip] .* detJ .* se[e] .* N[ip,:] 
+            b_ele[1:2:end] .+= ipw[ip] .* detJ .* se[e,1] .* N[ip,:] 
+            b_ele[2:2:end] .+= ipw[ip] .* detJ .* se[e,2] .* N[ip,:]
         end
-        # if npel==3 && nnel!=4 
-            # M_inv .= inv(M_ele) 
-            # Mi_all[e,:,:] .= M_inv 
-            # if npel==3 K_ele .+=  PF.*(Q_ele*M_inv*Q_ele') end # static condensation
-        # end
         K_all[e,:,:]  .= K_ele
         Q_all[e,:,:]  .= Q_ele
-        # b[e,:]       .= b_ele
+        b_all[e,:]    .= b_ele
     end
-    return K_all, Q_all, Mi_all, b
+    return K_all, Q_all, Mi_all, b_all
 end 
 
 #----------------------------------------------------------#
 
-function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy, P )
+function SparseAssembly( K_all, Q_all, Mi_all, b_all, mesh, Vx, Vy, P )
 
     println("Assembly")
     ndof = mesh.nn*2
@@ -254,7 +257,8 @@ function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy, P )
                     end
                     ii+=2
                 end
-                # rhs[nodes[j]] += b[e,j]
+                rhs[nodesVx[j]] += b_all[e,jj]
+                rhs[nodesVy[j]] += b_all[e,jj+1]
             else
                 # Deal with Dirichlet: set one on diagonal and value and RHS
                 push!(I_K, nodesVx[j]); push!(J_K, nodesVx[j]); push!(V_K, 1.0)
@@ -263,22 +267,20 @@ function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy, P )
                 rhs[nodesVy[j]] += Vy[nodes[j]]
             end
             jj+=2
-            if mesh.nnel==4 && mesh.npel==3 # only for mini-element
-                for j=1:mesh.npel
-                    if mesh.bcn[nodes[j]] == 1
-                        push!(I_M, nodesP[j]); push!(J_M, nodesP[j]); push!(V_M, -1.0)
-                        rhs[nodesP[j]] += P[nodes[j]]
-                    end
-                end
-            end
+            # if mesh.nnel==4 && mesh.npel==3 # only for mini-element
+            #     for j=1:mesh.npel
+            #         if mesh.bcn[nodes[j]] == 1
+            #             push!(I_M, nodesP[j]); push!(J_M, nodesP[j]); push!(V_M, -1.0)
+            #             rhs[nodesP[j]] += P[nodes[j]]
+            #         end
+            #     end
+            # end
         end 
     end
     K  = sparse(I_K,  J_K,  V_K, ndof, ndof)
     Q  = sparse(I_Q,  J_Q,  V_Q, ndof, mesh.np)
     Qt = sparse(I_Qt, J_Qt, V_Qt, mesh.np, ndof)
-    # M0 = sparse(Int64[], Int64[], Float64[], mesh.np, mesh.np)
     M0 = sparse(I_M,  J_M,  V_M, mesh.np, mesh.np)
-
     M  = [K Q; Qt M0]
     return M, rhs, K, Q, Qt, M0
 end
@@ -289,9 +291,9 @@ function DirectSolveFEM!( M, K, Q, Qt, M0, rhs, Vx, Vy, P, mesh, b)
     println("Direct solve")
     ndof       = mesh.nn*2
     sol        = zeros(ndof+mesh.np)
-    M[end,:]  .= 0.0 # add one Dirichlet constraint on pressure
-    M[end,end] = 1.0
-    rhs[end]   = 0.0
+    # M[end,:]  .= 0.0 # add one Dirichlet constraint on pressure
+    # M[end,end] = 1.0
+    # rhs[end]   = 0.0
     sol       .= M\rhs
     Vx        .= sol[1:length(Vx)] 
     Vy        .= sol[(length(Vx)+1):(length(Vx)+length(Vy))]
@@ -305,11 +307,11 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
 
     println("\n******** FEM STOKES ********")
     # Create sides of mesh
-    xmin, xmax = -3.0, 3.0
-    ymin, ymax = -3.0, 3.0
+    xmin, xmax = -.0, 1.0
+    ymin, ymax = -.0, 1.0
     nx, ny     = Int16(n*30), Int16(n*30)
     R          = 1.0
-    inclusion  = 1
+    inclusion  = 0
     εBG        = 1.0
     η          = [1.0 5.0]  
     
@@ -323,21 +325,19 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     println("Number of vertices: ", mesh.nn)
     println("Number of p nodes:  ", mesh.np)
 
-    mesh.ke[mesh.phase.==1] .= η[1]
-    mesh.ke[mesh.phase.==2] .= η[2]
-
-    Vx = zeros(mesh.nn)       # Solution on nodes 
-    Vy = zeros(mesh.nn)       # Solution on nodes 
-    P  = zeros(mesh.np)       # Solution on either elements or nodes 
-    se = zeros(mesh.nel)      # Source term on elements
-    Pa = zeros(mesh.nel)      # Solution on elements 
+    Vx  = zeros(mesh.nn)       # Solution on nodes 
+    Vy  = zeros(mesh.nn)       # Solution on nodes 
+    P   = zeros(mesh.np)       # Solution on either elements or nodes 
+    se  = zeros(mesh.nel)      # Source term on elements
+    Pa  = zeros(mesh.nel)      # Solution on elements 
+    se  = zeros(mesh.nel,2)    # Source on elements 
 
     # Intial guess
     for in = 1:mesh.nn
         if mesh.bcn[in]==1
             x      = mesh.xn[in]
             y      = mesh.yn[in]
-            vx, vy = EvalAnalDani( x, y, R, η[1], η[2] )
+            vx, vy, p, Sxx, Syy, Sxy, sx, sy = EvalSolSevilla2018( x, y )
             Vx[in] = vx
             Vy[in] = vy
         end
@@ -345,25 +345,27 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     for e = 1:mesh.nel
         x      = mesh.xc[e]
         y      = mesh.yc[e]
-        vx, vy, p = EvalAnalDani( x, y, R, η[1], η[2] )
-        Pa[e] = p
+        vx, vy, p, Sxx, Syy, Sxy, sx, sy = EvalSolSevilla2018( x, y )
+        Pa[e]   = p
+        se[e,1] = sx
+        se[e,2] = sy
     end
     for in = 1:mesh.nv
         if mesh.bcn[in]==1
             x      = mesh.xn[in]
             y      = mesh.yn[in]
-            vx, vy, p = EvalAnalDani( x, y, R, η[1], η[2] )
+            vx, vy, p, Sxx, Syy, Sxy, sx, sy = EvalSolSevilla2018( x, y )
             P[in] = p
         end
     end
 
     #-----------------------------------------------------------------#
-    @time  K_all, Q_all, Mi_all, b = ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX )
+    @time  K_all, Q_all, Mi_all, b_all = ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX )
     #-----------------------------------------------------------------#
     
     if USE_DIRECT
-        @time M, rhs, K, Q, Qt, M0 = SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy, P )
-        @time DirectSolveFEM!( M, K, Q, Qt, M0, rhs, Vx, Vy, P, mesh, b )
+        @time M, b, K, Q, Qt, M0 = SparseAssembly( K_all, Q_all, Mi_all, b_all, mesh, Vx, Vy, P )
+        @time DirectSolveFEM!( M, K, Q, Qt, M0, b, Vx, Vy, P, mesh, b )
     else
         nout    = 1000#1e1
         iterMax = 3e4
@@ -384,9 +386,9 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             ΔVxΔτ0 .= ΔVxΔτ 
             ΔVyΔτ0 .= ΔVyΔτ
             if USE_NODAL
-                ResidualStokesNodalFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b )
+                ResidualStokesNodalFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b_all )
             else
-                ResidualStokesElementalSerialFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b )
+                ResidualStokesElementalSerialFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b_all )
             end
             ΔVxΔτ  .= (1.0 - θ).*ΔVxΔτ0 .+ ΔVxΔτ 
             ΔVyΔτ  .= (1.0 - θ).*ΔVyΔτ0 .+ ΔVyΔτ
@@ -422,11 +424,13 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     #-----------------------------------------------------------------#
     Vxe = zeros(mesh.nel)
     Vye = zeros(mesh.nel)
+    Ve  = zeros(mesh.nel)
     Pe  = zeros(mesh.nel)
     for e=1:mesh.nel
         for i=1:mesh.nnel
             Vxe[e] += 1.0/mesh.nnel * Vx[mesh.e2n[e,i]]
             Vye[e] += 1.0/mesh.nnel * Vy[mesh.e2n[e,i]]
+            Ve[e]  += 1.0/mesh.nnel * sqrt(Vx[mesh.e2n[e,i]]^2 + Vy[mesh.e2n[e,i]]^2)
         end
         for i=1:mesh.npel
             Pe[e] += 1.0/mesh.npel * P[mesh.e2p[e,i]]
@@ -437,6 +441,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     @printf("%2.2e %2.2e\n", minimum(P),  maximum(P) )
     #-----------------------------------------------------------------#
     if USE_MAKIE
+        # PlotMakie(mesh, Ve, xmin, xmax, ymin, ymax; cmap=:jet1)
         PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1)
     else
         PlotPyPlot(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1 )
@@ -445,4 +450,7 @@ end
 
 # main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
 # main(2, 7, 1, 6, 0.030598470000000003/2, 0.03666666667,  1.0) # nit = 9000
-main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
+main(1, 7, 3, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
+
+
+

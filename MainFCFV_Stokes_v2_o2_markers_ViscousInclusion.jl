@@ -268,19 +268,19 @@ end
     println("Visualisation:")
     # @time PlotMakie( mesh, Vxe, xmin, xmax, ymin, ymax; cmap=:jet1,  min_v=minimum(Vxa),  max_v=maximum(Vxa), writefig=false)
     # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
-    # @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1,  min_v=minimum(Pa),  max_v=maximum(Pa), writefig=false )
+    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1,  min_v=minimum(Pa),  max_v=maximum(Pa), writefig=false )
     # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
     # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
-    @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax; cmap=:jet1 )
+    # @time PlotMakie( mesh, (mesh.ke), xmin, xmax, ymin, ymax; cmap=:jet1 )
     # @time PlotMakie( mesh, mesh.phase, xmin, xmax, ymin, ymax; cmap=:jet1 )
 
     return maximum(Perr), maximum(Verr)
 end
 
-new = 0 
-n   = 1
+new = 1 
+n   = 2
 τ   = 1.0
-o2  = 0
+o2  = 1
 # main(2, "Quadrangles", 25, 1) # L_INF P 1.67 no-interp
 # main(2, "Quadrangles", 50, 1) # L_INF P 1.18 arith
 # main(4, "Quadrangles", 180, 1) # L_INF P 1.45 arith

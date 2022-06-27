@@ -188,10 +188,8 @@ end
     @printf("Error in P  : %2.2e\n", err_P  )
 
     # Visualise
-    # println("Visualisation:")
-    # @time PlotMakie( mesh, sex )
-    # @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax, :viridis )
-    # PlotElements( mesh )
+    println("Visualisation:")
+    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1 )
     ndof = 2*mesh.nf+mesh.nel
     return ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii
 end
@@ -201,7 +199,7 @@ function Run()
 #################### ORDER 1
 order = 1 
 
-N             = [8, 16, 32, 64, 128, 256]#, 512, 1024]
+N             = [8, 16, 32, 64]#, 128, 256]#, 512, 1024]
 mesh_type  = "Quadrangles"
 eV_quad    = zeros(size(N))
 eP_quad    = zeros(size(N))
