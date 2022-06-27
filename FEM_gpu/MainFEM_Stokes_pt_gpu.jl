@@ -10,24 +10,15 @@ include("helpers.jl")
 include("../CreateMeshFCFV.jl")
 include("../EvalAnalDani.jl")
 
-@inbounds function glob2loc!(V,P,Vx,Vy,Pr,e2n,nel)
+@inbounds function glob2loc!(V,P,Vx,Vy,Pr,e2n,nel,nrange)
     ie = (blockIdx().x-1) * blockDim().x + threadIdx().x
     if ie <= nel
         nodes = e2n[ie]
-        field(V,1 )[ie] = Vx[nodes[1]]
-        field(V,3 )[ie] = Vx[nodes[2]]
-        field(V,5 )[ie] = Vx[nodes[3]]
-        field(V,7 )[ie] = Vx[nodes[4]]
-        field(V,9 )[ie] = Vx[nodes[5]]
-        field(V,11)[ie] = Vx[nodes[6]]
-        field(V,13)[ie] = Vx[nodes[7]]
-        field(V,2 )[ie] = Vy[nodes[1]]
-        field(V,4 )[ie] = Vy[nodes[2]]
-        field(V,6 )[ie] = Vy[nodes[3]]
-        field(V,8 )[ie] = Vy[nodes[4]]
-        field(V,10)[ie] = Vy[nodes[5]]
-        field(V,12)[ie] = Vy[nodes[6]]
-        field(V,14)[ie] = Vy[nodes[7]]
+        for in ∈ nrange
+            iloc1, iloc2 = in*2-1, in*2
+            field(V,iloc1)[ie] = Vx[nodes[in]]
+            field(V,iloc2)[ie] = Vy[nodes[in]]
+        end
         field(P,1)[ie]  = Pr[ie]
     end
     return nothing
@@ -42,25 +33,16 @@ end
     return nothing
 end
 
-@inbounds function loc2glob!(Fx,Fy,FP,Fv,Fp,e2n,nel)
+@inbounds function loc2glob!(Fx,Fy,FP,Fv,Fp,e2n,nel,nrange)
     ie = (blockIdx().x-1) * blockDim().x + threadIdx().x
     if ie <= nel
         nodes = e2n[ie]
-        CUDA.@atomic Fx[nodes[1]] -= Fv[ie][1]
-        CUDA.@atomic Fx[nodes[2]] -= Fv[ie][3]
-        CUDA.@atomic Fx[nodes[3]] -= Fv[ie][5]
-        CUDA.@atomic Fx[nodes[4]] -= Fv[ie][7]
-        CUDA.@atomic Fx[nodes[5]] -= Fv[ie][9]
-        CUDA.@atomic Fx[nodes[6]] -= Fv[ie][11]
-        CUDA.@atomic Fx[nodes[7]] -= Fv[ie][13]
-        CUDA.@atomic Fy[nodes[1]] -= Fv[ie][2]
-        CUDA.@atomic Fy[nodes[2]] -= Fv[ie][4]
-        CUDA.@atomic Fy[nodes[3]] -= Fv[ie][6]
-        CUDA.@atomic Fy[nodes[4]] -= Fv[ie][8]
-        CUDA.@atomic Fy[nodes[5]] -= Fv[ie][10]
-        CUDA.@atomic Fy[nodes[6]] -= Fv[ie][12]
-        CUDA.@atomic Fy[nodes[7]] -= Fv[ie][14]
-                     FP[ie]       -= Fp[ie][1]
+        for in ∈ nrange
+            iloc1, iloc2 = in*2-1, in*2
+            CUDA.@atomic Fx[nodes[in]] -= Fv[ie][iloc1]
+            CUDA.@atomic Fy[nodes[in]] -= Fv[ie][iloc2]
+        end
+        FP[ie] -= Fp[ie][1]
     end
     return nothing
 end
@@ -147,6 +129,7 @@ function main(n, nnel, npel, nip, θ, ΔτV, ΔτP)
     threads    = 256
     blocks_e   = nel÷threads + 1
     blocks_n   =  nn÷threads + 1
+    nrange     = 1:nnel
     # Initial condition
     mesh.ke[mesh.phase.==1] .= η[1]
     mesh.ke[mesh.phase.==2] .= η[2]
@@ -205,9 +188,9 @@ function main(n, nnel, npel, nip, θ, ΔτV, ΔτP)
     @cuda blocks=blocks_e threads=threads init_CellArrays!(K,Q,E2N,K_all,Q_all,e2n,nel); synchronize()
     @time while (iter<iterMax)
         iter += 1
-        @cuda blocks=blocks_e threads=threads glob2loc!(V,P,Vx,Vy,Pr,E2N,nel); synchronize()
+        @cuda blocks=blocks_e threads=threads glob2loc!(V,P,Vx,Vy,Pr,E2N,nel,nrange); synchronize()
         @cuda blocks=blocks_e threads=threads elem_op!(Fv,Fp,K,Q,V,P,nel); synchronize()
-        @cuda blocks=blocks_e threads=threads loc2glob!(ΔVxΔτ,ΔVyΔτ,ΔPΔτ,Fv,Fp,E2N,nel); synchronize()
+        @cuda blocks=blocks_e threads=threads loc2glob!(ΔVxΔτ,ΔVyΔτ,ΔPΔτ,Fv,Fp,E2N,nel,nrange); synchronize()
         @cuda blocks=blocks_n threads=threads set_bc_nodes_v!(ΔVxΔτ,ΔVyΔτ,bcn,nn); synchronize()
         # Check error
         if iter % nout == 0 || iter==1
@@ -233,8 +216,8 @@ function main(n, nnel, npel, nip, θ, ΔτV, ΔτP)
     Pe  = CUDA.zeros(nel)
     @cuda blocks=blocks_e threads=threads postprocess!(Vxe,Vye,Pe,Vx,Vy,Pr,e2n,nnel,nel); synchronize()
 
-    @printf("min, max Vx: %2.2e %2.2e\n", minimum(Vxe), maximum(Vx))
-    @printf("min, max Vy: %2.2e %2.2e\n", minimum(Vye), maximum(Vy))
+    @printf("min, max Vx: %2.2e %2.2e\n", minimum(Vx), maximum(Vx))
+    @printf("min, max Vy: %2.2e %2.2e\n", minimum(Vy), maximum(Vy))
     @printf("min, max Pr: %2.2e %2.2e\n", minimum(Pr), maximum(Pr))
     #-----------------------------------------------------------------#
     # if USE_MAKIE
@@ -250,4 +233,4 @@ end
 
 main(18, 7, 1, 6, 0.03/5, 0.036, 6.0) # nit = 14000 <- MILAMIN/4
 
-# main(160, 7, 1, 6, 0.03/5, 0.036, 6.0) # nit =  <- BILAMIN
+# main(100, 7, 1, 6, 0.03/5, 0.036, 6.0) # nit =  <- not yet BILAMIN
