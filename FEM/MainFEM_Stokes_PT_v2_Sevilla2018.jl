@@ -276,14 +276,14 @@ function SparseAssembly( K_all, Q_all, Mi_all, b_all, mesh, Vx, Vy, P )
                 rhs[nodesVy[j]] += Vy[nodes[j]]
             end
             jj+=2
-            if mesh.nnel==4 && mesh.npel==3 # only for mini-element
-                for j=1:mesh.npel
-                    if mesh.bcn[nodes[j]] == 1
-                        push!(I_M, nodesP[j]); push!(J_M, nodesP[j]); push!(V_M, -1.0)
-                        rhs[nodesP[j]] += P[nodes[j]]
-                    end
-                end
-            end
+            # if mesh.nnel==4 && mesh.npel==3 # only for mini-element
+            #     for j=1:mesh.npel
+            #         if mesh.bcn[nodes[j]] == 1
+            #             push!(I_M, nodesP[j]); push!(J_M, nodesP[j]); push!(V_M, -1.0)
+            #             rhs[nodesP[j]] += P[nodes[j]]
+            #         end
+            #     end
+            # end
         end 
     end
     K  = sparse(I_K,  J_K,  V_K, ndof, ndof)
@@ -450,8 +450,8 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     @printf("%2.2e %2.2e\n", minimum(P),  maximum(P) )
     #-----------------------------------------------------------------#
     if USE_MAKIE
+        # PlotMakie(mesh, Ve, xmin, xmax, ymin, ymax; cmap=:jet1)
         PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1)
-        # PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1)
     else
         PlotPyPlot(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1 )
     end
@@ -459,7 +459,7 @@ end
 
 # main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
 # main(2, 7, 1, 6, 0.030598470000000003/2, 0.03666666667,  1.0) # nit = 9000
-main(1, 7, 3, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
+main(1, 4, 3, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
 
 
 
