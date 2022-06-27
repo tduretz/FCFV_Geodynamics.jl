@@ -1,10 +1,10 @@
 const USE_GPU      = false  # Not supported yet 
-const USE_DIRECT   = true  # Sparse matrix assembly + direct solver
+const USE_DIRECT   = false  # Sparse matrix assembly + direct solver
 const USE_NODAL    = false  # Nodal evaluation of residual
 const USE_PARALLEL = false  # Parallel residual evaluation
 const USE_MAKIE    = true   # Visualisation 
 import Plots
-# import Statistics:mean
+import Statistics:mean
 
 using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT
 import Base.Threads: @threads, @sync, @spawn, nthreads, threadid
@@ -335,41 +335,54 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     else
         nout    = 1000#1e1
         iterMax = 10e3#3e4
-        ϵ_PT    = 1e-7
+        ϵ_PT    = 5e-7
         ΔVxΔτ = zeros(mesh.nn)
         ΔVyΔτ = zeros(mesh.nn)
         ΔVxΔτ0= zeros(mesh.nn)
         ΔVyΔτ0= zeros(mesh.nn)
         ΔPΔτ  = zeros(mesh.np)
+
+        #-----------------------------------------------#
+        # Local Δτ for momentum equations (local Δτ for continuity does not seem to help)
+        #-----------------------------------------------#
         ΔτVv  = zeros(mesh.nn)
         ΔτPv  = zeros(mesh.np)
-
+        ηv    = zeros(mesh.nn)
+        ηe    = zeros(mesh.nel)
+        ηe   .= mesh.ke
         ΔτVv .= ΔτV
         ΔτPv .= ΔτP
-        itp   = 3
+        nludo = 1 # more than 1 does not seem to help
+        itp   = 0 # only 0 and 3 seem to work
 
-        for i=1:mesh.nn
-            n = 0
-            η = 0.0
-            for ii=1:length(mesh.n2e[i])
-                e       = mesh.n2e[i][ii]
-                n   += 1
-                if itp==3 η  = max(η, mesh.ke[e]) end # Local maximum
-                if itp==0 η += mesh.ke[e]         end # arithmetic mean
-                if itp==1 η += 1.0/mesh.ke[e]     end # harmonic mean
-                if itp==2 η += log(mesh.ke[e])    end # geometric mean
+        for iludo=1:nludo
+            # Compute nodal viscosities
+            for i=1:mesh.nn
+                n = 0
+                η = 0.0
+                for ii=1:length(mesh.n2e[i])
+                    e       = mesh.n2e[i][ii]
+                    n   += 1
+                    if itp==3 η  = max(η, ηe[e]) end # Local maximum
+                    if itp==0 η += ηe[e]         end # arithmetic mean
+                    if itp==1 η += 1.0/ηe[e]     end # harmonic mean
+                    if itp==2 η += log(ηe[e])    end # geometric mean
+                end
+                w = 1.0/n
+                if itp==0 ηv[i] = w*η      end
+                if itp==1 ηv[i] = w/η      end
+                if itp==2 ηv[i] = exp(η)^w end
+                if itp==3 ηv[i] = η        end
             end
-            w = 1.0/n
-            if itp==0 η = w*η      end
-            if itp==1 η = w/η      end
-            if itp==2 η = exp(η)^w end
-            ΔτVv[i] /= η
+            # Compute element viscosities
+            for e=1:mesh.nel
+                nodes = mesh.e2n[e,:]
+                if itp==3 ηe[e] = max(ηv[nodes]...)  end
+                if itp==0 ηe[e] = mean(ηv[nodes]) end
+            end
         end
-
-        for e=1:mesh.nel
-            η = mesh.ke[e]
-            ΔτPv[e] /= η
-        end
+        ΔτVv ./= ηv
+        #-----------------------------------------------#
 
         # PT loop
         local iter = 0
@@ -383,7 +396,6 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             else
                 ResidualStokesElementalSerialFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b )
             end
-            # ΔPΔτ   .-= mean(ΔPΔτ)
             ΔVxΔτ  .= (1.0 - θ).*ΔVxΔτ0 .+ ΔVxΔτ 
             ΔVyΔτ  .= (1.0 - θ).*ΔVyΔτ0 .+ ΔVyΔτ
             Vx    .+= ΔτVv .* ΔVxΔτ
@@ -439,4 +451,4 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     end
 end
 
-main(1, 7, 3, 6, 0.030598470000000003/1.0, 0.03666666667*5 ,  4.0) # nit = xxxxx
+main(1, 7, 3, 6, 0.0382, 0.1833, 7.0) # nit = xxxxx
