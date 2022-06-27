@@ -5,7 +5,7 @@ const USE_PARALLEL = false  # Parallel residual evaluation
 const USE_MAKIE    = true   # Visualisation 
 import Plots
 
-using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT, StaticArrays
+using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT#, StaticArrays
 import Base.Threads: @threads, @sync, @spawn, nthreads, threadid
 using MAT
 
@@ -137,20 +137,11 @@ function ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX ) # Adapted from MI
     B            =  zeros(ndof, 3)
     m            =  [ 1.0; 1.0; 0.0]
     Dev          =  [ 4/3 -2/3  0.0;
-                             -2/3  4/3  0.0;
-                              0.0  0.0  1.0]
+                     -2/3  4/3  0.0;
+                      0.0  0.0  1.0]
     P  = ones(npel,npel)
     Pb = ones(npel)
-    # PF = 1e3*maximum(mesh.ke)
-    # Np0 = N[:,1:3,:]
     Np0, dNdXp   = ShapeFunctions(ipx, nip, 3)
-    # if nnel==4 # load linear basis function for pressure (3 nodes)
-    #     Np0, dNdXp   = ShapeFunctions(ipx, nip, 3)
-    # end 
-    
-    # display(N)
-    # display(Np0)
-
     # Element loop
     @inbounds for e = 1:mesh.nel
         nodes   = mesh.e2n[e,:]
@@ -459,7 +450,7 @@ end
 
 # main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
 # main(2, 7, 1, 6, 0.030598470000000003/2, 0.03666666667,  1.0) # nit = 9000
-main(1, 4, 3, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
+main(1, 7, 3, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
 
 
 
