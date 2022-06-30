@@ -137,27 +137,41 @@ end
 
 #--------------------------------------------------------------------#
 
-function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC=[1; 1; 1; 1;], area = ((xmax-xmin)/nx)*((ymax-ymin)/ny), no_pts_incl = Int64(floor(1.0*pi*R/sqrt(((xmax-xmin)/nx)^2+((ymax-ymin)/ny)^2))); nnel=3, npel=1  )
+function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC=[1; 1; 1; 1;], area = ((xmax-xmin)/nx)*((ymax-ymin)/ny), no_pts_incl = Int64(floor(1.0*pi*R/sqrt(((xmax-xmin)/nx)^2+((ymax-ymin)/ny)^2))); nnel=3, npel=1, xp_in=0, yp_in=0, tp_in=0  )
 
     regions  = Array{Float64}(undef,4,0)
     holes    = Array{Float64}(undef,2,0)
-    dx       = (xmax-xmin)/nx
-    dy       = (ymax-ymin)/ny
-    pts_l    = 1;
-    pts_u    = 0;
+    pts_l    = 1
+    pts_u    = 0
+
+    if inclusion==-1 # directly read contours from Input
+        px     = xp_in
+        py     = yp_in
+        sx     = collect(1:length(px))
+        sy     = sx .+ 1; sy[end] = 1
+        st     = tp_in'
+        println(st)
+        no_pts = length(px)
+        pts_l  = pts_l + no_pts
+        pts_u  = pts_u + no_pts
+        # Region 1
+        h1     = [xmin+1e-13; ymin+1e-13; 1.0; 0.0] 
+    end
     
-    # 1. Four corners of the domain
-    px     = [xmin; xmax; xmax; xmin]
-    py     = [ymin; ymin; ymax; ymax]
-    sx     = [ 1; 2; 3; 4; ] 
-    sy     = [ 2; 3; 4; 1; ]
-    st     = BC  # segment markers == boundary flags
-    
-    no_pts = size(px,1);
-    pts_l  = pts_l+no_pts;
-    pts_u  = pts_u+no_pts;
-    # Region 1
-    h1     = [xmin+1e-13; ymin+1e-13; 1.0; 0.0] 
+    if inclusion>=0
+
+        # 1. Four corners of the domain
+        px     = [xmin; xmax; xmax; xmin]
+        py     = [ymin; ymin; ymax; ymax]
+        sx     = [ 1; 2; 3; 4; ] 
+        sy     = [ 2; 3; 4; 1; ]
+        st     = BC  # segment markers == boundary flags
+        no_pts = length(px)
+        pts_l  = pts_l + no_pts
+        pts_u  = pts_u + no_pts
+        # Region 1
+        h1     = [xmin+1e-13; ymin+1e-13; 1.0; 0.0] 
+    end
 
     if inclusion==1
         # 2. Inclusion
@@ -298,7 +312,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
             v_x  = mesh.xf[nodei] - mesh.xc[iel]
             v_y  = mesh.yf[nodei] - mesh.yc[iel]
             
-            # Check wether the normal points outwards
+            # Check whether the normal points outwards
             dot                 = n_x*v_x + n_y*v_y 
             mesh.n_x[iel,ifac]  = ((dot>=0.0)*n_x - (dot<0.0)*n_x)
             mesh.n_y[iel,ifac]  = ((dot>=0.0)*n_y - (dot<0.0)*n_y)
