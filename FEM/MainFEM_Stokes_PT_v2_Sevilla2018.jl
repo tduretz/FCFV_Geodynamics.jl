@@ -18,11 +18,13 @@ include("IntegrationPoints.jl")
 
 #----------------------------------------------------------#
 
-function ComputeStressFEM!( εxx, εyy, εxy, τxx, τyy, τxy, Vx, Vy, mesh, ipx, ipw, N, dNdX ) 
+function ComputeStressFEM!( εkk, εxx, εyy, εxy, τxx, τyy, τxy, Vx, Vy, mesh, ipx, ipw, N, dNdX ) 
     ndof         = 2*mesh.nnel
     nnel         = mesh.nnel
     npel         = mesh.npel
     nip          = length(ipw)
+    ε            = zeros(3)
+    τ            = zeros(3)
     m            =  [ 1.0; 1.0; 0.0]
     Dev          =  [ 4/3 -2/3  0.0;
                      -2/3  4/3  0.0;
@@ -37,7 +39,8 @@ function ComputeStressFEM!( εxx, εyy, εxy, τxx, τyy, τxy, Vx, Vy, mesh, ip
         ke      = mesh.ke[e]
         J       = zeros(2,2)
         invJ    = zeros(2,2)
-        V_ele   = zeros(nnel,2)
+        V_ele   = zeros(ndof)
+        B       = zeros(ndof, 3)
     
         if npel==3 && nnel!=4 P[2:3,:] .= (x[1:3,:])' end
 
@@ -51,38 +54,17 @@ function ComputeStressFEM!( εxx, εyy, εxy, τxx, τyy, τxy, Vx, Vy, mesh, ip
             invJ[2,1] = -J[2,1] / detJ
             invJ[2,2] = +J[1,1] / detJ
             dNdx      = dNdXi*invJ
-            V_ele[:,1] = Vx[nodes]
-            V_ele[:,2] = Vy[nodes]
-            εxxt      = dNdx[:,1]' * V_ele[:,1]
-            εyyt      = dNdx[:,2]' * V_ele[:,2]
-            εxyt      = 1//2*(dNdx[:,1]' * V_ele[:,2] + dNdx[:,2]' * V_ele[:,1])
-            divV      = εxxt + εyyt
-            εxx[e,ip] = εxxt - 1//3*divV
-            εyy[e,ip] = εyyt - 1//3*divV
-            εxy[e,ip] = εxyt
-            τxx[e,ip] = 2*ke*εxx[e,ip]
-            τyy[e,ip] = 2*ke*εyy[e,ip]
-            τxy[e,ip] = 2*ke*εxy[e,ip]
-            # εxx[e,ip] = dNdx
-            # B[1:2:end,1] .= dNdx[:,1]
-            # B[2:2:end,2] .= dNdx[:,2]
-            # B[1:2:end,3] .= dNdx[:,2]
-            # B[2:2:end,3] .= dNdx[:,1]
-            # Bvol          = dNdx'
-            # K_ele .+= ipw[ip] .* detJ .* ke  .* (B*Dev*B')
-            # if npel==3 && nnel!=4 
-            #     Np       = N[ip,:,1]
-            #     Pb[2:3] .= x'*Np 
-            #     Pi       = P\Pb
-            #     Q_ele   .-= ipw[ip] .* detJ .* (Bvol[:]*Pi') 
-            #     # M_ele   .+= ipw[ip] .* detJ .* Pi*Pi' # mass matrix P, not needed for incompressible
-            # else
-            #     if npel==1 Np = 1.0        end
-            #     if npel==3 Np = Np0[ip,:,:] end
-            #     Q_ele   .-= ipw[ip] .* detJ .* (B*m*Np') 
-            # end
-            # b_ele[1:2:end] .+= ipw[ip] .* detJ .* se[e,1] .* N[ip,:] 
-            # b_ele[2:2:end] .+= ipw[ip] .* detJ .* se[e,2] .* N[ip,:]
+            B[1:2:end,1] .= dNdx[:,1]
+            B[2:2:end,2] .= dNdx[:,2]
+            B[1:2:end,3] .= dNdx[:,2]
+            B[2:2:end,3] .= dNdx[:,1]
+            V_ele[1:2:end-1] .= Vx[nodes]
+            V_ele[2:2:end]   .= Vy[nodes]
+            ε                .= B'*V_ele
+            τ                .= ke.*(Dev*ε)
+            εkk[e,ip] = ε[1] + ε[2]                                # divergence
+            εxx[e,ip], εyy[e,ip], εxy[e,ip] = ε[1], ε[2], ε[3]*0.5 # because of engineering convention
+            τxx[e,ip], τyy[e,ip], τxy[e,ip] = τ[1], τ[2], τ[3]
         end
     end
     return nothing
@@ -152,14 +134,6 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         Sxxa[e] = Sxx   
         se[e,1] = sx
         se[e,2] = sy
-    end
-    for in = 1:mesh.nv
-        if mesh.bcn[in]==1
-            x      = mesh.xn[in]
-            y      = mesh.yn[in]
-            vx, vy, p, Sxx, Syy, Sxy, sx, sy = EvalSolSevilla2018( x, y )
-            P[in] = p
-        end
     end
 
     #-----------------------------------------------------------------#
@@ -232,7 +206,9 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     τxx = zeros(mesh.nel, nip)
     τyy = zeros(mesh.nel, nip)
     τxy = zeros(mesh.nel, nip)
-    ComputeStressFEM!( εxx, εyy, εxy, τxx, τyy, τxy, Vx, Vy, mesh, ipx, ipw, N, dNdX ) 
+    ∇v  = zeros(mesh.nel, nip) 
+
+    ComputeStressFEM!( ∇v, εxx, εyy, εxy, τxx, τyy, τxy, Vx, Vy, mesh, ipx, ipw, N, dNdX ) 
 
     #-----------------------------------------------------------------#
     Vxe  = zeros(mesh.nel)
@@ -256,14 +232,15 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         end
     end
     Sxxe .-= Pe
-    @printf("%2.2e %2.2e\n", minimum(Vx), maximum(Vx))
-    @printf("%2.2e %2.2e\n", minimum(Vy), maximum(Vy))
-    @printf("%2.2e %2.2e\n", minimum(P),  maximum(P) )
+    @printf("min Vx %2.2e --- max. Vx %2.2e\n", minimum(Vx), maximum(Vx))
+    @printf("min Vy %2.2e --- max. Vy %2.2e\n", minimum(Vy), maximum(Vy))
+    @printf("min P  %2.2e --- min. P  %2.2e\n", minimum(P),  maximum(P) )
+    @printf("min ∇v %2.2e --- min. ∇v %2.2e\n", minimum(∇v), maximum(∇v))
 
     #-----------------------------------------------------------------#
     if USE_MAKIE
         # PlotMakie(mesh, Ve, xmin, xmax, ymin, ymax; cmap=:jet1)
-        PlotMakie(mesh, Sxxa, xmin, xmax, ymin, ymax; cmap=:jet1)
+        PlotMakie(mesh, Sxxe, xmin, xmax, ymin, ymax; cmap=:jet1)
     else
         PlotPyPlot(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1 )
     end
