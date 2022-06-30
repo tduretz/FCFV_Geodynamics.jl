@@ -26,6 +26,8 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     yp[size(data,1)+1:end] .= reverse(data[:,3])
     tp[1:size(data,1)]     .= 1
     tp[size(data,1)+2:end-1] .= 2
+    # Add sliding section
+    tp[xp.>2200 .&& xp.<2500] .= 2
     # Somehow need to subsample the data !!!
     xp = xp[2:2:end]
     yp = yp[2:2:end]
@@ -36,7 +38,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     display(Plots.plot(p, ylims=(2,3.5), aspect_ratio=1.0, xlabel="x [km]", ylabel="y [km]"))
     # Generate
     model      = -1               
-    area       = 2000.0
+    area       = 200.0
     mesh = MakeTriangleMesh( 1, 1, minimum(xp), maximum(xp), minimum(yp), maximum(yp), 0.0, model, 0.0, 0, area; xp_in=xp, yp_in=yp, tp_in=tp, nnel=nnel, npel=npel ) 
     println("Number of elements: ", mesh.nel)
     println("Number of vertices: ", mesh.nn)
@@ -95,4 +97,4 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     #-----------------------------------------------------------------#
 end
 
-main( 1, 7, 3, 6, 0., 0., 0. )
+main( 1, 6, 1, 6, 0., 0., 0. )
