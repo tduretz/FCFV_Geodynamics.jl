@@ -10,7 +10,7 @@ using Makie.GeometryBasics
     ```
     # min_v, max_v = minimum(v), maximum(v)
     f = Figure()
-    ar = (maximum(mesh.xv) - minimum(mesh.xv)) / (maximum(mesh.yv) - minimum(mesh.yv))
+    ar = (maximum(mesh.xv) - minimum(mesh.xv)) / (maximum(mesh.xv) - minimum(mesh.yv))
     Axis(f[1, 1], aspect = ar)
     p = [Polygon( Point2f0[ (mesh.xv[mesh.e2v[i,j]], mesh.yv[mesh.e2v[i,j]]) for j=1:mesh.nf_el] ) for i in 1:mesh.nel]
     poly!(p, color = v, colormap = cmap, strokewidth = 0, strokecolor = :black, markerstrokewidth = 0, markerstrokecolor = (0, 0, 0, 0), aspect_ratio=:image, colorrange=(min_v,max_v)) #, xlims=(0.0,1.0) marche pas
