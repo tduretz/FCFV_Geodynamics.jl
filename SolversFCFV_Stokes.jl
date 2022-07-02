@@ -1,42 +1,52 @@
-import Statistics
+import Statistics:mean
 using AlgebraicMultigrid
 import IterativeSolvers
 using SuiteSparse
 
-function StokesSolvers(mesh, Kuu, Kup, fu, fp, M, solver)
+function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, fu, fp, M, solver)
+
+    @printf("Start solver %d\n", solver)
+    nVx = Int64(length(fu)/2)
+    nVy = length(fu)
+    nV  = length(fu)
+    nP  = length(fp)
+    @printf("ndof = %d\n", nV+nP)
+    
     if solver==0
         # Coupled solve
-        zero_p = spdiagm(mesh.nel, mesh.nel) 
+        zero_p = spdiagm(nP, nP) 
         K      = [Kuu Kup; -Kup' zero_p]
         f      = [fu; fp]
-        # xh     = lu(K)\f
-        xh      = K\f
-        Vxh    = xh[1:mesh.nf]
-        Vyh    = xh[mesh.nf+1:2*mesh.nf]
-        Pe     = xh[2*mesh.nf+1:end] 
-        Pe     = Pe .- Statistics.mean(Pe)
-    elseif solver==1
+        xh     = K\f
+        Vxh   .= xh[1:nVx]
+        Vyh   .= xh[nVx+1:nVy]
+        Pe    .= xh[nVy+1:end] 
+        Pe    .= Pe .- mean(Pe)
+    elseif solver==1 || solver==-1
         # Decoupled solve
-        coef  = 1e4.*mesh.ke./mesh.Ω#*ones(mesh.nel)
-        # file = matopen(string(@__DIR__,"/results/matrix_ppi.mat"), "w" )
-        # write(file, "coef",    coef )
-        # close(file)
+        coef  = zeros(mesh.nel*mesh.npel)
+        for i=1:mesh.npel
+            coef[(i-1)*mesh.nel+1:i*mesh.nel] .= 1e4.*mesh.ke./mesh.Ω
+        end
         Kppi  = spdiagm(coef)
         Kpu   = -Kup'
         Kuusc = Kuu .- Kup*(Kppi*Kpu)
         # PC    = Kuu .- diag(Kuu) .+ diag(M)
-
         # PC    =  0.5*(M .+ M') 
         # Kuusc1 = PC .- Kup*(Kppi*Kpu)
         # PC     =  0.5*(Kuusc1 .+ Kuusc1') 
-        # t = @elapsed Kf    = cholesky(Hermitian(PC),check = false)
-        t = @elapsed Kf    = lu(Kuusc)
-        # @printf("Cholesky took = %02.2e s\n", t)
-        u     = zeros(2*mesh.nf,1)
-        ru    = zeros(2*mesh.nf, 1)
-        fusc  = zeros(2*mesh.nf,1)
-        p     = zeros(mesh.nel, 1)
-        rp    = zeros(mesh.nel, 1)
+        if solver==-1 
+            t = @elapsed Kf    = cholesky(Hermitian(Kuusc),check = false)
+            @printf("Cholesky took = %02.2e s\n", t)
+        else
+            t = @elapsed Kf    = lu(Kuusc)
+            @printf("LU took = %02.2e s\n", t)
+        end
+        u     = zeros(length(fu), 1)
+        ru    = zeros(length(fu), 1)
+        fusc  = zeros(length(fu), 1)
+        p     = zeros(length(fp), 1)
+        rp    = zeros(length(fp), 1)
         # Iterations
         for rit=1:20
             ru   .= fu .- Kuu*u .- Kup*p;
@@ -49,20 +59,18 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, M, solver)
             end
             fusc .= fu  .- Kup*(Kppi*fp .+ p)
             u    .= Kf\fusc
-            # u    .= Kuusc\fusc
-            # KSP_GCR_StokesFCFV!( u, Kuusc, fusc, 1e-10, 2, Kxxf, f, v, s, val, VV, SS, restart  )
             p   .+= Kppi*(fp .- Kpu*u)
         end
         # Post-process solve
-        Vxh = u[1:mesh.nf]
-        Vyh = u[mesh.nf+1:2*mesh.nf]
-        Pe  = p[:]
+        Vxh .= u[1:nVx]
+        Vyh .= u[nVx+1:nVy]
+        Pe  .= p[:]
     elseif solver==2
         # Decoupled solve
-        coef  = 1e3.*mesh.ke./mesh.vole#*ones(mesh.nel)
-        # file = matopen(string(@__DIR__,"/results/matrix_ppi.mat"), "w" )
-        # write(file, "coef",    coef )
-        # close(file)
+        coef  = zeros(mesh.nel*mesh.npel)
+        for i=1:mesh.npel
+            coef[(i-1)*mesh.nel+1:i*mesh.nel] .= 1e4.*mesh.ke./mesh.Ω
+        end       
         Kppi  = spdiagm(coef)
         Kpu   = -Kup'
         Kuusc = Kuu - Kup*(Kppi*Kpu)
@@ -72,11 +80,11 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, M, solver)
         @time ml = smoothed_aggregation(PC) #pas mal
         @time pc = aspreconditioner(ml)
         # @printf("Cholesky took = %02.2e s\n", t)
-        u     = zeros(2*mesh.nf, 1)
-        ru    = zeros(2*mesh.nf, 1)
-        fusc  = zeros(2*mesh.nf, 1)
-        p     = zeros( mesh.nel,  1)
-        rp    = zeros( mesh.nel,  1)
+        u     = zeros(length(fu), 1)
+        ru    = zeros(length(fu), 1)
+        fusc  = zeros(length(fu), 1)
+        p     = zeros(length(fp), 1)
+        rp    = zeros(length(fp), 1)
         # Iterations
         for rit=1:20
             ru   .= fu .- Kuu*u .- Kup*p
@@ -93,12 +101,15 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, M, solver)
             p   .+= Kppi*(fp - Kpu*u)
         end
         # Post-process solve
-        Vxh = u[1:mesh.nf]
-        Vyh = u[mesh.nf+1:2*mesh.nf]
-        Pe  = p[:]
+        Vxh .= u[1:nVx]
+        Vyh .= u[nVx+1:nV]
+        Pe  .= p[:]
     elseif solver==3
         # Decoupled solve
-        coef  = 1e3.*mesh.ke./mesh.Ω#*ones(mesh.nel)
+        coef  = zeros(mesh.nel*mesh.npel)
+        for i=1:mesh.npel
+            coef[(i-1)*mesh.nel+1:i*mesh.nel] .= 1e4.*mesh.ke./mesh.Ω
+        end
         Kppi  = spdiagm(coef)
         Kpu   = .- Kup'
         Kuusc = Kuu .- Kup*(Kppi*Kpu)
@@ -107,19 +118,19 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, M, solver)
         Kxx   = M[1:ndofx,1:ndofx]
         t = @elapsed Kxxf  = cholesky(Hermitian(Kxx),check = false)
         @printf("Cholesky took = %02.2e s\n", t)
-        u     = zeros(Float64, 2*mesh.nf)
-        ru    = zeros(Float64, 2*mesh.nf)
-        fusc  = zeros(Float64, 2*mesh.nf)
-        p     = zeros(Float64, mesh.nel)
-        rp    = zeros(Float64, mesh.nel)
+        u     = zeros(length(fu), 1)
+        ru    = zeros(length(fu), 1)
+        fusc  = zeros(length(fu), 1)
+        p     = zeros(length(fp), 1)
+        rp    = zeros(length(fp), 1)
         ######################################
         restart = 30
-        f      = zeros(Float64, 2*mesh.nf)
-        v      = zeros(Float64, 2*mesh.nf)
-        s      = zeros(Float64, 2*mesh.nf)
+        f      = zeros(Float64, length(fu))
+        v      = zeros(Float64, length(fu))
+        s      = zeros(Float64, length(fu))
         val    = zeros(Float64, restart)
-        VV     = zeros(Float64, (2*mesh.nf, restart) )  # !!!!!!!!!! allocate in the right sense :D
-        SS     = zeros(Float64, (2*mesh.nf, restart) )
+        VV     = zeros(Float64, (length(fu), restart) )  # !!!!!!!!!! allocate in the right sense :D
+        SS     = zeros(Float64, (length(fu), restart) )
         ######################################
         # Iterations
         for rit=1:20
@@ -136,11 +147,10 @@ function StokesSolvers(mesh, Kuu, Kup, fu, fp, M, solver)
             p   .+= Kppi*(fp .- Kpu*u)
         end
         # Post-process solve
-        Vxh = u[1:mesh.nf]
-        Vyh = u[mesh.nf+1:2*mesh.nf]
-        Pe  = p[:]
+        Vxh .= u[1:nVx]
+        Vyh .= u[nVx+1:nV]
+        Pe  .= p[:]
     end
-    return Vxh, Vyh, Pe
 end
 
 #--------------------------------------------------------------------#

@@ -172,7 +172,8 @@ function SparseAssembly( K_all, Q_all, Mi_all, b_all, mesh, Vx, Vy, P )
     println("Assembly")
     ndof = mesh.nn*2
     npel = mesh.npel
-    rhs  = zeros(ndof+mesh.np)
+    bu   = zeros(ndof)
+    bp   = zeros(mesh.np)
     I_K  = Int64[]
     J_K  = Int64[]
     V_K  = Float64[]
@@ -239,17 +240,16 @@ function SparseAssembly( K_all, Q_all, Mi_all, b_all, mesh, Vx, Vy, P )
                          push!(I_K, nodesVx[j]); push!(J_K, nodesVx[i]); push!(V_K, K_all[e,jj,  ii  ])
                          push!(I_K, nodesVx[j]); push!(J_K, nodesVy[i]); push!(V_K, K_all[e,jj,  ii+1])
                      else
-                         rhs[nodesVx[j]] -= K_all[e,jj  ,ii  ]*Vx[nodes[i]]
-                         rhs[nodesVx[j]] -= K_all[e,jj  ,ii+1]*Vy[nodes[i]]
+                         bu[nodesVx[j]] -= K_all[e,jj  ,ii  ]*Vx[nodes[i]]
+                         bu[nodesVx[j]] -= K_all[e,jj  ,ii+1]*Vy[nodes[i]]
                      end
                      ii+=2
                  end
-                 rhs[nodesVx[j]] += b_all[e,jj]
-                #  rhs[nodesVy[j]] += b_all[e,jj+1]
+                 bu[nodesVx[j]] += b_all[e,jj]
              else
                  # Deal with Dirichlet: set one on diagonal and value and RHS
                  push!(I_K, nodesVx[j]); push!(J_K, nodesVx[j]); push!(V_K, 1.0)
-                 rhs[nodesVx[j]] += Vx[nodes[j]]
+                 bu[nodesVx[j]] += Vx[nodes[j]]
              end
 
             if bcyj!=1
@@ -260,176 +260,26 @@ function SparseAssembly( K_all, Q_all, Mi_all, b_all, mesh, Vx, Vy, P )
                          push!(I_K, nodesVy[j]); push!(J_K, nodesVx[i]); push!(V_K, K_all[e,jj+1,ii  ])
                          push!(I_K, nodesVy[j]); push!(J_K, nodesVy[i]); push!(V_K, K_all[e,jj+1,ii+1])
                      else
-                         rhs[nodesVy[j]] -= K_all[e,jj+1,ii  ]*Vx[nodes[i]]
-                         rhs[nodesVy[j]] -= K_all[e,jj+1,ii+1]*Vy[nodes[i]]
+                         bu[nodesVy[j]] -= K_all[e,jj+1,ii  ]*Vx[nodes[i]]
+                         bu[nodesVy[j]] -= K_all[e,jj+1,ii+1]*Vy[nodes[i]]
                      end
                      ii+=2
                  end
-                 rhs[nodesVy[j]] += b_all[e,jj+1]
+                 bu[nodesVy[j]] += b_all[e,jj+1]
              else
                  # Deal with Dirichlet: set one on diagonal and value and RHS
                  push!(I_K, nodesVy[j]); push!(J_K, nodesVy[j]); push!(V_K, 1.0)
-                 rhs[nodesVy[j]] += Vy[nodes[j]]
+                 bu[nodesVy[j]] += Vy[nodes[j]]
              end
-
             jj+=2
         end 
     end
-
-    # println(minimum(mesh.bcn))
-    # println(maximum(mesh.bcn))
-
-    # # Assembly of global sparse matrix
-    # @inbounds for e=1:mesh.nel
-    #     nodes   = mesh.e2n[e,:]
-    #     nodesVx = mesh.e2n[e,:]
-    #     nodesVy = nodesVx .+ mesh.nn 
-    #     nodesP  = mesh.e2p[e,:]
-    #     jj = 1
-    #     for j=1:mesh.nnel
-
-            # bc = mesh.bcn[nodes[j]]==0
-            # if bc==0 || bc==2 
-            #     bcxj = 0
-            #     bcyj = 0
-            # end
-            # if bc==1 
-            #     bcxj = 1
-            #     bcyj = 1
-            # end
-            # if bc==3 
-            #     bcxj = 1
-            #     bcyj = 0
-            # end
-            # if bc==4 
-            #     bcxj = 0
-            #     bcyj = 1
-            # end
-
-    #         # Q: ∇ operator: BC for V equations
-    #         for i=1:npel
-    #             if (bcxj==0)
-    #                 push!(I_Q, nodesVx[j]); push!(J_Q, nodesP[i]); push!(V_Q, Q_all[e,jj  ,i])
-    #             end
-    #             if (bcyj==0)
-    #                 push!(I_Q, nodesVy[j]); push!(J_Q, nodesP[i]); push!(V_Q, Q_all[e,jj+1,i])
-    #             end
-    #         end
-
-    #         # Qt: ∇⋅ operator: no BC for P 
-    #         # if mesh.bcn[nodes[j]] != 1
-    #         for i=1:npel
-    #             push!(J_Qt, nodesVx[j]); push!(I_Qt, nodesP[i]); push!(V_Qt, Q_all[e,jj  ,i])
-    #             push!(J_Qt, nodesVy[j]); push!(I_Qt, nodesP[i]); push!(V_Qt, Q_all[e,jj+1,i])
-    #         end
-    #         # end
-
-    #         # if (bcj == 0 || bcj == 2 || bcj == 3 || bcj == 4)
-    #         if bcxj ==0
-    #             # If not Dirichlet, add connection
-    #             ii = 1
-    #             for i=1:mesh.nnel
-                    
-    #                 bc = mesh.bcn[nodes[i]]
-    #                 if bc==0 || bc==2 
-    #                     bcxi = 0
-    #                     bcyi = 0
-    #                 end
-    #                 if bc==1 
-    #                     bcxi = 1
-    #                     bcyi = 1
-    #                 end
-    #                 if bc==3 
-    #                     bcxi = 1
-    #                     bcyi = 0
-    #                 end
-    #                 if bc==4 
-    #                     bcxi = 0
-    #                     bcyi = 1
-    #                 end
-    #                 if bcxi==0 
-    #                     push!(I_K, nodesVx[j]); push!(J_K, nodesVx[i]); push!(V_K, K_all[e,jj,  ii  ])
-    #                 else
-    #                     rhs[nodesVx[j]] -= K_all[e,jj  ,ii  ]*Vx[nodes[i]]
-    #                 end
-    #                 if bcyi==0
-    #                     push!(I_K, nodesVx[j]); push!(J_K, nodesVy[i]); push!(V_K, K_all[e,jj,  ii+1])
-    #                 else
-    #                     rhs[nodesVx[j]] -= K_all[e,jj  ,ii+1]*Vy[nodes[i]]
-    #                 end
-    #                 ii+=2
-    #             end
-    #             rhs[nodesVx[j]] += b_all[e,jj]
-    #         else
-    #             # Deal with Dirichlet: set one on diagonal and value and RHS
-    #             push!(I_K, nodesVx[j]); push!(J_K, nodesVx[j]); push!(V_K, 1.0) 
-    #             rhs[nodesVx[j]] += Vx[nodes[j]]
-    #         end
-    #         if bcyj ==0
-    #             # If not Dirichlet, add connection
-    #             ii = 1
-    #             for i=1:mesh.nnel
-                    
-    #                 bc = mesh.bcn[nodes[i]]==0
-    #                 if bc==0 || bc==2 
-    #                     bcxi = 0
-    #                     bcyi = 0
-    #                 end
-    #                 if bc==1 
-    #                     bcxi = 1
-    #                     bcyi = 1
-    #                 end
-    #                 if bc==3 
-    #                     bcxi = 1
-    #                     bcyi = 0
-    #                 end
-    #                 if bc==4 
-    #                     bcxi = 0
-    #                     bcyi = 1
-    #                 end
-    #                 if bcxi==0 
-    #                     push!(I_K, nodesVy[j]); push!(J_K, nodesVx[i]); push!(V_K, K_all[e,jj+1,ii  ])
-    #                 else
-    #                     rhs[nodesVy[j]] -= K_all[e,jj+1,ii  ]*Vx[nodes[i]]
-    #                 end
-    #                 if bcyi==0
-    #                     push!(I_K, nodesVx[j]); push!(J_K, nodesVy[i]); push!(V_K, K_all[e,jj+1,  ii+1])
-    #                 else
-    #                     rhs[nodesVy[j]] -= K_all[e,jj+1,ii+1]*Vy[nodes[i]]
-    #                 end
-    #                 ii+=2
-    #             end
-    #             rhs[nodesVy[j]] += b_all[e,jj+1]
-    #         else
-    #             # Deal with Dirichlet: set one on diagonal and value and RHS
-    #             push!(I_K, nodesVy[j]); push!(J_K, nodesVy[j]); push!(V_K, 1.0)
-    #             rhs[nodesVy[j]] += Vy[nodes[j]] 
-    #         end
-    #         jj+=2
-    #     end 
-    # end
     K  = sparse(I_K,  J_K,  V_K, ndof, ndof)
     Q  = sparse(I_Q,  J_Q,  V_Q, ndof, mesh.np)
     Qt = sparse(I_Qt, J_Qt, V_Qt, mesh.np, ndof)
     M0 = sparse(I_M,  J_M,  V_M, mesh.np, mesh.np)
     M  = [K Q; Qt M0]
-    return M, rhs, K, Q, Qt, M0
-end
-
-#----------------------------------------------------------#
-
-function DirectSolveFEM!( M, K, Q, Qt, M0, rhs, Vx, Vy, P, mesh, b)
-    println("Direct solve")
-    ndof       = mesh.nn*2
-    sol        = zeros(ndof+mesh.np)
-    # M[end,:]  .= 0.0 # add one Dirichlet constraint on pressure
-    # M[end,end] = 1.0
-    # rhs[end]   = 0.0
-    sol       .= M\rhs
-    Vx        .= sol[1:length(Vx)] 
-    Vy        .= sol[(length(Vx)+1):(length(Vx)+length(Vy))]
-    P         .= sol[(ndof+1):end]
-    return nothing
+    return M, bu, bp, K, Q, Qt, M0
 end
 
 #----------------------------------------------------------#

@@ -13,6 +13,7 @@ using MAT
 include("FunctionsFEM.jl")
 include("../CreateMeshFCFV.jl")
 include("../VisuFCFV.jl")
+include("../SolversFCFV_Stokes.jl")
 # include("../EvalAnalDani.jl")
 include("IntegrationPoints.jl")
 
@@ -97,6 +98,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     inclusion  = 0
     εBG        = 1.0
     η          = [1.0 5.0]  
+    solver     = -1
     
     # Element data
     ipx, ipw  = IntegrationTriangle(nip)
@@ -105,14 +107,13 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     # Generate mesh
     mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, 0.0, inclusion, R; nnel, npel ) 
     println("Number of elements: ", mesh.nel)
-    println("Number of vertices: ", mesh.nn)
+    println("Number of nodes:    ", mesh.nn)
     println("Number of p nodes:  ", mesh.np)
 
-    Vx  = zeros(mesh.nn)       # Solution on nodes 
-    Vy  = zeros(mesh.nn)       # Solution on nodes 
-    P   = zeros(mesh.np)       # Solution on either elements or nodes 
-    se  = zeros(mesh.nel,2)    # Source on elements 
-
+    Vx   = zeros(mesh.nn)       # Solution on nodes 
+    Vy   = zeros(mesh.nn)       # Solution on nodes 
+    P    = zeros(mesh.np)       # Solution on either elements or nodes 
+    se   = zeros(mesh.nel,2)    # Source on elements 
     Pa   = zeros(mesh.nel)      # Solution on elements 
     Sxxa = zeros(mesh.nel)      # Solution on elements 
 
@@ -138,65 +139,66 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
 
     #-----------------------------------------------------------------#
     @time  K_all, Q_all, Mi_all, b_all = ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX )
-    #-----------------------------------------------------------------#
-    
-    if USE_DIRECT
-        @time M, b, K, Q, Qt, M0 = SparseAssembly( K_all, Q_all, Mi_all, b_all, mesh, Vx, Vy, P )
-        @time DirectSolveFEM!( M, K, Q, Qt, M0, b, Vx, Vy, P, mesh, b )
-    else
-        nout    = 1000#1e1
-        iterMax = 3e4
-        ϵ_PT    = 1e-7
-        # θ       = 0.11428 *1.7
-        # Δτ      = 0.28 /1.2
-        ΔVxΔτ = zeros(mesh.nn)
-        ΔVyΔτ = zeros(mesh.nn)
-        ΔVxΔτ0= zeros(mesh.nn)
-        ΔVyΔτ0= zeros(mesh.nn)
-        ΔPΔτ  = zeros(mesh.np)
 
-        # PT loop
-        local iter = 0
-        success = 0
-        @time while (iter<iterMax)
-            iter  += 1
-            ΔVxΔτ0 .= ΔVxΔτ 
-            ΔVyΔτ0 .= ΔVyΔτ
-            if USE_NODAL
-                ResidualStokesNodalFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b_all )
-            else
-                ResidualStokesElementalSerialFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b_all )
-            end
-            ΔVxΔτ  .= (1.0 - θ).*ΔVxΔτ0 .+ ΔVxΔτ 
-            ΔVyΔτ  .= (1.0 - θ).*ΔVyΔτ0 .+ ΔVyΔτ
-            Vx    .+= ΔτV .* ΔVxΔτ
-            Vy    .+= ΔτV .* ΔVyΔτ
-            P     .+= ΔτP .* ΔPΔτ
-            if iter % nout == 0 || iter==1
-                errVx = norm(ΔVxΔτ)/sqrt(length(ΔVxΔτ))
-                errVy = norm(ΔVyΔτ)/sqrt(length(ΔVyΔτ))
-                errP  = norm(ΔPΔτ) /sqrt(length(ΔPΔτ))
-                @printf("PT Iter. %05d:\n", iter)
-                @printf("  ||Fx|| = %3.3e\n", errVx)
-                @printf("  ||Fy|| = %3.3e\n", errVy)
-                @printf("  ||Fp|| = %3.3e\n", errP )
-                err = max(errVx, errVy, errP)
-                if err < ϵ_PT
-                    print("PT solve converged in ")
-                    success = true
-                    break
-                elseif err>1e4
-                    success = false
-                    println("exploding !")
-                    break
-                elseif isnan(err)
-                    success = false
-                    println("NaN !")
-                    break
-                end
-            end
-        end
-    end
+    #-----------------------------------------------------------------#
+    @time M, bu, bp, Kuu, Kup, Kpu, M = SparseAssembly( K_all, Q_all, Mi_all, b_all, mesh, Vx, Vy, P )
+    
+    #-----------------------------------------------------------------#
+    @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, M, solver)
+
+    #     nout    = 1000#1e1
+    #     iterMax = 3e4
+    #     ϵ_PT    = 1e-7
+    #     # θ       = 0.11428 *1.7
+    #     # Δτ      = 0.28 /1.2
+    #     ΔVxΔτ = zeros(mesh.nn)
+    #     ΔVyΔτ = zeros(mesh.nn)
+    #     ΔVxΔτ0= zeros(mesh.nn)
+    #     ΔVyΔτ0= zeros(mesh.nn)
+    #     ΔPΔτ  = zeros(mesh.np)
+
+    #     # PT loop
+    #     local iter = 0
+    #     success = 0
+    #     @time while (iter<iterMax)
+    #         iter  += 1
+    #         ΔVxΔτ0 .= ΔVxΔτ 
+    #         ΔVyΔτ0 .= ΔVyΔτ
+    #         if USE_NODAL
+    #             ResidualStokesNodalFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b_all )
+    #         else
+    #             ResidualStokesElementalSerialFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b_all )
+    #         end
+    #         ΔVxΔτ  .= (1.0 - θ).*ΔVxΔτ0 .+ ΔVxΔτ 
+    #         ΔVyΔτ  .= (1.0 - θ).*ΔVyΔτ0 .+ ΔVyΔτ
+    #         Vx    .+= ΔτV .* ΔVxΔτ
+    #         Vy    .+= ΔτV .* ΔVyΔτ
+    #         P     .+= ΔτP .* ΔPΔτ
+    #         if iter % nout == 0 || iter==1
+    #             errVx = norm(ΔVxΔτ)/sqrt(length(ΔVxΔτ))
+    #             errVy = norm(ΔVyΔτ)/sqrt(length(ΔVyΔτ))
+    #             errP  = norm(ΔPΔτ) /sqrt(length(ΔPΔτ))
+    #             @printf("PT Iter. %05d:\n", iter)
+    #             @printf("  ||Fx|| = %3.3e\n", errVx)
+    #             @printf("  ||Fy|| = %3.3e\n", errVy)
+    #             @printf("  ||Fp|| = %3.3e\n", errP )
+    #             err = max(errVx, errVy, errP)
+    #             if err < ϵ_PT
+    #                 print("PT solve converged in ")
+    #                 success = true
+    #                 break
+    #             elseif err>1e4
+    #                 success = false
+    #                 println("exploding !")
+    #                 break
+    #             elseif isnan(err)
+    #                 success = false
+    #                 println("NaN !")
+    #                 break
+    #             end
+    #         end
+    #     end
+    # end
 
     #-----------------------------------------------------------------#
     # Compute strain rate and stress
@@ -207,7 +209,6 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     τyy = zeros(mesh.nel, nip)
     τxy = zeros(mesh.nel, nip)
     ∇v  = zeros(mesh.nel, nip) 
-
     ComputeStressFEM!( ∇v, εxx, εyy, εxy, τxx, τyy, τxy, Vx, Vy, mesh, ipx, ipw, N, dNdX ) 
 
     #-----------------------------------------------------------------#
@@ -237,18 +238,13 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     @printf("min P  %2.2e --- min. P  %2.2e\n", minimum(P),  maximum(P) )
     @printf("min ∇v %2.2e --- min. ∇v %2.2e\n", minimum(∇v), maximum(∇v))
 
-    #-----------------------------------------------------------------#
+    # #-----------------------------------------------------------------#
     if USE_MAKIE
         # PlotMakie(mesh, Ve, xmin, xmax, ymin, ymax; cmap=:jet1)
-        PlotMakie(mesh, Sxxe, xmin, xmax, ymin, ymax; cmap=:jet1)
+        PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1)
     else
         PlotPyPlot(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1 )
     end
 end
 
-# main(1, 7, 1, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
-# main(2, 7, 1, 6, 0.030598470000000003/2, 0.03666666667,  1.0) # nit = 9000
-main(1, 7, 3, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
-
-
-
+main(7, 7, 3, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
