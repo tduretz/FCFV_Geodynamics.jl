@@ -91,7 +91,7 @@ end
 
 #----------------------------------------------------------#
 
-function ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX ) # Adapted from MILAMIN_1.0.1
+function ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # Adapted from MILAMIN_1.0.1
     ndof         = 2*mesh.nnel
     nnel         = mesh.nnel
     npel         = mesh.npel
@@ -100,67 +100,81 @@ function ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX ) # Adapted from MI
     Q_all        = zeros(mesh.nel, ndof, npel)
     Mi_all       = zeros(mesh.nel, npel, npel)
     b_all        = zeros(mesh.nel, ndof )
-    K_ele        =  zeros(ndof, ndof)
-    Q_ele        =  zeros(ndof, npel)
-    M_ele        =  zeros(npel ,npel)
-    M_inv        =  zeros(npel ,npel)
-    b_ele        =  zeros(ndof)
-    B            =  zeros(ndof, 3)
+    K_ele        = zeros(ndof, ndof)
+    K_ele_bc     = zeros(ndof, ndof)
+    Q_ele        = zeros(ndof, npel)
+    Q_ele_bc     = zeros(ndof, npel)
+    M_ele        = zeros(npel ,npel)
+    M_inv        = zeros(npel ,npel)
+    b_ele        = zeros(ndof)
+    B            = zeros(ndof, 3)
+    Bvol         = zeros(ndof)
+    x            = zeros(mesh.nnel, 2)
     m            =  [ 1.0; 1.0; 0.0]
     Dev          =  [ 4/3 -2/3  0.0;
                      -2/3  4/3  0.0;
                       0.0  0.0  1.0]
-    P  = ones(npel,npel)
-    Pb = ones(npel)
-    Np0, dNdXp   = ShapeFunctions(ipx, nip, 3)
+    J            = zeros(2,2)
+    invJ         = zeros(2,2)
+    P            = ones(npel,npel)
+    Pb           = ones(npel)
+    dNdx         = zeros(nnel, 2)
+    Pi           = zeros(npel)
+    nodes        = zeros(Int64,nnel)
+    bc           = zeros(Int64,ndof)
+    bcv          = zeros(ndof)
+    bcp          = ones(npel)
+    bc_dir       = zeros(ndof)
     # Element loop
     @inbounds for e = 1:mesh.nel
-        nodes   = mesh.e2n[e,:]
-        x       = [mesh.xn[nodes] mesh.yn[nodes]]  
-        ke      = mesh.ke[e]
-        J       = zeros(2,2)
-        invJ    = zeros(2,2)
+        nodes  .= mesh.e2n[e,:]
+        x      .= [mesh.xn[nodes] mesh.yn[nodes]]  
         K_ele  .= 0.0
         Q_ele  .= 0.0
         M_ele  .= 0.0
         b_ele  .= 0.0
         M_inv  .= 0.0
         if npel==3 && nnel!=4 P[2:3,:] .= (x[1:3,:])' end
-
+        # Deal with BC's
+        bc[1:2:end]     .= mesh.bcn[nodes]
+        bc[2:2:end]     .= mesh.bcn[nodes]
+        bcv             .= 1.0
+        bcv[bc.==1]     .= 0.0 
+        K_ele_bc        .= bcv*bcv'
+        Q_ele_bc        .= bcv*bcp'
+        bc_dir[1:2:end] .= Vx[nodes]
+        bc_dir[2:2:end] .= Vy[nodes]
         # Integration loop
         for ip=1:nip
-
-            dNdXi     = dNdX[ip,:,:]
-            J        .= x'*dNdXi
+            J        .= x'*dNdX[ip,:,:]
             detJ      = J[1,1]*J[2,2] - J[1,2]*J[2,1]
+            w         = ipw[ip] * detJ
             invJ[1,1] = +J[2,2] / detJ
             invJ[1,2] = -J[1,2] / detJ
             invJ[2,1] = -J[2,1] / detJ
             invJ[2,2] = +J[1,1] / detJ
-            dNdx      = dNdXi*invJ
-            B[1:2:end,1] .= dNdx[:,1]
-            B[2:2:end,2] .= dNdx[:,2]
-            B[1:2:end,3] .= dNdx[:,2]
-            B[2:2:end,3] .= dNdx[:,1]
-            Bvol          = dNdx'
-            K_ele .+= ipw[ip] .* detJ .* ke  .* (B*Dev*B')
-            if npel==3 && nnel!=4 
-                Np       = N[ip,:,1]
-                Pb[2:3] .= x'*Np 
-                Pi       = P\Pb
-                Q_ele   .-= ipw[ip] .* detJ .* (Bvol[:]*Pi') 
+            dNdx     .= dNdX[ip,:,:]*invJ
+            B[1:2:end,1]  .= dNdx[:,1]
+            B[2:2:end,2]  .= dNdx[:,2]
+            B[1:2:end,3]  .= dNdx[:,2]
+            B[2:2:end,3]  .= dNdx[:,1]
+            Bvol[1:2:end] .= dNdx[:,1]
+            Bvol[2:2:end] .= dNdx[:,2]
+            K_ele        .+= w .* mesh.ke[e]  .* (B*Dev*B')
+            if npel==3
+                Pb[2:3]  .= x'*N[ip,:,1]
+                Pi       .= P\Pb
+                Q_ele   .-= w .* (Bvol*Pi') 
                 # M_ele   .+= ipw[ip] .* detJ .* Pi*Pi' # mass matrix P, not needed for incompressible
-            else
-                if npel==1 Np = 1.0        end
-                if npel==3 Np = Np0[ip,:,:] end
-                Q_ele   .-= ipw[ip] .* detJ .* (B*m*Np') 
+            elseif npel==1  
+                Q_ele   .-= w .* (B*m*1.0') 
             end
-            b_ele[1:2:end] .+= ipw[ip] .* detJ .* se[e,1] .* N[ip,:] 
-            b_ele[2:2:end] .+= ipw[ip] .* detJ .* se[e,2] .* N[ip,:]
+            b_ele[1:2:end] .+= w .* se[e,1] .* N[ip,:] 
+            b_ele[2:2:end] .+= w .* se[e,2] .* N[ip,:]
         end
-        K_all[e,:,:]  .= K_ele
-        Q_all[e,:,:]  .= Q_ele
-        b_all[e,:]    .= b_ele
+        K_all[e,:,:]  .= K_ele_bc.*K_ele
+        Q_all[e,:,:]  .= Q_ele_bc.*Q_ele
+        b_all[e,:]    .= bcv.*b_ele .+ (1.0.-bcv).*bc_dir
     end
     return K_all, Q_all, Mi_all, b_all
 end 
