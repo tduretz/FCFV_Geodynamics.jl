@@ -5,10 +5,10 @@ const USE_PARALLEL = false  # Parallel residual evaluation
 const USE_MAKIE    = true   # Visualisation 
 import Plots
 
-using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT, StaticArrays
+using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT#, StaticArrays
 import Base.Threads: @threads, @sync, @spawn, nthreads, threadid
 import Statistics: mean
-using MAT, BenchmarkTools
+using MAT#, BenchmarkTools
 
 include("FunctionsFEM.jl")
 include("../CreateMeshFCFV.jl")
@@ -16,60 +16,6 @@ include("../VisuFCFV.jl")
 include("../SolversFCFV_Stokes.jl")
 # include("../EvalAnalDani.jl")
 include("IntegrationPoints.jl")
-
-#----------------------------------------------------------#
-
-function ComputeStressFEM!( εkk, εxx, εyy, εxy, τxx, τyy, τxy, Vx, Vy, mesh, ipx, ipw, N, dNdX ) 
-    ndof         = 2*mesh.nnel
-    nnel         = mesh.nnel
-    npel         = mesh.npel
-    nip          = length(ipw)
-    ε            = zeros(3)
-    τ            = zeros(3)
-    m            =  [ 1.0; 1.0; 0.0]
-    Dev          =  [ 4/3 -2/3  0.0;
-                     -2/3  4/3  0.0;
-                      0.0  0.0  1.0]
-    P  = ones(npel,npel)
-    Pb = ones(npel)
-    Np0, dNdXp   = ShapeFunctions(ipx, nip, 3)
-    # Element loop
-    @inbounds for e = 1:mesh.nel
-        nodes   = mesh.e2n[e,:]
-        x       = [mesh.xn[nodes] mesh.yn[nodes]]  
-        ke      = mesh.ke[e]
-        J       = zeros(2,2)
-        invJ    = zeros(2,2)
-        V_ele   = zeros(ndof)
-        B       = zeros(ndof, 3)
-    
-        if npel==3 && nnel!=4 P[2:3,:] .= (x[1:3,:])' end
-
-        # Integration loop
-        for ip=1:nip
-            dNdXi     = dNdX[ip,:,:]
-            J        .= x'*dNdXi
-            detJ      = J[1,1]*J[2,2] - J[1,2]*J[2,1]
-            invJ[1,1] = +J[2,2] / detJ
-            invJ[1,2] = -J[1,2] / detJ
-            invJ[2,1] = -J[2,1] / detJ
-            invJ[2,2] = +J[1,1] / detJ
-            dNdx      = dNdXi*invJ
-            B[1:2:end,1] .= dNdx[:,1]
-            B[2:2:end,2] .= dNdx[:,2]
-            B[1:2:end,3] .= dNdx[:,2]
-            B[2:2:end,3] .= dNdx[:,1]
-            V_ele[1:2:end-1] .= Vx[nodes]
-            V_ele[2:2:end]   .= Vy[nodes]
-            ε                .= B'*V_ele
-            τ                .= ke.*(Dev*ε)
-            εkk[e,ip] = ε[1] + ε[2]                                # divergence
-            εxx[e,ip], εyy[e,ip], εxy[e,ip] = ε[1], ε[2], ε[3]*0.5 # because of engineering convention
-            τxx[e,ip], τyy[e,ip], τxy[e,ip] = τ[1], τ[2], τ[3]
-        end
-    end
-    return nothing
-end 
 
 #----------------------------------------------------------#
 
@@ -113,7 +59,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     Vx   = zeros(mesh.nn)       # Solution on nodes 
     Vy   = zeros(mesh.nn)       # Solution on nodes 
     P    = zeros(mesh.np)       # Solution on either elements or nodes 
-    se   = zeros(mesh.nel,2)    # Source on elements 
+    se   = zeros(mesh.nel, 2)   # Source on elements 
     Pa   = zeros(mesh.nel)      # Solution on elements 
     Sxxa = zeros(mesh.nel)      # Solution on elements 
 
@@ -137,14 +83,11 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         se[e,2] = sy
     end
 
-
-    K_all, Q_all, Mi_all, b_all = ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
-    
-    # -----------------------------------------------------------------#
-    @time M, bu, bp, Kuu, Kup, Kpu, M = SparseAssembly( K_all, Q_all, Mi_all, b_all, mesh, Vx, Vy, P )
+    #-----------------------------------------------------------------#
+    @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
     
     #-----------------------------------------------------------------#
-    @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, M, solver)
+    @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, Kuu, solver)
 
     # #     nout    = 1000#1e1
     # #     iterMax = 3e4
@@ -247,4 +190,6 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     end
 end
 
-main(1, 7, 3, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
+for i=1:5
+    @time main(1, 7, 3, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
+end

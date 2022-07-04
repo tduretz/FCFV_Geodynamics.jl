@@ -3,7 +3,7 @@ using AlgebraicMultigrid
 import IterativeSolvers
 using SuiteSparse
 
-function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, fu, fp, M, solver)
+function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, fu, fp, M, solver; penalty=1e4, tol=1e-10)
 
     @printf("Start solver %d\n", solver)
     nVx = Int64(length(fu)/2)
@@ -26,7 +26,7 @@ function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, fu, fp, M, solver)
         # Decoupled solve
         coef  = zeros(mesh.nel*mesh.npel)
         for i=1:mesh.npel
-            coef[(i-1)*mesh.nel+1:i*mesh.nel] .= 1e4.*mesh.ke./mesh.Ω
+            coef[(i-1)*mesh.nel+1:i*mesh.nel] .= penalty.*mesh.ke./mesh.Ω
         end
         Kppi  = spdiagm(coef)
         Kpu   = -Kup'
@@ -54,7 +54,7 @@ function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, fu, fp, M, solver)
             nrmu = norm(ru)
             nrmp = norm(rp)
             @printf("  --> Powell-Hestenes Iteration %02d\n  Momentum res.   = %2.2e\n  Continuity res. = %2.2e\n", rit, nrmu/sqrt(length(ru)), nrmp/sqrt(length(rp)))
-            if nrmu/sqrt(length(ru)) < 1e-11 && nrmp/sqrt(length(ru)) < 1e-11
+            if nrmu/sqrt(length(ru)) < tol && nrmp/sqrt(length(ru)) < tol
                 break
             end
             fusc .= fu  .- Kup*(Kppi*fp .+ p)
@@ -90,7 +90,7 @@ function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, fu, fp, M, solver)
             ru   .= fu .- Kuu*u .- Kup*p
             rp   .= fp .- Kpu*u
             @printf("  --> Powell-Hestenes Iteration %02d\n  Momentum res.   = %2.2e\n  Continuity res. = %2.2e\n", rit, norm(ru)/sqrt(length(ru)), norm(rp)/sqrt(length(rp)))
-            if norm(ru)/sqrt(length(ru)) < 1e-12 && norm(rp)/sqrt(length(ru)) < 1e-12
+            if norm(ru)/sqrt(length(ru)) < tol && norm(rp)/sqrt(length(ru)) < tol
                 break
             end
             fusc .=  fu  - Kup*(Kppi*fp + p)
@@ -139,11 +139,11 @@ function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, fu, fp, M, solver)
             nrmu = sqrt(mydotavx( ru,ru ) )#norm(v)
             nrmp = sqrt(mydotavx( rp,rp ) )#norm(v)
             @printf("  --> Powell-Hestenes Iteration %02d\n  Momentum res.   = %2.2e\n  Continuity res. = %2.2e\n", rit, nrmu/sqrt(length(ru)), nrmp/sqrt(length(rp)))
-            if nrmu/sqrt(length(ru)) < 1e-10 && nrmp/sqrt(length(ru)) < 1e-10
+            if nrmu/sqrt(length(ru)) < tol && nrmp/sqrt(length(ru)) < tol
                 break
             end
             fusc .=  fu[:] .- Kup*(Kppi*fp .+ p)
-            @time KSP_GCR_StokesFCFV!( u, Kuusc, fusc, 1e-10, 2, Kxxf, f, v, s, val, VV, SS, restart  )
+            @time KSP_GCR_StokesFCFV!( u, Kuusc, fusc, tol, 2, Kxxf, f, v, s, val, VV, SS, restart  )
             p   .+= Kppi*(fp .- Kpu*u)
         end
         # Post-process solve
