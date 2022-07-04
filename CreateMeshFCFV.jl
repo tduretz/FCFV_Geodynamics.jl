@@ -184,7 +184,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
         X            = center_x .+ R*xx;
         Y            = center_y .+ R*yy;
         no_pts       = length(X);
-        st1          = 3*ones(1,no_pts);
+        st1          = -1*ones(1,no_pts);
         pts_u        = pts_u + no_pts;
         sx1          = collect(pts_l:pts_u)
         sy1          = collect(pts_l+1:pts_u+1)

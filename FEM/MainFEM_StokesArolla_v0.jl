@@ -47,8 +47,9 @@ end
 function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
 
     println("\n******** FEM STOKES ********")
-    g = [0 -9.81]
-    ρ = 917.0
+    g      = [0 -9.81]
+    ρ      = 917.0
+    solver = -1
 
     #-----------------------------------------------------------------#
     # Mesh generation from data file
@@ -67,7 +68,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     # tp[1:size(data,1)]     .= 1
     # tp[size(data,1)+2:end-1] .= 2
     # # Add sliding section
-    # tp[xp.>2200 .&& xp.<2500 .&& yp.<2700] .= 4
+    tp[xp.>2200 .&& xp.<2500 .&& yp.<2700] .= 4
     # # Check
     # p = Plots.scatter( xp[tp.==1]./1e3, yp[tp.==1]./1e3, markershape =:cross, label="Base")
     # p = Plots.scatter!( xp[tp.==2]./1e3, yp[tp.==2]./1e3, markershape =:cross, label="Surface")
@@ -106,11 +107,10 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     end
 
     #-----------------------------------------------------------------#
-    @time  K_all, Q_all, Mi_all, b_all = ElementAssemblyLoopFEM( se, mesh, ipx, ipw, N, dNdX )
-
+    @time K_all, Q_all, Mi_all, b, Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
+    
     #-----------------------------------------------------------------#
-    @time M, b, K, Q, Qt, M0 = SparseAssembly( K_all, Q_all, Mi_all, b_all, mesh, Vx, Vy, P )
-    @time DirectSolveFEM!( M, K, Q, Qt, M0, b, Vx, Vy, P, mesh, b )
+    @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, Kuu, solver; penalty=1e2)
     
     #-----------------------------------------------------------------#
     Vxe = zeros(mesh.nel)

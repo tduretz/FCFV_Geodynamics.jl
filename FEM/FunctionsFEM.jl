@@ -202,7 +202,7 @@ function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # A
         if npel==3 && nnel!=4 P[2:3,:] .= (x[1:3,:])' end
         # Deal with BC's
         bcx             .= mesh.bcn[nodes]
-        bcy             .= mesh.bcn[nodes]
+        bcy             .= mesh.bcn[nodes] 
         bcx[bcx.==3]    .= 1
         bcy[bcy.==4]    .= 1
         bc[1:2:end]     .= bcx
@@ -230,7 +230,7 @@ function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # A
         Q_all_j[e,:,:]  .= repeat(indP, 1, ndof)'
         bV_all_i[e,:]   .= indV
         bP_all_i[e,:]   .= indP
-        ke = mesh.ke[e]
+        ke               = mesh.ke[e]
         # Integration loop
         @inbounds for ip=1:nip
             J        .= x'*dNdX[ip,:,:]
@@ -259,9 +259,15 @@ function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # A
             b_ele[1:2:end] .+= w .* se[e,1] .* N[ip,:] 
             b_ele[2:2:end] .+= w .* se[e,2] .* N[ip,:]
         end
-        #                Kill Dirchlet connection  + set one on diagonal for Dirichlet
+        #                Kill Dirichlet connection  + set one on diagonal for Dirichlet
         K_all[e,:,:]  .= K_ele_bc.*K_ele          .+ spdiagm(1.0.-bcv)*1.0
         Q_all[e,:,:]  .= Q_ele_bc.*Q_ele
+        # K_all[e,:,:]  .= K_ele         # .+ spdiagm(1.0.-bcv)*1.0
+        # if e<30
+        #     display(mesh.bcn[nodes])
+        #     display(Q_ele_bc)
+        # end
+        # Q_all[e,:,:]  .= Q_ele
         #                Force term + Dirichlet contributions                  + Dirichlet nodes 
         bV_all[e,:]   .= bcv.*(b_ele .-  ((1.0.-K_ele_bc).*K_ele)*bc_dir    ) .+ (1.0.-bcv).*bc_dir
         #                Dirichlet contributions
@@ -273,7 +279,7 @@ function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # A
     Kup   =       dropzeros(sparse(Q_all_i[:], Q_all_j[:], Q_all[:], mesh.nn*2, mesh.np  ))
     fu    = Array(dropzeros(sparse(bV_all_i[:],  _oneV,    bV_all[:], mesh.nn*2,      1  )))
     fp    = Array(dropzeros(sparse(bP_all_i[:],  _oneP,    bP_all[:], mesh.np,        1  )))
-    return Kuu, Kup, fu, fp
+    return K_all, Q_all, Mi_all, bV_all, Kuu, Kup, fu, fp
 end 
 
 #----------------------------------------------------------#

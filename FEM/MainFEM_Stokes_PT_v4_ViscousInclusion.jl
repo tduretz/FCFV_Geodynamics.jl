@@ -16,196 +16,6 @@ include("../VisuFCFV.jl")
 include("../EvalAnalDani.jl")
 include("IntegrationPoints.jl")
 
-function ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX ) # Adapted from MILAMIN_1.0.1
-    ndof         = 2*mesh.nnel
-    npel         = mesh.npel
-    nip          = length(ipw)
-    K_all        = zeros(mesh.nel, ndof, ndof) 
-    Q_all        = zeros(mesh.nel, ndof, npel)
-    Mi_all       = zeros(mesh.nel, npel, npel)
-    b            = zeros(mesh.nel, ndof)
-    K_ele        = zeros(ndof, ndof)
-    Q_ele        = zeros(ndof, npel)
-    M_ele        = zeros(npel,npel)
-    M_inv        = zeros(npel,npel)
-    b_ele        = zeros(ndof)
-    B            = zeros(ndof,3)
-    m            = [ 1.0; 1.0; 0.0]
-    Dev          = [ 4/3 -2/3  0.0;
-                    -2/3  4/3  0.0;
-                     0.0  0.0  1.0]
-    P  = ones(npel,npel)
-    Pb = ones(npel)
-    PF = 1e3*maximum(mesh.ke)
-
-    # Element loop
-    @inbounds for e = 1:mesh.nel
-        nodes   = mesh.e2n[e,:]
-        x       = [mesh.xn[nodes] mesh.yn[nodes]]  
-        ke      = mesh.ke[e]
-        J       = zeros(2,2)
-        invJ    = zeros(2,2)
-        K_ele  .= 0.0
-        Q_ele  .= 0.0
-        M_ele  .= 0.0
-        b_ele  .= 0.0
-        M_inv  .= 0.0
-        if npel==3  P[2:3,:] .= (x[1:3,:])' end
-
-        # Integration loop
-        for ip=1:nip
-
-            if npel==3 
-                Ni       = N[ip,:,1]
-                Pb[2:3] .= x'*Ni 
-                Pi       = P\Pb
-            end
-
-            dNdXi     = dNdX[ip,:,:]
-            J        .= x'*dNdXi
-            detJ      = J[1,1]*J[2,2] - J[1,2]*J[2,1]
-            invJ[1,1] = +J[2,2] / detJ
-            invJ[1,2] = -J[1,2] / detJ
-            invJ[2,1] = -J[2,1] / detJ
-            invJ[2,2] = +J[1,1] / detJ
-            dNdx      = dNdXi*invJ
-            B[1:2:end,1] .= dNdx[:,1]
-            B[2:2:end,2] .= dNdx[:,2]
-            B[1:2:end,3] .= dNdx[:,2]
-            B[2:2:end,3] .= dNdx[:,1]
-            Bvol          = dNdx'
-            K_ele .+= ipw[ip] .* detJ .* ke  .* (B*Dev*B')
-            if npel==3 
-                Q_ele   .-= ipw[ip] .* detJ .* (Bvol[:]*Pi') 
-                M_ele   .+= ipw[ip] .* detJ .* Pi*Pi'
-            elseif npel==1 
-                Q_ele   .-= ipw[ip] .* detJ .* 1.0 .* (B*m*npel') 
-            end
-            # b_ele   .+= ipw[ip] .* detJ .* se[e] .* N[ip,:] 
-        end
-        if npel==3 M_inv .= inv(M_ele) end
-        # if npel==3 K_ele .+=  PF.*(Q_ele*M_inv*Q_ele') end
-        if npel==3 Mi_all[e,:,:] .= M_inv end
-        K_all[e,:,:]  .= K_ele
-        Q_all[e,:,:]  .= Q_ele
-        # b[e,:]       .= b_ele
-    end
-    return K_all, Q_all, Mi_all, b
-end 
-
-#----------------------------------------------------------#
-
-function SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy )
-
-    println("Assembly")
-    ndof = mesh.nn*2
-    npel = mesh.npel
-    rhs  = zeros(ndof+mesh.nel*npel)
-    I_K  = Int64[]
-    J_K  = Int64[]
-    V_K  = Float64[]
-    I_Q  = Int64[]
-    J_Q  = Int64[]
-    V_Q  = Float64[]
-    I_Qt = Int64[]
-    J_Qt = Int64[]
-    V_Qt = Float64[]
-
-    # Assembly of global sparse matrix
-    @inbounds for e=1:mesh.nel
-        nodes   = mesh.e2n[e,:]
-        nodesVx = mesh.e2n[e,:]
-        nodesVy = nodesVx .+ mesh.nn 
-        nodesP  = e
-        jj = 1
-        for j=1:mesh.nnel
-
-            # Q: ∇ operator: BC for V equations
-            if mesh.bcn[nodes[j]] != 1
-                for i=1:npel
-                    push!(I_Q, nodesVx[j]); push!(J_Q, nodesP+(i-1)*mesh.nel); push!(V_Q, Q_all[e,jj  ,i])
-                    push!(I_Q, nodesVy[j]); push!(J_Q, nodesP+(i-1)*mesh.nel); push!(V_Q, Q_all[e,jj+1,i])
-                end
-            end
-
-            # Qt: ∇⋅ operator: no BC for P equations
-            for i=1:npel
-                push!(J_Qt, nodesVx[j]); push!(I_Qt, nodesP+(i-1)*mesh.nel); push!(V_Qt, Q_all[e,jj  ,i])
-                push!(J_Qt, nodesVy[j]); push!(I_Qt, nodesP+(i-1)*mesh.nel); push!(V_Qt, Q_all[e,jj+1,i])
-            end
-
-            if mesh.bcn[nodes[j]] != 1
-                # If not Dirichlet, add connection
-                ii = 1
-                for i=1:mesh.nnel
-                    if mesh.bcn[nodes[i]] != 1 # Important to keep matrix symmetric
-                        push!(I_K, nodesVx[j]); push!(J_K, nodesVx[i]); push!(V_K, K_all[e,jj,  ii  ])
-                        push!(I_K, nodesVx[j]); push!(J_K, nodesVy[i]); push!(V_K, K_all[e,jj,  ii+1])
-                        push!(I_K, nodesVy[j]); push!(J_K, nodesVx[i]); push!(V_K, K_all[e,jj+1,ii  ])
-                        push!(I_K, nodesVy[j]); push!(J_K, nodesVy[i]); push!(V_K, K_all[e,jj+1,ii+1])
-                    else
-                        rhs[nodesVx[j]] -= K_all[e,jj  ,ii  ]*Vx[nodes[i]]
-                        rhs[nodesVx[j]] -= K_all[e,jj  ,ii+1]*Vy[nodes[i]]
-                        rhs[nodesVy[j]] -= K_all[e,jj+1,ii  ]*Vx[nodes[i]]
-                        rhs[nodesVy[j]] -= K_all[e,jj+1,ii+1]*Vy[nodes[i]]
-                    end
-                    ii+=2
-                end
-                # rhs[nodes[j]] += b[e,j]
-            else
-                # Deal with Dirichlet: set one on diagonal and value and RHS
-                push!(I_K, nodesVx[j]); push!(J_K, nodesVx[j]); push!(V_K, 1.0)
-                push!(I_K, nodesVy[j]); push!(J_K, nodesVy[j]); push!(V_K, 1.0)
-                rhs[nodesVx[j]] += Vx[nodes[j]]
-                rhs[nodesVy[j]] += Vy[nodes[j]]
-            end
-            jj+=2
-        end 
-    end
-    K  = sparse(I_K,  J_K,  V_K, mesh.nn*2, mesh.nn*2)
-    Q  = sparse(I_Q,  J_Q,  V_Q, ndof, mesh.nel*npel)
-    Qt = sparse(I_Qt, J_Qt, V_Qt, mesh.nel*npel, ndof)
-    M0 = sparse(Int64[], Int64[], Float64[], mesh.nel*npel, mesh.nel*npel)
-    M  = [K Q; Qt M0]
-    return M, rhs, K, Q, Qt, M0
-end
-
-#----------------------------------------------------------#
-
-function DirectSolveFEM!( M, K, Q, Qt, M0, rhs, Vx, Vy, P, mesh, b)
-    println("Direct solve")
-    ndof       = mesh.nn*2
-    npel       = mesh.npel
-    sol        = zeros(ndof+mesh.nel*npel)
-    M[end,:]  .= 0.0 # add one Dirichlet constraint on pressure
-    M[end,end] = 1.0
-    rhs[end]   = 0.0
-    sol       .= M\rhs
-    Vx        .= sol[1:length(Vx)] 
-    Vy        .= sol[(length(Vx)+1):(length(Vx)+length(Vy))]
-    println(size( P))
-    println(( mesh.nel*npel))
-    P         .= sol[(2*mesh.nn+1):end]
-    return nothing
-end
-
-#----------------------------------------------------------#
-
-function DirectSolveFEM_v0!( M, K, Q, Qt, M0, bu, bp, Vx, Vy, P, mesh, b)
-    println("Direct solve")
-    ndof       = mesh.nn*2
-    sol        = zeros(ndof+mesh.np)
-    rhs        = [bu; bp]
-    M[end,:]  .= 0.0 # add one Dirichlet constraint on pressure
-    M[end,end] = 1.0
-    rhs[end]   = 0.0
-    sol       .= M\rhs
-    Vx        .= sol[1:length(Vx)] 
-    Vy        .= sol[(length(Vx)+1):(length(Vx)+length(Vy))]
-    P         .= sol[(ndof+1):end]
-    return nothing
-end
-
 #----------------------------------------------------------#
 
 function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
@@ -219,8 +29,8 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     inclusion  = 1
     εBG        = 1.0
     η          = [1.0 100.0] 
-    solver     = 0 
-    penalty    = 1e4
+    solver     = -1 
+    penalty    = 1e5
     tol        = 1e-9
     
     # Element data
@@ -232,6 +42,8 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     println("Number of elements: ", mesh.nel)
     println("Number of vertices: ", mesh.nn)
     println("Number of p nodes:  ", mesh.np)
+    println("Min. bcn:  ", minimum(mesh.bcn))
+    println("Max. bcn:  ", maximum(mesh.bcn))
 
     mesh.ke[mesh.phase.==1] .= η[1]
     mesh.ke[mesh.phase.==2] .= η[2]
@@ -262,17 +74,11 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     # #-----------------------------------------------------------------#
     
     if USE_DIRECT
-        @time  K_all, Q_all, Mi_all, b = ElementAssemblyLoopFEM_v0( se, mesh, ipx, ipw, N, dNdX )
-        @time M, bu, bp, K, Q, Qt, M0 = SparseAssembly_v0( K_all, Q_all, Mi_all, b,mesh, Vx, Vy, P )
-        # @time DirectSolveFEM_v0!( M, K, Q, Qt, M0, bu, bp, Vx, Vy, P, mesh, b )
+        #-----------------------------------------------------------------#
+        @time K_all, Q_all, Mi_all, b, Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
         
-        # @time  K_all, Q_all, Mi_all, b = ElementAssemblyLoopFEM( se, mesh, ipw, N, dNdX )
-        # @time M, rhs, K, Q, Qt, M0 = SparseAssembly( K_all, Q_all, Mi_all, mesh, Vx, Vy )
-        @time DirectSolveFEM!( M, K, Q, Qt, M0, [bu;bp], Vx, Vy, P, mesh, b )
-        # #-----------------------------------------------------------------## #-----------------------------------------------------------------#
-        # @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
-        # #-----------------------------------------------------------------#
-        # @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, Kuu, solver; penalty, tol)
+        #-----------------------------------------------------------------#
+        @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, Kuu, solver; penalty, tol)
     else
         #-----------------------------------------------------------------#
          @time  K_all, Q_all, Mi_all, b = ElementAssemblyLoopFEM_v0( se, mesh, ipx, ipw, N, dNdX )
