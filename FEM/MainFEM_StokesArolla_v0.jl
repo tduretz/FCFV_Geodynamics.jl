@@ -45,7 +45,7 @@ end
 
 #-----------------------------------------------------------------#
 
-function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
+@views function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
 
     println("\n******** FEM STOKES ********")
     g      = [0.0 -1.0]
@@ -55,7 +55,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
 
     #-----------------------------------------------------------------#
     # Mesh generation from data file
-    xp, yp, tp = read_data("./FEM/arolla51.txt"; resol=100, visu_chk=true)
+    xp, yp, tp = read_data("./FEM/arolla51.txt"; resol=100, visu_chk=false)
     Lc     = maximum(xp) - minimum(xp)   
     xp, yp = xp./Lc, yp./Lc
     # # Add sliding section
@@ -68,7 +68,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
 
     # Generate
     model = -1               
-    area  = 100/Lc^2
+    area  = 8/Lc^2
     mesh  = MakeTriangleMesh( 1, 1, minimum(xp), maximum(xp), minimum(yp), maximum(yp), 0.0, model, 0.0, 0, area; xp_in=xp, yp_in=yp, tp_in=tp, nnel=nnel, npel=npel ) 
     println("Number of elements: ", mesh.nel)
     println("Number of vertices: ", mesh.nn)
@@ -97,34 +97,36 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     mesh.ke[:] .= η 
     
     #-----------------------------------------------------------------#
-    @time K_all, Q_all, Mi_all, b, Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
+    @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
     
     #-----------------------------------------------------------------#
-    # @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, Kuu, solver; penalty=1e2)
+    @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, Kuu, solver; penalty=1e2)
     
-    # #-----------------------------------------------------------------#
-    # Vxe = zeros(mesh.nel)
-    # Vye = zeros(mesh.nel)
-    # Ve  = zeros(mesh.nel)
-    # Pe  = zeros(mesh.nel)
-    # for e=1:mesh.nel
-    #     for i=1:mesh.nnel
-    #         Vxe[e] += 1.0/mesh.nnel * Vx[mesh.e2n[e,i]]
-    #         Vye[e] += 1.0/mesh.nnel * Vy[mesh.e2n[e,i]]
-    #         Ve[e]  += 1.0/mesh.nnel * sqrt(Vx[mesh.e2n[e,i]]^2 + Vy[mesh.e2n[e,i]]^2)
-    #     end
-    #     for i=1:mesh.npel
-    #         Pe[e] += 1.0/mesh.npel * P[mesh.e2p[e,i]]
-    #     end
-    # end
-    # @printf("%2.2e %2.2e\n", minimum(Vx), maximum(Vx))
-    # @printf("%2.2e %2.2e\n", minimum(Vy), maximum(Vy))
-    # @printf("%2.2e %2.2e\n", minimum(P),  maximum(P) )
+    #-----------------------------------------------------------------#
+    Vxe = zeros(mesh.nel)
+    Vye = zeros(mesh.nel)
+    Ve  = zeros(mesh.nel)
+    Pe  = zeros(mesh.nel)
+    for e=1:mesh.nel
+        for i=1:mesh.nnel
+            Vxe[e] += 1.0/mesh.nnel * Vx[mesh.e2n[e,i]]
+            Vye[e] += 1.0/mesh.nnel * Vy[mesh.e2n[e,i]]
+            Ve[e]  += 1.0/mesh.nnel * sqrt(Vx[mesh.e2n[e,i]]^2 + Vy[mesh.e2n[e,i]]^2)
+        end
+        for i=1:mesh.npel
+            Pe[e] += 1.0/mesh.npel * P[mesh.e2p[e,i]]
+        end
+    end
+    @printf("%2.2e %2.2e\n", minimum(Vx), maximum(Vx))
+    @printf("%2.2e %2.2e\n", minimum(Vy), maximum(Vy))
+    @printf("%2.2e %2.2e\n", minimum(P),  maximum(P) )
 
-    # #-----------------------------------------------------------------#
+    #-----------------------------------------------------------------#
     # PlotMakie(mesh, Pe, minimum(mesh.xn), maximum(mesh.xn), minimum(mesh.yn), maximum(mesh.yn); cmap=:turbo)
 
     #-----------------------------------------------------------------#
 end
 
-main( 1, 7, 1, 6, 0., 0., 0. )
+for i=1:3
+    @time main( 1, 7, 1, 6, 0., 0., 0. )
+end

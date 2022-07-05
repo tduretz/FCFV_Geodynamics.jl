@@ -190,6 +190,7 @@ function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # A
     bc_dir       = zeros(ndof)
     indV         = zeros(Int64, ndof)
     indP         = zeros(Int64, npel)
+    println("Element loop...")
     # Element loop
     @inbounds for e = 1:mesh.nel
         nodes  .= mesh.e2n[e,:]
@@ -213,13 +214,6 @@ function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # A
         Q_ele_bc        .= bcv*bcp'
         bc_dir[1:2:end] .= Vx[nodes]
         bc_dir[2:2:end] .= Vy[nodes]
-        # if e==1
-        #     display(nodes)
-        #     display(bc)
-        #     display(bcv)
-        #     display(K_ele_bc)
-        #     display(bc_dir)
-        # end
         # Deal with indices
         indV[1:2:end]   .= nodes
         indV[2:2:end]   .= nodes .+ mesh.nn
@@ -259,29 +253,28 @@ function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # A
             b_ele[1:2:end] .+= w .* se[e,1] .* N[ip,:] 
             b_ele[2:2:end] .+= w .* se[e,2] .* N[ip,:]
         end
-        #                Kill Dirichlet connection  + set one on diagonal for Dirichlet
+        #                Kill Dirichlet connection + set one on diagonal for Dirichlet
         K_all[e,:,:]  .= K_ele_bc.*K_ele          .+ spdiagm(1.0.-bcv)*1.0
         Q_all[e,:,:]  .= Q_ele_bc.*Q_ele
-        # K_all[e,:,:]  .= K_ele         # .+ spdiagm(1.0.-bcv)*1.0
-        # if e<30
-        #     display(mesh.bcn[nodes])
-        #     display(Q_ele_bc)
-        # end
-        # Q_all[e,:,:]  .= Q_ele
         #                Force term + Dirichlet contributions                  + Dirichlet nodes 
         bV_all[e,:]   .= bcv.*(b_ele .-  ((1.0.-K_ele_bc).*K_ele)*bc_dir    ) .+ (1.0.-bcv).*bc_dir
         #                Dirichlet contributions
         bP_all[e,:]   .= Q_ele'*((1.0.-bcv).*bc_dir)
     end
+    println("Sparsification...")
+    @time Kuu, Kup, fu, fp = SparsifyStokes( mesh.nn, mesh.np, K_all_i, K_all_j, K_all, Q_all_i, Q_all_j, Q_all, bV_all_i, bV_all, bP_all_i, bP_all )
+    return Kuu, Kup, fu, fp
+end 
+    
+function SparsifyStokes( nn, np, K_all_i, K_all_j, K_all, Q_all_i, Q_all_j, Q_all, bV_all_i, bV_all, bP_all_i, bP_all )
     _oneV = ones(size(bV_all_i[:]))
     _oneP = ones(size(bP_all_i[:]))
-    Kuu   =       dropzeros(sparse(K_all_i[:], K_all_j[:], K_all[:], mesh.nn*2, mesh.nn*2))
-    Kup   =       dropzeros(sparse(Q_all_i[:], Q_all_j[:], Q_all[:], mesh.nn*2, mesh.np  ))
-    fu    = Array(dropzeros(sparse(bV_all_i[:],  _oneV,    bV_all[:], mesh.nn*2,      1  )))
-    fp    = Array(dropzeros(sparse(bP_all_i[:],  _oneP,    bP_all[:], mesh.np,        1  )))
-    return K_all, Q_all, Mi_all, bV_all, Kuu, Kup, fu, fp
-end 
-
+    Kuu   =       dropzeros(sparse(K_all_i[:], K_all_j[:],     K_all[:], nn*2, nn*2))
+    Kup   =       dropzeros(sparse(Q_all_i[:], Q_all_j[:],     Q_all[:], nn*2, np  ))
+    fu    = Array(dropzeros(sparse(bV_all_i[:],     _oneV,    bV_all[:], nn*2,  1  )))
+    fp    = Array(dropzeros(sparse(bP_all_i[:],     _oneP,    bP_all[:], np,    1  )))
+    return Kuu, Kup, fu, fp
+end
 #----------------------------------------------------------#
 
 function SparseAssembly_v0( K_all, Q_all, Mi_all, bV_all, mesh, Vx, Vy, P )
