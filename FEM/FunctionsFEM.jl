@@ -145,7 +145,7 @@ end
 
 #----------------------------------------------------------#
 
-function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # Adapted from MILAMIN_1.0.1
+@views function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # Adapted from MILAMIN_1.0.1
     ndof         = 2*mesh.nnel
     nnel         = mesh.nnel
     npel         = mesh.npel
@@ -175,24 +175,25 @@ function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # A
     Dev          =  [ 4/3 -2/3  0.0;
                      -2/3  4/3  0.0;
                       0.0  0.0  1.0]
-    J            = zeros(2,2)
-    invJ         = zeros(2,2)
-    P            = ones(npel, npel)
-    Pb           = ones(npel)
-    dNdx         = zeros(nnel, 2)
-    Pi           = zeros(npel)
-    nodes        = zeros(Int64, nnel)
-    bcx          = zeros(Int64, nnel)
-    bcy          = zeros(Int64, nnel)
-    bc           = zeros(Int64, ndof)
-    bcv          = zeros(ndof)
-    bcp          = ones(npel)
-    bc_dir       = zeros(ndof)
-    indV         = zeros(Int64, ndof)
-    indP         = zeros(Int64, npel)
+                      J            = zeros(2,2)
+                      invJ         = zeros(2,2)
+                      P            = ones(npel, npel)
+                      Pb           = ones(npel)
+                      dNdx         = zeros(nnel, 2)
+                      Pi           = zeros(npel)
+                      nodes        = zeros(Int64, nnel)
+                      bcx          = zeros(Int64, nnel)
+                      bcy          = zeros(Int64, nnel)
+                      bct          = zeros(Int64, nnel)
+                      bc           = zeros(Int64, ndof)
+                      bcv          = zeros(ndof)
+                      bcp          = ones(npel)
+                      bc_dir       = zeros(ndof)
+                      indV         = zeros(Int64, ndof)
+                      indP         = zeros(Int64, npel)
     println("Element loop...")
     # Element loop
-    @inbounds for e = 1:mesh.nel
+    @time for e = 1:mesh.nel
         nodes  .= mesh.e2n[e,:]
         x      .= [mesh.xn[nodes] mesh.yn[nodes]]  
         K_ele  .= 0.0
@@ -200,30 +201,58 @@ function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # A
         M_ele  .= 0.0
         b_ele  .= 0.0
         M_inv  .= 0.0
+        bcv    .= 1.0
         if npel==3 && nnel!=4 P[2:3,:] .= (x[1:3,:])' end
+         # Deal with BC's
+        #  bcx             .= mesh.bcn[nodes]
+        #  bcy             .= mesh.bcn[nodes] 
+        #  bcx[bcx.==3]    .= 1
+        #  bcy[bcy.==4]    .= 1
+        #  bc[1:nnel]     .= bcx
+        #  bc[nnel+1:end]     .= bcy
+         
+        #  bcv[bc.==1]     .= 0.0 
+        #  K_ele_bc        .= bcv*bcv'
+        #  Q_ele_bc        .= bcv*bcp'
+        #  bc_dir[1:nnel] .= Vx[nodes]
+        #  bc_dir[nnel+1:end] .= Vy[nodes]
         # Deal with BC's
-        bcx             .= mesh.bcn[nodes]
-        bcy             .= mesh.bcn[nodes] 
-        bcx[bcx.==3]    .= 1
-        bcy[bcy.==4]    .= 1
-        bc[1:2:end]     .= bcx
-        bc[2:2:end]     .= bcy
         bcv             .= 1.0
-        bcv[bc.==1]     .= 0.0 
-        K_ele_bc        .= bcv*bcv'
-        Q_ele_bc        .= bcv*bcp'
-        bc_dir[1:2:end] .= Vx[nodes]
-        bc_dir[2:2:end] .= Vy[nodes]
-        # Deal with indices
-        indV[1:2:end]   .= nodes
-        indV[2:2:end]   .= nodes .+ mesh.nn
-        K_all_i[e,:,:]  .= repeat(indV, 1, ndof)
-        K_all_j[e,:,:]  .= repeat(indV, 1, ndof)'
-        indP            .= mesh.e2p[e,:]
-        Q_all_i[e,:,:]  .= repeat(indV, 1, npel)
-        Q_all_j[e,:,:]  .= repeat(indP, 1, ndof)'
-        bV_all_i[e,:]   .= indV
-        bP_all_i[e,:]   .= indP
+        for in=1:nnel
+            bc_type         = mesh.bcn[nodes[in]]
+            x[in]           = mesh.xn[nodes[in]]
+            x[in+nnel]      = mesh.yn[nodes[in]]
+            if (bc_type==1 || bc_type==3) bcv[in] = 0.0 end
+            if (bc_type==1 || bc_type==4) bcv[in+nnel] = 0.0 end
+            bc_dir[in]      = Vx[nodes[in]]
+            bc_dir[in+nnel] = Vy[nodes[in]]
+            # Deal with indices
+            K_all_i[e,in,:]      .= nodes[in]
+            K_all_i[e,in+nnel,:] .= nodes[in] + mesh.nn
+            K_all_j[e,:,in]      .= nodes[in]
+            K_all_j[e,:,in+nnel] .= nodes[in] + mesh.nn
+            bV_all_i[e,in]        = nodes[in]
+            bV_all_i[e,in+nnel]   = nodes[in] + mesh.nn
+            Q_all_i[e,in,:]      .= nodes[in]
+            Q_all_i[e,in+nnel,:] .= nodes[in] + mesh.nn    
+        end
+        for jn=1:npel
+            Q_all_j[e,:,jn]      .= mesh.e2p[e,jn]
+            bP_all_i[e,jn] = mesh.e2p[e,jn]
+        end
+ # Deal with indices
+#  indV[1:nnel]   .= nodes
+#  indV[nnel+1:end]   .= nodes .+ mesh.nn
+#  K_all_i[e,:,:]  .= repeat(indV, 1, ndof)
+#  K_all_j[e,:,:]  .= repeat(indV, 1, ndof)'
+#  indP            .= mesh.e2p[e,:]
+#  Q_all_i[e,:,:]  .= repeat(indV, 1, npel)
+#  Q_all_j[e,:,:]  .= repeat(indP, 1, ndof)'
+#  bV_all_i[e,:]   .= indV
+#  bP_all_i[e,:]   .= indP
+
+        mul!(K_ele_bc, bcv, bcv')
+        mul!(Q_ele_bc, bcv, bcp')
         ke               = mesh.ke[e]
         # Integration loop
         @inbounds for ip=1:nip
@@ -235,12 +264,12 @@ function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # A
             invJ[2,1]      = -J[2,1] / detJ
             invJ[2,2]      = +J[1,1] / detJ
             dNdx          .= dNdX[ip,:,:]*invJ
-            B[1:2:end,1]  .= dNdx[:,1]
-            B[2:2:end,2]  .= dNdx[:,2]
-            B[1:2:end,3]  .= dNdx[:,2]
-            B[2:2:end,3]  .= dNdx[:,1]
-            Bvol[1:2:end] .= dNdx[:,1]
-            Bvol[2:2:end] .= dNdx[:,2]
+            B[1:nnel,1]   .= dNdx[:,1]
+            B[nnel+1:end,2]  .= dNdx[:,2]
+            B[1:nnel,3]  .= dNdx[:,2]
+            B[nnel+1:end,3]  .= dNdx[:,1]
+            Bvol[1:nnel] .= dNdx[:,1]
+            Bvol[nnel+1:end] .= dNdx[:,2]
             K_ele        .+= w .* ke .* (B*Dev*B')
             if npel==3
                 Pb[2:3]   .= x'*N[ip,:,1]
@@ -251,9 +280,9 @@ function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # A
                 Q_ele    .-= w .* (B*m*1.0') 
             end
             b_ele[1:2:end] .+= w .* se[e,1] .* N[ip,:] 
-            b_ele[2:2:end] .+= w .* se[e,2] .* N[ip,:]
+            b_ele[nnel+1:end] .+= w .* se[e,2] .* N[ip,:]
         end
-        #                Kill Dirichlet connection + set one on diagonal for Dirichlet
+        #               Kill Dirichlet connection + set one on diagonal for Dirichlet
         K_all[e,:,:]  .= K_ele_bc.*K_ele          .+ spdiagm(1.0.-bcv)*1.0
         Q_all[e,:,:]  .= Q_ele_bc.*Q_ele
         #                Force term + Dirichlet contributions                  + Dirichlet nodes 
@@ -264,6 +293,7 @@ function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # A
     println("Sparsification...")
     @time Kuu, Kup, fu, fp = SparsifyStokes( mesh.nn, mesh.np, K_all_i, K_all_j, K_all, Q_all_i, Q_all_j, Q_all, bV_all_i, bV_all, bP_all_i, bP_all )
     return Kuu, Kup, fu, fp
+    # return 0, 0, 0, 0
 end 
     
 function SparsifyStokes( nn, np, K_all_i, K_all_j, K_all, Q_all_i, Q_all_j, Q_all, bV_all_i, bV_all, bP_all_i, bP_all )
@@ -274,173 +304,6 @@ function SparsifyStokes( nn, np, K_all_i, K_all_j, K_all, Q_all_i, Q_all_j, Q_al
     fu    = Array(dropzeros(sparse(bV_all_i[:],     _oneV,    bV_all[:], nn*2,  1  )))
     fp    = Array(dropzeros(sparse(bP_all_i[:],     _oneP,    bP_all[:], np,    1  )))
     return Kuu, Kup, fu, fp
-end
-#----------------------------------------------------------#
-
-function SparseAssembly_v0( K_all, Q_all, Mi_all, bV_all, mesh, Vx, Vy, P )
-
-    println("Assembly")
-    ndof = mesh.nn*2
-    npel = mesh.npel
-    bu   = zeros(ndof)
-    bp   = zeros(mesh.np)
-    I_K  = Int64[]
-    J_K  = Int64[]
-    V_K  = Float64[]
-    I_Q  = Int64[]
-    J_Q  = Int64[]
-    V_Q  = Float64[]
-    I_Qt = Int64[]
-    J_Qt = Int64[]
-    V_Qt = Float64[]
-    I_M  = Int64[]
-    J_M  = Int64[]
-    V_M  = Float64[]
-
-    # # Assembly of global sparse matrix
-    # @inbounds for e=1:mesh.nel
-    #     nodes   = mesh.e2n[e,:]
-    #     nodesVx = mesh.e2n[e,:]
-    #     nodesVy = nodesVx .+ mesh.nn 
-    #     nodesP  = mesh.e2p[e,:]
-    #     jj = 1
-    #     for j=1:mesh.nnel
-
-    #         bc = mesh.bcn[nodes[j]]
-    #         if bc==0 || bc==2 
-    #             bcxj = 0
-    #             bcyj = 0
-    #         end
-    #         if bc==1 
-    #             bcxj = 1
-    #             bcyj = 1
-    #         end
-    #         if bc==3 
-    #             bcxj = 1
-    #             bcyj = 0
-    #         end
-    #         if bc==4 
-    #             bcxj = 0
-    #             bcyj = 1
-    #         end
-
-    #         # Q: ∇ operator: BC for V equations
-    #         for i=1:npel
-    #             if bcxj==0
-    #                 push!(I_Q, nodesVx[j]); push!(J_Q, nodesP[i]); push!(V_Q, Q_all[e,jj  ,i])
-    #             end
-    #             if bcyj==0
-    #                 push!(I_Q, nodesVy[j]); push!(J_Q, nodesP[i]); push!(V_Q, Q_all[e,jj+1,i])
-    #             end
-    #         end
-
-    #         # Qt: ∇⋅ operator: no BC for P 
-    #         # if mesh.bcn[nodes[j]] != 1
-    #         for i=1:npel
-    #             push!(J_Qt, nodesVx[j]); push!(I_Qt, nodesP[i]); push!(V_Qt, Q_all[e,jj  ,i])
-    #             push!(J_Qt, nodesVy[j]); push!(I_Qt, nodesP[i]); push!(V_Qt, Q_all[e,jj+1,i])
-    #         end
-    #         # end
-
-    #         if bcxj!=1
-    #              # If not Dirichlet, add connection
-    #              ii = 1
-    #              for i=1:mesh.nnel
-    #                  if mesh.bcn[nodes[i]] != 1 # Important to keep matrix symmetric
-    #                      push!(I_K, nodesVx[j]); push!(J_K, nodesVx[i]); push!(V_K, K_all[e,jj,  ii  ])
-    #                      push!(I_K, nodesVx[j]); push!(J_K, nodesVy[i]); push!(V_K, K_all[e,jj,  ii+1])
-    #                  else
-    #                      bu[nodesVx[j]] -= K_all[e,jj  ,ii  ]*Vx[nodes[i]]
-    #                      bu[nodesVx[j]] -= K_all[e,jj  ,ii+1]*Vy[nodes[i]]
-    #                  end
-    #                  ii+=2
-    #              end
-    #              bu[nodesVx[j]] += bV_all[e,jj]
-    #          else
-    #              # Deal with Dirichlet: set one on diagonal and value and RHS
-    #              push!(I_K, nodesVx[j]); push!(J_K, nodesVx[j]); push!(V_K, 1.0)
-    #              bu[nodesVx[j]] += Vx[nodes[j]]
-    #          end
-
-    #         if bcyj!=1
-    #             # If not Dirichlet, add connection
-    #             ii = 1
-    #             for i=1:mesh.nnel
-    #                  if mesh.bcn[nodes[i]] != 1 # Important to keep matrix symmetric
-    #                      push!(I_K, nodesVy[j]); push!(J_K, nodesVx[i]); push!(V_K, K_all[e,jj+1,ii  ])
-    #                      push!(I_K, nodesVy[j]); push!(J_K, nodesVy[i]); push!(V_K, K_all[e,jj+1,ii+1])
-    #                  else
-    #                      bu[nodesVy[j]] -= K_all[e,jj+1,ii  ]*Vx[nodes[i]]
-    #                      bu[nodesVy[j]] -= K_all[e,jj+1,ii+1]*Vy[nodes[i]]
-    #                  end
-    #                  ii+=2
-    #              end
-    #              bu[nodesVy[j]] += bV_all[e,jj+1]
-    #          else
-    #              # Deal with Dirichlet: set one on diagonal and value and RHS
-    #              push!(I_K, nodesVy[j]); push!(J_K, nodesVy[j]); push!(V_K, 1.0)
-    #              bu[nodesVy[j]] += Vy[nodes[j]]
-    #          end
-    #         jj+=2
-    #     end 
-    # end
-    # Assembly of global sparse matrix
-    @inbounds for e=1:mesh.nel
-        nodes   = mesh.e2n[e,:]
-        nodesVx = mesh.e2n[e,:]
-        nodesVy = nodesVx .+ mesh.nn 
-        nodesP  = e
-        jj = 1
-        for j=1:mesh.nnel
-
-            # Q: ∇ operator: BC for V equations
-            if mesh.bcn[nodes[j]] != 1
-                for i=1:npel
-                    push!(I_Q, nodesVx[j]); push!(J_Q, nodesP+(i-1)*mesh.nel); push!(V_Q, Q_all[e,jj  ,i])
-                    push!(I_Q, nodesVy[j]); push!(J_Q, nodesP+(i-1)*mesh.nel); push!(V_Q, Q_all[e,jj+1,i])
-                end
-            end
-
-            # Qt: ∇⋅ operator: no BC for P equations
-            for i=1:npel
-                push!(J_Qt, nodesVx[j]); push!(I_Qt, nodesP+(i-1)*mesh.nel); push!(V_Qt, Q_all[e,jj  ,i])
-                push!(J_Qt, nodesVy[j]); push!(I_Qt, nodesP+(i-1)*mesh.nel); push!(V_Qt, Q_all[e,jj+1,i])
-            end
-
-            if mesh.bcn[nodes[j]] != 1
-                # If not Dirichlet, add connection
-                ii = 1
-                for i=1:mesh.nnel
-                    if mesh.bcn[nodes[i]] != 1 # Important to keep matrix symmetric
-                        push!(I_K, nodesVx[j]); push!(J_K, nodesVx[i]); push!(V_K, K_all[e,jj,  ii  ])
-                        push!(I_K, nodesVx[j]); push!(J_K, nodesVy[i]); push!(V_K, K_all[e,jj,  ii+1])
-                        push!(I_K, nodesVy[j]); push!(J_K, nodesVx[i]); push!(V_K, K_all[e,jj+1,ii  ])
-                        push!(I_K, nodesVy[j]); push!(J_K, nodesVy[i]); push!(V_K, K_all[e,jj+1,ii+1])
-                    else
-                        bu[nodesVx[j]] -= K_all[e,jj  ,ii  ]*Vx[nodes[i]]
-                        bu[nodesVx[j]] -= K_all[e,jj  ,ii+1]*Vy[nodes[i]]
-                        bu[nodesVy[j]] -= K_all[e,jj+1,ii  ]*Vx[nodes[i]]
-                        bu[nodesVy[j]] -= K_all[e,jj+1,ii+1]*Vy[nodes[i]]
-                    end
-                    ii+=2
-                end
-                # rhs[nodes[j]] += b[e,j]
-            else
-                # Deal with Dirichlet: set one on diagonal and value and RHS
-                push!(I_K, nodesVx[j]); push!(J_K, nodesVx[j]); push!(V_K, 1.0)
-                push!(I_K, nodesVy[j]); push!(J_K, nodesVy[j]); push!(V_K, 1.0)
-                bu[nodesVx[j]] += Vx[nodes[j]]
-                bu[nodesVy[j]] += Vy[nodes[j]]
-            end
-            jj+=2
-        end 
-    end
-    K  = sparse(I_K,  J_K,  V_K, ndof, ndof)
-    Q  = sparse(I_Q,  J_Q,  V_Q, ndof, mesh.np)
-    Qt = sparse(I_Qt, J_Qt, V_Qt, mesh.np, ndof)
-    M0 = sparse(I_M,  J_M,  V_M, mesh.np, mesh.np)
-    M  = [K Q; Qt M0]
-    return M, bu, bp, K, Q, Qt, M0
 end
 
 #----------------------------------------------------------#
