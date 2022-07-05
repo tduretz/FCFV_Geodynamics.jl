@@ -1,8 +1,9 @@
-using Printf, DelimitedFiles, Plots, Interpolations
+using Printf, DelimitedFiles, Plots, Interpolations, LinearAlgebra
 
 include("FunctionsFEM.jl")
 include("../CreateMeshFCFV.jl")
 include("../VisuFCFV.jl")
+include("../SolversFCFV_Stokes.jl")
 include("IntegrationPoints.jl")
 
 #-----------------------------------------------------------------#
@@ -47,48 +48,38 @@ end
 function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
 
     println("\n******** FEM STOKES ********")
-    g      = [0 -9.81]
-    ρ      = 917.0
+    g      = [0.0 -1.0]
+    ρ      = 1
+    η      = 1.0
     solver = -1
 
     #-----------------------------------------------------------------#
     # Mesh generation from data file
     xp, yp, tp = read_data("./FEM/arolla51.txt"; resol=100, visu_chk=true)
-    # xp, yp= xp./sc, yp./sc
-    # data = readdlm("./FEM/arolla51.txt", ' ')
-    # data = data[3:end-2,:]
-    # xp   = zeros(2*size(data,1)) 
-    # yp   = zeros(2*size(data,1))
-    # tp   =  ones(Int64, 2*size(data,1))
-    # # Populate arrays of boundary points with input data
-    # xp[1:size(data,1)]     .= data[:,1]
-    # xp[size(data,1)+1:end] .= reverse(data[:,1])
-    # yp[1:size(data,1)]     .= data[:,2]
-    # yp[size(data,1)+1:end] .= reverse(data[:,3])
-    # tp[1:size(data,1)]     .= 1
-    # tp[size(data,1)+2:end-1] .= 2
+    Lc     = maximum(xp) - minimum(xp)   
+    xp, yp = xp./Lc, yp./Lc
     # # Add sliding section
     tp[xp.>2200 .&& xp.<2500 .&& yp.<2700] .= 4
-    # # Check
+    # Check
     # p = Plots.scatter( xp[tp.==1]./1e3, yp[tp.==1]./1e3, markershape =:cross, label="Base")
     # p = Plots.scatter!( xp[tp.==2]./1e3, yp[tp.==2]./1e3, markershape =:cross, label="Surface")
     # p = Plots.scatter!( xp[tp.==4]./1e3, yp[tp.==4]./1e3, markershape =:cross, label="Free slip")
     # display(Plots.plot(p, ylims=(2,3.5), aspect_ratio=1.0, xlabel="x [km]", ylabel="y [km]"))
 
     # Generate
-    model      = -1               
-    area       = 100.0
-    mesh = MakeTriangleMesh( 1, 1, minimum(xp), maximum(xp), minimum(yp), maximum(yp), 0.0, model, 0.0, 0, area; xp_in=xp, yp_in=yp, tp_in=tp, nnel=nnel, npel=npel ) 
+    model = -1               
+    area  = 100/Lc^2
+    mesh  = MakeTriangleMesh( 1, 1, minimum(xp), maximum(xp), minimum(yp), maximum(yp), 0.0, model, 0.0, 0, area; xp_in=xp, yp_in=yp, tp_in=tp, nnel=nnel, npel=npel ) 
     println("Number of elements: ", mesh.nel)
     println("Number of vertices: ", mesh.nn)
     println("Number of p nodes:  ", mesh.np)
 
+    # Check
     # p = Plots.scatter( mesh.xn[mesh.bcn.==1]./1e3, mesh.yn[mesh.bcn.==1]./1e3, markershape =:cross, label="Base")
     # p = Plots.scatter!( mesh.xn[mesh.bcn.==2]./1e3, mesh.yn[mesh.bcn.==2]./1e3, markershape =:cross, label="Surface")
     # p = Plots.scatter!( mesh.xn[mesh.bcn.==4]./1e3, mesh.yn[mesh.bcn.==4]./1e3, markershape =:cross, label="Free slip")
     # # p = Plots.scatter!( mesh.xn./1e3, mesh.yn./1e3, markershape =:xcross, label="All")
     # display(Plots.plot(p, ylims=(2,3.5), aspect_ratio=1.0, xlabel="x [km]", ylabel="y [km]"))
-
 
     #-----------------------------------------------------------------#
     # Element data
@@ -101,38 +92,37 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     P   = zeros(mesh.np)       # Solution on either elements or nodes 
     se  = zeros(mesh.nel,2)    # Source on elements
 
-    for e = 1:mesh.nel
-        se[e,1] = ρ*g[1]
-        se[e,2] = ρ*g[2]
-    end
-
+    se[:,1]    .= ρ*g[1]
+    se[:,2]    .= ρ*g[2]
+    mesh.ke[:] .= η 
+    
     #-----------------------------------------------------------------#
     @time K_all, Q_all, Mi_all, b, Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
     
     #-----------------------------------------------------------------#
-    @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, Kuu, solver; penalty=1e2)
+    # @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, Kuu, solver; penalty=1e2)
     
-    #-----------------------------------------------------------------#
-    Vxe = zeros(mesh.nel)
-    Vye = zeros(mesh.nel)
-    Ve  = zeros(mesh.nel)
-    Pe  = zeros(mesh.nel)
-    for e=1:mesh.nel
-        for i=1:mesh.nnel
-            Vxe[e] += 1.0/mesh.nnel * Vx[mesh.e2n[e,i]]
-            Vye[e] += 1.0/mesh.nnel * Vy[mesh.e2n[e,i]]
-            Ve[e]  += 1.0/mesh.nnel * sqrt(Vx[mesh.e2n[e,i]]^2 + Vy[mesh.e2n[e,i]]^2)
-        end
-        for i=1:mesh.npel
-            Pe[e] += 1.0/mesh.npel * P[mesh.e2p[e,i]]
-        end
-    end
-    @printf("%2.2e %2.2e\n", minimum(Vx), maximum(Vx))
-    @printf("%2.2e %2.2e\n", minimum(Vy), maximum(Vy))
-    @printf("%2.2e %2.2e\n", minimum(P),  maximum(P) )
+    # #-----------------------------------------------------------------#
+    # Vxe = zeros(mesh.nel)
+    # Vye = zeros(mesh.nel)
+    # Ve  = zeros(mesh.nel)
+    # Pe  = zeros(mesh.nel)
+    # for e=1:mesh.nel
+    #     for i=1:mesh.nnel
+    #         Vxe[e] += 1.0/mesh.nnel * Vx[mesh.e2n[e,i]]
+    #         Vye[e] += 1.0/mesh.nnel * Vy[mesh.e2n[e,i]]
+    #         Ve[e]  += 1.0/mesh.nnel * sqrt(Vx[mesh.e2n[e,i]]^2 + Vy[mesh.e2n[e,i]]^2)
+    #     end
+    #     for i=1:mesh.npel
+    #         Pe[e] += 1.0/mesh.npel * P[mesh.e2p[e,i]]
+    #     end
+    # end
+    # @printf("%2.2e %2.2e\n", minimum(Vx), maximum(Vx))
+    # @printf("%2.2e %2.2e\n", minimum(Vy), maximum(Vy))
+    # @printf("%2.2e %2.2e\n", minimum(P),  maximum(P) )
 
-    #-----------------------------------------------------------------#
-    PlotMakie(mesh, Pe, minimum(mesh.xn), maximum(mesh.xn), minimum(mesh.yn), maximum(mesh.yn); cmap=:turbo)
+    # #-----------------------------------------------------------------#
+    # PlotMakie(mesh, Pe, minimum(mesh.xn), maximum(mesh.xn), minimum(mesh.yn), maximum(mesh.yn); cmap=:turbo)
 
     #-----------------------------------------------------------------#
 end

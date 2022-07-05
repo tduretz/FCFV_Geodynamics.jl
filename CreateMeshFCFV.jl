@@ -150,7 +150,6 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
         sx     = collect(1:length(px))
         sy     = sx .+ 1; sy[end] = 1
         st     = tp_in'
-        println(st)
         no_pts = length(px)
         pts_l  = pts_l + no_pts
         pts_u  = pts_u + no_pts

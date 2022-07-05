@@ -233,14 +233,14 @@ function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # A
         ke               = mesh.ke[e]
         # Integration loop
         @inbounds for ip=1:nip
-            J        .= x'*dNdX[ip,:,:]
-            detJ      = J[1,1]*J[2,2] - J[1,2]*J[2,1]
-            w         = ipw[ip] * detJ
-            invJ[1,1] = +J[2,2] / detJ
-            invJ[1,2] = -J[1,2] / detJ
-            invJ[2,1] = -J[2,1] / detJ
-            invJ[2,2] = +J[1,1] / detJ
-            dNdx     .= dNdX[ip,:,:]*invJ
+            J             .= x'*dNdX[ip,:,:]
+            detJ           = J[1,1]*J[2,2] - J[1,2]*J[2,1]
+            w              = ipw[ip] * detJ
+            invJ[1,1]      = +J[2,2] / detJ
+            invJ[1,2]      = -J[1,2] / detJ
+            invJ[2,1]      = -J[2,1] / detJ
+            invJ[2,2]      = +J[1,1] / detJ
+            dNdx          .= dNdX[ip,:,:]*invJ
             B[1:2:end,1]  .= dNdx[:,1]
             B[2:2:end,2]  .= dNdx[:,2]
             B[1:2:end,3]  .= dNdx[:,2]
@@ -249,12 +249,12 @@ function ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # A
             Bvol[2:2:end] .= dNdx[:,2]
             K_ele        .+= w .* ke .* (B*Dev*B')
             if npel==3
-                Pb[2:3]  .= x'*N[ip,:,1]
-                Pi       .= P\Pb
-                Q_ele   .-= w .* (Bvol*Pi') 
+                Pb[2:3]   .= x'*N[ip,:,1]
+                Pi        .= P\Pb
+                Q_ele    .-= w .* (Bvol*Pi') 
                 # M_ele   .+= ipw[ip] .* detJ .* Pi*Pi' # mass matrix P, not needed for incompressible
             elseif npel==1  
-                Q_ele   .-= w .* (B*m*1.0') 
+                Q_ele    .-= w .* (B*m*1.0') 
             end
             b_ele[1:2:end] .+= w .* se[e,1] .* N[ip,:] 
             b_ele[2:2:end] .+= w .* se[e,2] .* N[ip,:]
