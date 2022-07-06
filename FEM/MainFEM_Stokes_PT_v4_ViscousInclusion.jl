@@ -75,7 +75,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     
     if USE_DIRECT
         #-----------------------------------------------------------------#
-        @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
+        @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v2( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
         
         #-----------------------------------------------------------------#
         @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, Kuu, solver; penalty, tol)
@@ -221,4 +221,4 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     end
 end
 
-main(1, 7, 1, 6, 0.0382, 0.1833, 7.0) # nit = xxxxx
+main(1, 7, 3, 6, 0.0382, 0.1833, 7.0) # nit = xxxxx
