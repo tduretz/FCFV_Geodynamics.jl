@@ -187,6 +187,9 @@ end
     Perr = 0
 
     # Source term and BCs etc...
+    Vxh    = zeros(mesh.nf)
+    Vyh    = zeros(mesh.nf)
+    Pe     = zeros(mesh.nel)
     Pa     = zeros(mesh.nel)
     Pa_f   = zeros(mesh.nf)
     Vxa    = zeros(mesh.nel)
@@ -217,7 +220,7 @@ end
 
     # Solve for hybrid variable
     println("Linear solve:")
-    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, Muu, solver)
+    @time StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, fu, fp, Muu, solver)
 
     # Reconstruct element values
     println("Compute element values:")

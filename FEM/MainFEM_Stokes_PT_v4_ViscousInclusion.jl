@@ -6,13 +6,14 @@ const USE_MAKIE    = true   # Visualisation
 import Plots
 import Statistics:mean
 
-using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT, StaticArrays, Setfield
+using Printf, LinearAlgebra, SparseArrays, MAT, StaticArrays, Setfield
 import Base.Threads: @threads, @sync, @spawn, nthreads, threadid
 using MAT
 
 include("FunctionsFEM.jl")
 include("../CreateMeshFCFV.jl")
 include("../VisuFCFV.jl")
+include("../SolversFCFV_Stokes.jl")
 include("../EvalAnalDani.jl")
 include("IntegrationPoints.jl")
 

@@ -396,31 +396,26 @@ end
     Q_all        = zeros(mesh.nel, ndof, npel)
     Q_all_i      = zeros(Int64, mesh.nel, ndof, npel)
     Q_all_j      = zeros(Int64, mesh.nel, ndof, npel)
-    Mi_all       = zeros(mesh.nel, npel, npel)
     bV_all       = zeros(mesh.nel, ndof )
     bV_all_i     = zeros(Int64, mesh.nel, ndof )
     bP_all       = zeros(mesh.nel, npel )
     bP_all_i     = zeros(Int64, mesh.nel, npel )
     K_ele        = zeros(ndof, ndof)
     Q_ele        = zeros(ndof, npel)
-    Q_ele_ip     = zeros(ndof, npel)
     M_ele        = zeros(npel ,npel)
     M_inv        = zeros(npel ,npel)
-    P_inv        = zeros(npel ,npel)
     b_ele        = zeros(ndof)
-    B            = zeros(ndof, 3)
-    Bt           = zeros(3, ndof)
-    K_ele_ip     = zeros(ndof, ndof)
-    Bv           = zeros(ndof)
-    m            =  [ 1.0; 1.0; 0.0]
-    Dev          =  [ 4/3 -2/3  0.0;
+    B            = @SMatrix zeros(ndof, 3)
+    Bv           = @SVector zeros(ndof)
+    m            = @SVector [ 1.0; 1.0; 0.0]
+    Dev          = @SMatrix [ 4/3 -2/3  0.0;
                      -2/3  4/3  0.0;
                       0.0  0.0  1.0]
-    J            = zeros(2,2)
-    invJ         = zeros(2,2)
+    J            = @SMatrix zeros(2,2)
+    invJ         = @SMatrix zeros(2,2)
     P            = @SMatrix ones(npel, npel)
     Pb           = ones(npel)
-    dNdx         = zeros(nnel, 2)
+    dNdx         = @SMatrix zeros(nnel, 2)
     Pi           = zeros(npel)
     nodes        = zeros(Int64, nnel)
     bct          = @SVector zeros(Int64, ndof)
@@ -471,33 +466,29 @@ end
         ke               = mesh.ke[e]
         # Integration loop
         @inbounds for ip=1:nip
-            psize(dNdXi)
-            psize(dNdX[ip,:,:])
-            # for in=1:1#nnel
-            #     # @set! Ni[in] = N[ip,in,1]
-            #     @set! dNdXi[in,1] = dNdX[ip,in,1]
-            #     # @set! dNdXi[in,2] = @views dNdX[ip,in,2]
-            # end
 
-            
-            
-            mul!(J, x', dNdXi)
+            for in=1:nnel
+                @set! Ni[in] = N[ip,in,1]
+                @set! dNdXi[in,1] =  dNdX[ip,in,1]
+                @set! dNdXi[in,2] =  dNdX[ip,in,2]
+            end
+            J = x'*dNdXi # mul!(J, x', dNdXi)
             detJ           = J[1,1]*J[2,2] - J[1,2]*J[2,1]
             w              = ipw[ip] * detJ
-            invJ[1,1]      = +J[2,2] / detJ
-            invJ[1,2]      = -J[1,2] / detJ
-            invJ[2,1]      = -J[2,1] / detJ
-            invJ[2,2]      = +J[1,1] / detJ
-            mul!(dNdx, dNdXi, invJ)                  
-            B[1:nnel,1]     .= dNdx[:,1]
-            B[nnel+1:end,2] .= dNdx[:,2]
-            B[1:nnel,3]     .= dNdx[:,2]
-            B[nnel+1:end,3] .= dNdx[:,1]
-            Bv[1:nnel]      .= dNdx[:,1]
-            Bv[nnel+1:end]  .= dNdx[:,2]
-            mul!(Bt, Dev,B')
-            mul!(K_ele_ip, B, Bt)
-            K_ele        .+= w .* ke .* K_ele_ip
+            @set! invJ[1,1]      = +J[2,2] / detJ
+            @set! invJ[1,2]      = -J[1,2] / detJ
+            @set! invJ[2,1]      = -J[2,1] / detJ
+            @set! invJ[2,2]      = +J[1,1] / detJ
+            dNdx = dNdXi*invJ # mul!(dNdx, dNdXi, invJ)   
+            for in=1:nnel               
+                @set! B[in,1]      = dNdx[in,1]
+                @set! B[nnel+in,2] = dNdx[in,2]
+                @set! B[in,3]      = dNdx[in,2]
+                @set! B[nnel+in,3] = dNdx[in,1]
+                @set! Bv[in]       = dNdx[in,1]
+                @set! Bv[nnel+in]  = dNdx[in,2]
+            end
+            K_ele  .+= w .* ke .* B*Dev*B'
             if npel==3
                 #################### THIS IS NOT OPTMIZED, WILL LIKELY NOT WORK IN 3D ALSO
                 mul!(Pb[2:3], x', Ni )
@@ -506,8 +497,8 @@ end
                 # M_ele   .+= ipw[ip] .* detJ .* Pi*Pi' # mass matrix P, not needed for incompressible
                 #################### THIS IS NOT OPTMIZED, WILL LIKELY NOT WORK IN 3D ALSO
             elseif npel==1  
-                mul!(Q_ele_ip, B, m)
-                Q_ele    .-= w .* Q_ele_ip          # B*m*Np'
+                # mul!(Q_ele_ip, B, m)
+                Q_ele    .-= w .* B*m*1.0# Np'
             end
             b_ele[1:2:end]    .+= w .* se[e,1] .* Ni 
             b_ele[nnel+1:end] .+= w .* se[e,2] .* Ni 
