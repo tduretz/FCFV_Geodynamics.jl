@@ -158,7 +158,7 @@ end
     xmin, xmax = -3.0, 3.0
     ymin, ymax = -3.0, 3.0
     nx, ny     = 30*n, 30*n
-    solver     = 0
+    solver     = -1
     R          = 1.0
     inclusion  = 1
     eta        = [1.0 100.0]

@@ -84,7 +84,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     end
 
     #-----------------------------------------------------------------#
-    @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v1( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
+    @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v2( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
     
     #-----------------------------------------------------------------#
     @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, Kuu, solver)
