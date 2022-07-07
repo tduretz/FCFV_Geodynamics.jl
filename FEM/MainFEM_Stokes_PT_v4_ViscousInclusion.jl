@@ -6,7 +6,7 @@ const USE_MAKIE    = true   # Visualisation
 import Plots
 import Statistics:mean
 
-using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT
+using Printf, LoopVectorization, LinearAlgebra, SparseArrays, MAT, StaticArrays, Setfield
 import Base.Threads: @threads, @sync, @spawn, nthreads, threadid
 using MAT
 
@@ -75,13 +75,16 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     
     if USE_DIRECT
         #-----------------------------------------------------------------#
+        println("v2")
         @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v2( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
+        println("v3")
+        @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v3( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
         
         #-----------------------------------------------------------------#
         @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, Kuu, solver; penalty, tol)
     else
         #-----------------------------------------------------------------#
-         @time  K_all, Q_all, Mi_all, b = ElementAssemblyLoopFEM_v0( se, mesh, ipx, ipw, N, dNdX )
+        @time  K_all, Q_all, Mi_all, b = ElementAssemblyLoopFEM_v0( se, mesh, ipx, ipw, N, dNdX )
         nout    = 1000#1e1
         iterMax = 10e3#3e4
         ϵ_PT    = 5e-7
@@ -221,4 +224,4 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     end
 end
 
-main(1, 7, 3, 6, 0.0382, 0.1833, 7.0) # nit = xxxxx
+main(1, 7, 1, 6, 0.0382, 0.1833, 7.0) # nit = xxxxx

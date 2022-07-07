@@ -203,8 +203,8 @@ end
         bct             .= 0
         @inbounds for in=1:nnel
             bc_type         = mesh.bcn[nodes[in]]
-            x[in]           = mesh.xn[nodes[in]]
-            x[in+nnel]      = mesh.yn[nodes[in]]
+            x[in,1]           = mesh.xn[nodes[in]]
+            x[in,2]      = mesh.yn[nodes[in]]
             if (bc_type==1 || bc_type==3) bct[in]      = 1 end 
             if (bc_type==1 || bc_type==4) bct[in+nnel] = 1 end 
             bc_dir[in]      = Vx[nodes[in]]
@@ -383,3 +383,164 @@ function ElementAssemblyLoopFEM_v0( se, mesh, ipx, ipw, N, dNdX ) # Adapted from
 end 
 
 #----------------------------------------------------------#
+
+
+@views function ElementAssemblyLoopFEM_v3( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # Adapted from MILAMIN_1.0.1
+    ndof         = 2*mesh.nnel
+    nnel         = mesh.nnel
+    npel         = mesh.npel
+    nip          = length(ipw)
+    K_all        = zeros(mesh.nel, ndof, ndof) 
+    K_all_i      = zeros(Int64, mesh.nel, ndof, ndof)
+    K_all_j      = zeros(Int64, mesh.nel, ndof, ndof)
+    Q_all        = zeros(mesh.nel, ndof, npel)
+    Q_all_i      = zeros(Int64, mesh.nel, ndof, npel)
+    Q_all_j      = zeros(Int64, mesh.nel, ndof, npel)
+    Mi_all       = zeros(mesh.nel, npel, npel)
+    bV_all       = zeros(mesh.nel, ndof )
+    bV_all_i     = zeros(Int64, mesh.nel, ndof )
+    bP_all       = zeros(mesh.nel, npel )
+    bP_all_i     = zeros(Int64, mesh.nel, npel )
+    K_ele        = zeros(ndof, ndof)
+    Q_ele        = zeros(ndof, npel)
+    Q_ele_ip     = zeros(ndof, npel)
+    M_ele        = zeros(npel ,npel)
+    M_inv        = zeros(npel ,npel)
+    P_inv        = zeros(npel ,npel)
+    b_ele        = zeros(ndof)
+    B            = zeros(ndof, 3)
+    Bt           = zeros(3, ndof)
+    K_ele_ip     = zeros(ndof, ndof)
+    Bv           = zeros(ndof)
+    m            =  [ 1.0; 1.0; 0.0]
+    Dev          =  [ 4/3 -2/3  0.0;
+                     -2/3  4/3  0.0;
+                      0.0  0.0  1.0]
+    J            = zeros(2,2)
+    invJ         = zeros(2,2)
+    P            = @SMatrix ones(npel, npel)
+    Pb           = ones(npel)
+    dNdx         = zeros(nnel, 2)
+    Pi           = zeros(npel)
+    nodes        = zeros(Int64, nnel)
+    bct          = @SVector zeros(Int64, ndof)
+    bc_dir       = @SVector zeros(ndof)
+    dNdXi        = @SMatrix zeros(mesh.nnel, 2)
+    x            = @SMatrix zeros(mesh.nnel, 2)
+    Ni           = @SVector zeros(nnel)
+    println("Element loop...")
+    # Element loop
+    @inbounds for e = 1:mesh.nel
+        nodes  .= mesh.e2n[e,:]
+        K_ele  .= 0.0
+        Q_ele  .= 0.0
+        M_ele  .= 0.0
+        b_ele  .= 0.0
+        M_inv  .= 0.0
+        # Deal with BC's
+        for in =1:ndof
+            @set! bct[in]             = 0
+        end
+        @inbounds for in=1:nnel
+            bc_type       = mesh.bcn[nodes[in]]
+            @set! x[in,1] = @views mesh.xn[nodes[in]]
+            @set! x[in,2] = @views mesh.yn[nodes[in]]
+            @set! dNdXi[in,1] = 1.0
+            if (bc_type==1 || bc_type==3) @set! bct[in]      = 1 end 
+            if (bc_type==1 || bc_type==4) @set! bct[in+nnel] = 1 end 
+            @set! bc_dir[in]      = Vx[nodes[in]]
+            @set! bc_dir[in+nnel] = Vy[nodes[in]]
+            # Deal with indices
+            K_all_i[e,in,:]      .= nodes[in]
+            K_all_i[e,in+nnel,:] .= nodes[in] + mesh.nn
+            K_all_j[e,:,in]      .= nodes[in]
+            K_all_j[e,:,in+nnel] .= nodes[in] + mesh.nn
+            bV_all_i[e,in]        = nodes[in]
+            bV_all_i[e,in+nnel]   = nodes[in] + mesh.nn
+            Q_all_i[e,in,:]      .= nodes[in]
+            Q_all_i[e,in+nnel,:] .= nodes[in] + mesh.nn    
+        end
+        @inbounds for jn=1:npel
+            Q_all_j[e,:,jn]      .= mesh.e2p[e,jn]
+            bP_all_i[e,jn]        = mesh.e2p[e,jn]
+            if jn>1 && npel==3
+                @set! P[jn,:] .= x[1:3,jn-1]
+            end
+        end
+        # if npel==3 && nnel!=4 P[2:3,:] .= (x[1:3,:])' end
+        ke               = mesh.ke[e]
+        # Integration loop
+        @inbounds for ip=1:nip
+            psize(dNdXi)
+            psize(dNdX[ip,:,:])
+            # for in=1:1#nnel
+            #     # @set! Ni[in] = N[ip,in,1]
+            #     @set! dNdXi[in,1] = dNdX[ip,in,1]
+            #     # @set! dNdXi[in,2] = @views dNdX[ip,in,2]
+            # end
+
+            
+            
+            mul!(J, x', dNdXi)
+            detJ           = J[1,1]*J[2,2] - J[1,2]*J[2,1]
+            w              = ipw[ip] * detJ
+            invJ[1,1]      = +J[2,2] / detJ
+            invJ[1,2]      = -J[1,2] / detJ
+            invJ[2,1]      = -J[2,1] / detJ
+            invJ[2,2]      = +J[1,1] / detJ
+            mul!(dNdx, dNdXi, invJ)                  
+            B[1:nnel,1]     .= dNdx[:,1]
+            B[nnel+1:end,2] .= dNdx[:,2]
+            B[1:nnel,3]     .= dNdx[:,2]
+            B[nnel+1:end,3] .= dNdx[:,1]
+            Bv[1:nnel]      .= dNdx[:,1]
+            Bv[nnel+1:end]  .= dNdx[:,2]
+            mul!(Bt, Dev,B')
+            mul!(K_ele_ip, B, Bt)
+            K_ele        .+= w .* ke .* K_ele_ip
+            if npel==3
+                #################### THIS IS NOT OPTMIZED, WILL LIKELY NOT WORK IN 3D ALSO
+                mul!(Pb[2:3], x', Ni )
+                Pi        .= P\Pb
+                Q_ele    .-= w .* (Bv*Pi') 
+                # M_ele   .+= ipw[ip] .* detJ .* Pi*Pi' # mass matrix P, not needed for incompressible
+                #################### THIS IS NOT OPTMIZED, WILL LIKELY NOT WORK IN 3D ALSO
+            elseif npel==1  
+                mul!(Q_ele_ip, B, m)
+                Q_ele    .-= w .* Q_ele_ip          # B*m*Np'
+            end
+            b_ele[1:2:end]    .+= w .* se[e,1] .* Ni 
+            b_ele[nnel+1:end] .+= w .* se[e,2] .* Ni 
+        end
+        # Element matrices
+        @inbounds for jn=1:ndof
+            for in=1:ndof
+                if bct[jn]==0 && bct[in]==0
+                    K_all[e,jn,in] = K_ele[jn,in]
+                end
+                if bct[jn]==0 && bct[in]==1
+                    bV_all[e,jn] -= K_ele[jn,in]*bc_dir[in]
+                end
+            end
+            if bct[jn]==0
+                bV_all[e,jn]  += b_ele[jn]
+            elseif bct[jn]==1
+                K_all[e,jn,jn] = 1.0
+                bV_all[e,jn]  = bc_dir[jn]
+            end
+        end
+        @inbounds for jn=1:ndof
+            for in=1:npel
+                if bct[jn]==0
+                    Q_all[e,jn,in] = Q_ele[jn,in]
+                else bct[jn]==1
+                    bP_all[e,in] += Q_ele[jn,in] * bc_dir[jn]
+                end
+            end
+        end
+    end
+    println("Sparsification...")
+    @time Kuu, Kup, fu, fp = SparsifyStokes( mesh.nn, mesh.np, K_all_i, K_all_j, K_all, Q_all_i, Q_all_j, Q_all, bV_all_i, bV_all, bP_all_i, bP_all )
+    return Kuu, Kup, fu, fp
+    # return 0, 0, 0, 0
+end 
