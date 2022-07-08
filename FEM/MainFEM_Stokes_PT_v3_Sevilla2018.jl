@@ -43,7 +43,8 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     R          = 1.0
     inclusion  = 0
     εBG        = 1.0
-    η          = [1.0 5.0]  
+    η          = [1.0 5.0] 
+    BC         = [1; 1; 1; 1;] # S E N W --- 1: Dirichlet / 2: Neumann
     solver     = -1
     
     # Element data
@@ -55,7 +56,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     N1D, dNdX1D   = ShapeFunctions1D(ipx1D, 3, 3)
   
     # Generate mesh
-    mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, 0.0, inclusion, R; nnel, npel ) 
+    mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, 0.0, inclusion, R, BC; nnel, npel ) 
     println("Number of elements: ", mesh.nel)
     println("Number of nodes:    ", mesh.nn)
     println("Number of p nodes:  ", mesh.np)
@@ -79,7 +80,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             Vx[in] = vx
             Vy[in] = vy
         end
-        if mesh.bcn[in]==5 # Store nodal boundary stress
+        if mesh.bcn[in]==2 # Store nodal boundary stress
             σxx[in] = Sxx
             σyy[in] = Syy
             σxy[in] = Sxy
@@ -94,32 +95,41 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         se[e,1] = sx
         se[e,2] = sy
     end
+  
+    #-----------------------------------------------------------------#
+    @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v2( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
+    
 
-    nA = [ 3 1 2 ] # left node
-    nB = [ 4 5 6 ] # mid-face node equivalent to mesh.e2f[e,f]
-    nC = [ 2 3 1 ] # right node
-    nodes = zeros(Int64,3)
-    bct   = zeros(Int64,3)
-    x     = zeros(3,2)
-    Ni    = zeros(3)
-    dNdXi = ones(3,2)
-    T     = zeros(3,2)
-    σ     = zeros(3,3)
-    J     = zeros(2,2)
-    f_ele = zeros(2*mesh.nnel)
-
-    # display(N1D)
-    # display(dNdX1D)
-
-    for e=1:1#mesh.nel
-
-        for f=1:mesh.nf_el
+    #----------------------------- SURFACE TRACTIONS -----------------------------#
+    nnfa  = 3                  # number of nodes per face
+    nip   = 3                  # number of integration point per face
+    nA    = [ 3 1 2 ]          # left node
+    nB    = [ 4 5 6 ]          # mid-face node equivalent to mesh.e2f[e,f]
+    nC    = [ 2 3 1 ]          # right node
+    f2n   = zeros(Int64,3)     # face nodes to element nodes numbering
+    nodes = zeros(Int64,3)     # global node numbering
+    bct   = zeros(Int64,3)     # BC type (2 is Neumann)
+    x     = zeros(nnfa,2)      # global coordinate of face nodes
+    Ni    = zeros(nnfa)        # shape function for integration point
+    dNdXi = ones(nnfa,2)       # shape function derivatives for integration point
+    σ     = zeros(nnfa,3)      # Total stress tensor components for each node on the face
+    T     = zeros(nnfa,2)      # Traction vector for each node on the face
+    J     = zeros(2,2)         # Jacobian
+    Fex   = zeros(mesh.nnel)   # Neumann force vector for the current element 
+    Fey   = zeros(mesh.nnel)   # Neumann force vector for the current element 
+    Fs    = zeros(2)           # Surface traction 
+    Ff    = zeros(2*nnfa)      # Contribution of surface tratction to surface nodes
+    # Loop over element (ideally one could loop only through elements that have Neumann nodes
+    for e=1:mesh.nel  
+        # Loop over faces of each element
+        for f=1:mesh.nf_el 
             # Face normal
             nx         = mesh.n_x[e,f]
             ny         = mesh.n_y[e,f]
-            # Node indices along the face
+            # Node indices along the face (3 nodes since we only use quadratic elements)
             n1, n2, n3 = mesh.e2n[e,nA[f]], mesh.e2n[e,nB[f]],  mesh.e2n[e,nC[f]]  # mesh.e2f[e,f]
-            nodes     .= [ n1, n2, n3 ]
+            nodes     .= [ n1,    n2,    n3    ]
+            f2n       .= [ nA[f], nB[f], nC[f] ]
             bct       .= mesh.bcn[nodes]
             # Node coordinates
             x[:,1]    .= mesh.xn[nodes]      
@@ -129,135 +139,135 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             σ[:,2]    .= σyy[nodes]
             σ[:,3]    .= σxy[nodes]
             # Nodal tractions
-            T[:,1]    .= [σ[1,1]*nx+σ[1,3]*ny,  σ[2,1]*nx+σ[2,3]*ny,  σ[3,1]*nx+σ[3,3]*ny] .* bct.==5
-            T[:,2]    .= [σ[1,2]*ny+σ[1,3]*nx,  σ[2,2]*ny+σ[2,3]*nx,  σ[3,2]*ny+σ[3,3]*nx] .* bct.==5
-            
-            for ip=1:3
+            T[:,1]    .= [σ[1,1]*nx+σ[1,3]*ny,  σ[2,1]*nx+σ[2,3]*ny,  σ[3,1]*nx+σ[3,3]*ny] .* (bct.==2) # only activate if BC is Neumann!!!
+            T[:,2]    .= [σ[1,2]*ny+σ[1,3]*nx,  σ[2,2]*ny+σ[2,3]*nx,  σ[3,2]*ny+σ[3,3]*nx] .* (bct.==2)
+            # Loop over integration loop
+            for ip=1:nip 
                 Ni         .= N1D[ip,:,:]
-                dNdXi[:,1] .= dNdX1D[ip,:,:] # the second column is set to 1.0 by default dNdy = 1.0
+                dNdXi[:,1] .= dNdX1D[ip,:,:] # the second column is set to 1.0 by default dNdy = 1.0 to avoid detJ=0
                 mul!(J, x', dNdXi)
                 detJ        = J[1,1]*J[2,2] - J[1,2]*J[2,1]
-                w           = ipw1D[ip] * detJ
-             
-                display(detJ)
+                # Surface tractions 
+                Fs[1] = Ni'*T[:,1]  # use shape functions to evaluate traction at integration point
+                Fs[2] = Ni'*T[:,2]
+                # Integrate surface traction contributions
+                Ff[1:nnfa]     .+= ipw1D[ip] .* Ni*Fs[1]*detJ
+                Ff[nnfa+1:end] .+= ipw1D[ip] .* Ni*Fs[2]*detJ   
             end
-           
-            
-
-            # println( (mesh.xf[mesh.e2f[e,f]] - 0.5*(mesh.xn[n1] + mesh.xn[n3]) ) / mesh.xf[n2] )
-            # println( (mesh.xf[mesh.e2f[e,f]] - mesh.xn[n2]  ) / mesh.xf[n2] )
-            # println(mesh.yf[n2], ' ', 0.5*(mesh.yn[n1] + mesh.yn[n3]) )
-
-
+            # Add contributions to element vector (sum?)
+            Fex[f2n] .+= Ff[1:nnfa]
+            Fey[f2n] .+= Ff[nnfa+1]
         end
-
+        # Add contributions of element vector to global vector 
+        e2n                = mesh.e2n[e,:]
+        bcn                = mesh.bcn[e2n]
+        bu[e2n]          .+= Fex
+        bu[e2n.+mesh.nn] .+= Fey
     end
+    #----------------------------- SURFACE TRACTIONS -----------------------------#
 
-    # #-----------------------------------------------------------------#
-    # @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v2( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
-    
-    # #-----------------------------------------------------------------#
-    # @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, Kuu, solver)
+    #-----------------------------------------------------------------#
+    @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, Kuu, solver)
 
-    # # #     nout    = 1000#1e1
-    # # #     iterMax = 3e4
-    # # #     ϵ_PT    = 1e-7
-    # # #     # θ       = 0.11428 *1.7
-    # # #     # Δτ      = 0.28 /1.2
-    # # #     ΔVxΔτ = zeros(mesh.nn)
-    # # #     ΔVyΔτ = zeros(mesh.nn)
-    # # #     ΔVxΔτ0= zeros(mesh.nn)
-    # # #     ΔVyΔτ0= zeros(mesh.nn)
-    # # #     ΔPΔτ  = zeros(mesh.np)
+    # #     nout    = 1000#1e1
+    # #     iterMax = 3e4
+    # #     ϵ_PT    = 1e-7
+    # #     # θ       = 0.11428 *1.7
+    # #     # Δτ      = 0.28 /1.2
+    # #     ΔVxΔτ = zeros(mesh.nn)
+    # #     ΔVyΔτ = zeros(mesh.nn)
+    # #     ΔVxΔτ0= zeros(mesh.nn)
+    # #     ΔVyΔτ0= zeros(mesh.nn)
+    # #     ΔPΔτ  = zeros(mesh.np)
 
-    # # #     # PT loop
-    # # #     local iter = 0
-    # # #     success = 0
-    # # #     @time while (iter<iterMax)
-    # # #         iter  += 1
-    # # #         ΔVxΔτ0 .= ΔVxΔτ 
-    # # #         ΔVyΔτ0 .= ΔVyΔτ
-    # # #         if USE_NODAL
-    # # #             ResidualStokesNodalFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b_all )
-    # # #         else
-    # # #             ResidualStokesElementalSerialFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b_all )
-    # # #         end
-    # # #         ΔVxΔτ  .= (1.0 - θ).*ΔVxΔτ0 .+ ΔVxΔτ 
-    # # #         ΔVyΔτ  .= (1.0 - θ).*ΔVyΔτ0 .+ ΔVyΔτ
-    # # #         Vx    .+= ΔτV .* ΔVxΔτ
-    # # #         Vy    .+= ΔτV .* ΔVyΔτ
-    # # #         P     .+= ΔτP .* ΔPΔτ
-    # # #         if iter % nout == 0 || iter==1
-    # # #             errVx = norm(ΔVxΔτ)/sqrt(length(ΔVxΔτ))
-    # # #             errVy = norm(ΔVyΔτ)/sqrt(length(ΔVyΔτ))
-    # # #             errP  = norm(ΔPΔτ) /sqrt(length(ΔPΔτ))
-    # # #             @printf("PT Iter. %05d:\n", iter)
-    # # #             @printf("  ||Fx|| = %3.3e\n", errVx)
-    # # #             @printf("  ||Fy|| = %3.3e\n", errVy)
-    # # #             @printf("  ||Fp|| = %3.3e\n", errP )
-    # # #             err = max(errVx, errVy, errP)
-    # # #             if err < ϵ_PT
-    # # #                 print("PT solve converged in ")
-    # # #                 success = true
-    # # #                 break
-    # # #             elseif err>1e4
-    # # #                 success = false
-    # # #                 println("exploding !")
-    # # #                 break
-    # # #             elseif isnan(err)
-    # # #                 success = false
-    # # #                 println("NaN !")
-    # # #                 break
-    # # #             end
-    # # #         end
-    # # #     end
-    # # # end
+    # #     # PT loop
+    # #     local iter = 0
+    # #     success = 0
+    # #     @time while (iter<iterMax)
+    # #         iter  += 1
+    # #         ΔVxΔτ0 .= ΔVxΔτ 
+    # #         ΔVyΔτ0 .= ΔVyΔτ
+    # #         if USE_NODAL
+    # #             ResidualStokesNodalFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b_all )
+    # #         else
+    # #             ResidualStokesElementalSerialFEM!( ΔVxΔτ, ΔVyΔτ, ΔPΔτ, Vx, Vy, P, mesh, K_all, Q_all, b_all )
+    # #         end
+    # #         ΔVxΔτ  .= (1.0 - θ).*ΔVxΔτ0 .+ ΔVxΔτ 
+    # #         ΔVyΔτ  .= (1.0 - θ).*ΔVyΔτ0 .+ ΔVyΔτ
+    # #         Vx    .+= ΔτV .* ΔVxΔτ
+    # #         Vy    .+= ΔτV .* ΔVyΔτ
+    # #         P     .+= ΔτP .* ΔPΔτ
+    # #         if iter % nout == 0 || iter==1
+    # #             errVx = norm(ΔVxΔτ)/sqrt(length(ΔVxΔτ))
+    # #             errVy = norm(ΔVyΔτ)/sqrt(length(ΔVyΔτ))
+    # #             errP  = norm(ΔPΔτ) /sqrt(length(ΔPΔτ))
+    # #             @printf("PT Iter. %05d:\n", iter)
+    # #             @printf("  ||Fx|| = %3.3e\n", errVx)
+    # #             @printf("  ||Fy|| = %3.3e\n", errVy)
+    # #             @printf("  ||Fp|| = %3.3e\n", errP )
+    # #             err = max(errVx, errVy, errP)
+    # #             if err < ϵ_PT
+    # #                 print("PT solve converged in ")
+    # #                 success = true
+    # #                 break
+    # #             elseif err>1e4
+    # #                 success = false
+    # #                 println("exploding !")
+    # #                 break
+    # #             elseif isnan(err)
+    # #                 success = false
+    # #                 println("NaN !")
+    # #                 break
+    # #             end
+    # #         end
+    # #     end
+    # # end
 
-    # #-----------------------------------------------------------------#
-    # # Compute strain rate and stress
-    # εxx = zeros(mesh.nel, nip)
-    # εyy = zeros(mesh.nel, nip)
-    # εxy = zeros(mesh.nel, nip)
-    # τxx = zeros(mesh.nel, nip)
-    # τyy = zeros(mesh.nel, nip)
-    # τxy = zeros(mesh.nel, nip)
-    # ∇v  = zeros(mesh.nel, nip) 
-    # ComputeStressFEM!( ∇v, εxx, εyy, εxy, τxx, τyy, τxy, Vx, Vy, mesh, ipx, ipw, N, dNdX ) 
+    #-----------------------------------------------------------------#
+    # Compute strain rate and stress
+    εxx = zeros(mesh.nel, nip)
+    εyy = zeros(mesh.nel, nip)
+    εxy = zeros(mesh.nel, nip)
+    τxx = zeros(mesh.nel, nip)
+    τyy = zeros(mesh.nel, nip)
+    τxy = zeros(mesh.nel, nip)
+    ∇v  = zeros(mesh.nel, nip) 
+    ComputeStressFEM!( ∇v, εxx, εyy, εxy, τxx, τyy, τxy, Vx, Vy, mesh, ipx, ipw, N, dNdX ) 
 
-    # #-----------------------------------------------------------------#
-    # Vxe  = zeros(mesh.nel)
-    # Vye  = zeros(mesh.nel)
-    # Ve   = zeros(mesh.nel)
-    # Pe   = zeros(mesh.nel)
-    # Sxxe = zeros(mesh.nel)
+    #-----------------------------------------------------------------#
+    Vxe  = zeros(mesh.nel)
+    Vye  = zeros(mesh.nel)
+    Ve   = zeros(mesh.nel)
+    Pe   = zeros(mesh.nel)
+    Sxxe = zeros(mesh.nel)
 
-    # P .-= minimum(P) 
-    # for e=1:mesh.nel
-    #     for i=1:mesh.nnel
-    #         Vxe[e] += 1.0/mesh.nnel * Vx[mesh.e2n[e,i]]
-    #         Vye[e] += 1.0/mesh.nnel * Vy[mesh.e2n[e,i]]
-    #         Ve[e]  += 1.0/mesh.nnel * sqrt(Vx[mesh.e2n[e,i]]^2 + Vy[mesh.e2n[e,i]]^2)
-    #     end
-    #     for i=1:mesh.npel
-    #         Pe[e] += 1.0/mesh.npel * P[mesh.e2p[e,i]]
-    #     end
-    #     for ip=1:nip
-    #         Sxxe[e] += 1.0/nip * τxx[e,ip]
-    #     end
-    # end
-    # Sxxe .-= Pe
-    # @printf("min Vx %2.2e --- max. Vx %2.2e\n", minimum(Vx), maximum(Vx))
-    # @printf("min Vy %2.2e --- max. Vy %2.2e\n", minimum(Vy), maximum(Vy))
-    # @printf("min P  %2.2e --- min. P  %2.2e\n", minimum(P),  maximum(P) )
-    # @printf("min ∇v %2.2e --- min. ∇v %2.2e\n", minimum(∇v), maximum(∇v))
+    P .-= minimum(P) 
+    for e=1:mesh.nel
+        for i=1:mesh.nnel
+            Vxe[e] += 1.0/mesh.nnel * Vx[mesh.e2n[e,i]]
+            Vye[e] += 1.0/mesh.nnel * Vy[mesh.e2n[e,i]]
+            Ve[e]  += 1.0/mesh.nnel * sqrt(Vx[mesh.e2n[e,i]]^2 + Vy[mesh.e2n[e,i]]^2)
+        end
+        for i=1:mesh.npel
+            Pe[e] += 1.0/mesh.npel * P[mesh.e2p[e,i]]
+        end
+        for ip=1:nip
+            Sxxe[e] += 1.0/nip * τxx[e,ip]
+        end
+    end
+    Sxxe .-= Pe
+    @printf("min Vx %2.2e --- max. Vx %2.2e\n", minimum(Vx), maximum(Vx))
+    @printf("min Vy %2.2e --- max. Vy %2.2e\n", minimum(Vy), maximum(Vy))
+    @printf("min P  %2.2e --- min. P  %2.2e\n", minimum(P),  maximum(P) )
+    @printf("min ∇v %2.2e --- min. ∇v %2.2e\n", minimum(∇v), maximum(∇v))
 
-    # #-----------------------------------------------------------------#
-    # if USE_MAKIE
-    #     # PlotMakie(mesh, Ve, xmin, xmax, ymin, ymax; cmap=:jet1)
-    #     PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1)
-    # else
-    #     PlotPyPlot(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1 )
-    # end
+    #-----------------------------------------------------------------#
+    if USE_MAKIE
+        # PlotMakie(mesh, Ve, xmin, xmax, ymin, ymax; cmap=:jet1)
+        PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1)
+    else
+        PlotPyPlot(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1 )
+    end
 end
 
 for i=1:1
