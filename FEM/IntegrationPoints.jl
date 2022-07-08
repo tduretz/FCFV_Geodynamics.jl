@@ -92,9 +92,9 @@ function Integration1D( nip )
         ipx[2] = 0.0 +.5
         ipx[3] = .775/2 +.5
         # Weight    
-        ipw[1] = 5.0/6.0
+        ipw[1] = 5.0/9.0
         ipw[2] = 8.0/9.0
-        ipw[3] = 9.0/6.0
+        ipw[3] = 5.0/9.0
     end
 
     return ipx, ipw
@@ -104,8 +104,6 @@ function ShapeFunctions1D(ipx, nip, nnel)
 
     N    = zeros(nip,nnel,1)
     dNdx = zeros(nip,nnel,1)
-    N        = @SArray zeros(nip,nnel,1)
-    dNdx     = @SArray zeros(nip,nnel,1)
 
     for i=1:nip
 

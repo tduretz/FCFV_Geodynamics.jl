@@ -234,6 +234,9 @@ end
             dNdXi .= dNdX[ip,:,:]
             mul!(J, x', dNdXi)
             detJ           = J[1,1]*J[2,2] - J[1,2]*J[2,1]
+            # if e<10
+            #     display(detJ)
+            # end
             w              = ipw[ip] * detJ
             invJ[1,1]      = +J[2,2] / detJ
             invJ[1,2]      = -J[1,2] / detJ

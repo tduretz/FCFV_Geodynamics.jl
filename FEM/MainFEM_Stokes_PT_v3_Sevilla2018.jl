@@ -51,8 +51,8 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     N, dNdX   = ShapeFunctions(ipx, nip, nnel)
 
     # Surface data
-    ipx1D, ipw1D  = IntegrationTriangle(3)
-    N1D, dNdX1D   = ShapeFunctions(ipx1D, 3, 3)
+    ipx1D, ipw1D  = Integration1D(3)
+    N1D, dNdX1D   = ShapeFunctions1D(ipx1D, 3, 3)
   
     # Generate mesh
     mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, 0.0, inclusion, R; nnel, npel ) 
@@ -95,24 +95,58 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         se[e,2] = sy
     end
 
-    println(mesh.nf_el)
+    nA = [ 3 1 2 ] # left node
+    nB = [ 4 5 6 ] # mid-face node equivalent to mesh.e2f[e,f]
+    nC = [ 2 3 1 ] # right node
+    nodes = zeros(Int64,3)
+    bct   = zeros(Int64,3)
+    x     = zeros(3,2)
+    Ni    = zeros(3)
+    dNdXi = ones(3,2)
+    T     = zeros(3,2)
+    σ     = zeros(3,3)
+    J     = zeros(2,2)
+    f_ele = zeros(2*mesh.nnel)
 
-    nA = [ 2 1 3 ]
-    nB = [ 1 3 2 ]
+    # display(N1D)
+    # display(dNdX1D)
 
     for e=1:1#mesh.nel
 
         for f=1:mesh.nf_el
-            n2    = mesh.e2f[e,f]
-            bc    = mesh.bc[n2]
-            ni_x  = mesh.n_x[e,f]
-            ni_y  = mesh.n_y[e,f]
+            # Face normal
+            nx         = mesh.n_x[e,f]
+            ny         = mesh.n_y[e,f]
+            # Node indices along the face
+            n1, n2, n3 = mesh.e2n[e,nA[f]], mesh.e2n[e,nB[f]],  mesh.e2n[e,nC[f]]  # mesh.e2f[e,f]
+            nodes     .= [ n1, n2, n3 ]
+            bct       .= mesh.bcn[nodes]
+            # Node coordinates
+            x[:,1]    .= mesh.xn[nodes]      
+            x[:,2]    .= mesh.yn[nodes]  
+            # Nodal stresses
+            σ[:,1]    .= σxx[nodes]
+            σ[:,2]    .= σyy[nodes]
+            σ[:,3]    .= σxy[nodes]
+            # Nodal tractions
+            T[:,1]    .= [σ[1,1]*nx+σ[1,3]*ny,  σ[2,1]*nx+σ[2,3]*ny,  σ[3,1]*nx+σ[3,3]*ny] .* bct.==5
+            T[:,2]    .= [σ[1,2]*ny+σ[1,3]*nx,  σ[2,2]*ny+σ[2,3]*nx,  σ[3,2]*ny+σ[3,3]*nx] .* bct.==5
+            
+            for ip=1:3
+                Ni         .= N1D[ip,:,:]
+                dNdXi[:,1] .= dNdX1D[ip,:,:] # the second column is set to 1.0 by default dNdy = 1.0
+                mul!(J, x', dNdXi)
+                detJ        = J[1,1]*J[2,2] - J[1,2]*J[2,1]
+                w           = ipw1D[ip] * detJ
+             
+                display(detJ)
+            end
+           
+            
 
-            n1 =  mesh.e2n[e, nA[f]]
-            n3 =  mesh.e2n[e, nA[f]]
-
-            println(mesh.xf[n2], ' ', 0.5*(mesh.xn[n1] + mesh.xn[n3]) )
-            println(mesh.yf[n2], ' ', 0.5*(mesh.yn[n1] + mesh.yn[n3]) )
+            # println( (mesh.xf[mesh.e2f[e,f]] - 0.5*(mesh.xn[n1] + mesh.xn[n3]) ) / mesh.xf[n2] )
+            # println( (mesh.xf[mesh.e2f[e,f]] - mesh.xn[n2]  ) / mesh.xf[n2] )
+            # println(mesh.yf[n2], ' ', 0.5*(mesh.yn[n1] + mesh.yn[n3]) )
 
 
         end
@@ -226,6 +260,6 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     # end
 end
 
-for i=1:5
+for i=1:1
     @time main(1, 7, 3, 6, 0.030598470000000003, 0.03666666667,  1.0) # nit = 4000
 end
