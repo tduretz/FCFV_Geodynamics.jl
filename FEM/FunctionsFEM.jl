@@ -25,7 +25,7 @@ function ComputeStressFEM!( εkk, εxx, εyy, εxy, τxx, τyy, τxy, Vx, Vy, me
     Pb = ones(npel)
     Np0, dNdXp   = ShapeFunctions(ipx, nip, 3)
     # Element loop
-    @inbounds for e = 1:mesh.nel
+     for e = 1:mesh.nel
         nodes   = mesh.e2n[e,:]
         x       = [mesh.xn[nodes] mesh.yn[nodes]]  
         ke      = mesh.ke[e]
@@ -98,7 +98,7 @@ function ResidualStokesNodalFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, Q_all, bV_
     ###################################### PRESSURE
     # Pressure is discontinuous across elements, the residual can be evaluated per element without race condition
     V_ele = zeros(nnel*2)
-    @inbounds for e = 1:mesh.nel
+     for e = 1:mesh.nel
         Fp[e] = 0.0
         nodes  = mesh.e2n[e,:]
         nodesP = mesh.e2p[e,:]
@@ -124,7 +124,7 @@ function ResidualStokesElementalSerialFEM!( Fx, Fy, Fp, Vx, Vy, P, mesh, K_all, 
     npel  = mesh.npel
     V_ele = zeros(nnel*2)
     b_ele = zeros(nnel*2)
-    @inbounds for e = 1:mesh.nel
+     for e = 1:mesh.nel
         nodes  = mesh.e2n[e,:]
         nodesP = mesh.e2p[e,:]
         V_ele[1:2:end-1] .= Vx[nodes]
@@ -192,7 +192,7 @@ end
     Ni           = zeros(nnel)
     println("Element loop...")
     # Element loop
-    @inbounds for e = 1:mesh.nel
+     for e = 1:mesh.nel
         nodes  .= mesh.e2n[e,:]
         K_ele  .= 0.0
         Q_ele  .= 0.0
@@ -201,7 +201,7 @@ end
         M_inv  .= 0.0
         # Deal with BC's
         bct             .= 0
-        @inbounds for in=1:nnel
+         for in=1:nnel
             bc_type        = mesh.bcn[nodes[in]]
             x[in,1]        = mesh.xn[nodes[in]]
             x[in,2]        = mesh.yn[nodes[in]]
@@ -219,7 +219,7 @@ end
             Q_all_i[e,in,:]      .= nodes[in]
             Q_all_i[e,in+nnel,:] .= nodes[in] + mesh.nn    
         end
-        @inbounds for jn=1:npel
+         for jn=1:npel
             Q_all_j[e,:,jn]      .= mesh.e2p[e,jn]
             bP_all_i[e,jn]        = mesh.e2p[e,jn]
             if jn>1 && npel==3
@@ -229,7 +229,7 @@ end
         # if npel==3 && nnel!=4 P[2:3,:] .= (x[1:3,:])' end
         ke               = mesh.ke[e]
         # Integration loop
-        @inbounds for ip=1:nip
+         for ip=1:nip
             Ni    .= N[ip,:,:]
             dNdXi .= dNdX[ip,:,:]
             mul!(J, x', dNdXi)
@@ -267,7 +267,7 @@ end
             b_ele[nnel+1:end] .+= w .* se[e,2] .* Ni 
         end
         # Element matrices
-        @inbounds for jn=1:ndof
+         for jn=1:ndof
             for in=1:ndof
                 if bct[jn]==0 && bct[in]==0
                     K_all[e,jn,in] = K_ele[jn,in]
@@ -283,7 +283,7 @@ end
                 bV_all[e,jn]  = bc_dir[jn]
             end
         end
-        @inbounds for jn=1:ndof
+         for jn=1:ndof
             for in=1:npel
                 if bct[jn]==0
                     Q_all[e,jn,in] = Q_ele[jn,in]
@@ -334,7 +334,7 @@ function ElementAssemblyLoopFEM_v0( se, mesh, ipx, ipw, N, dNdX ) # Adapted from
     Pb = ones(npel)
     Np0, dNdXp   = ShapeFunctions(ipx, nip, 3)
     # Element loop
-    @inbounds for e = 1:mesh.nel
+     for e = 1:mesh.nel
         nodes   = mesh.e2n[e,:]
         x       = [mesh.xn[nodes] mesh.yn[nodes]]  
         ke      = mesh.ke[e]
@@ -428,7 +428,7 @@ end
 #     Ni           = @SVector zeros(nnel)
 #     println("Element loop...")
 #     # Element loop
-#     @inbounds for e = 1:mesh.nel
+#      for e = 1:mesh.nel
 #         nodes  .= mesh.e2n[e,:]
 #         K_ele  .= 0.0
 #         Q_ele  .= 0.0
@@ -439,7 +439,7 @@ end
 #         for in =1:ndof
 #             @set! bct[in]             = 0
 #         end
-#         @inbounds for in=1:nnel
+#          for in=1:nnel
 #             bc_type       = mesh.bcn[nodes[in]]
 #             @set! x[in,1] = @views mesh.xn[nodes[in]]
 #             @set! x[in,2] = @views mesh.yn[nodes[in]]
@@ -458,7 +458,7 @@ end
 #             Q_all_i[e,in,:]      .= nodes[in]
 #             Q_all_i[e,in+nnel,:] .= nodes[in] + mesh.nn    
 #         end
-#         @inbounds for jn=1:npel
+#          for jn=1:npel
 #             Q_all_j[e,:,jn]      .= mesh.e2p[e,jn]
 #             bP_all_i[e,jn]        = mesh.e2p[e,jn]
 #             if jn>1 && npel==3
@@ -468,7 +468,7 @@ end
 #         # if npel==3 && nnel!=4 P[2:3,:] .= (x[1:3,:])' end
 #         ke               = mesh.ke[e]
 #         # Integration loop
-#         @inbounds for ip=1:nip
+#          for ip=1:nip
 
 #             for in=1:nnel
 #                 @set! Ni[in] = N[ip,in,1]
@@ -507,7 +507,7 @@ end
 #             b_ele[nnel+1:end] .+= w .* se[e,2] .* Ni 
 #         end
 #         # Element matrices
-#         @inbounds for jn=1:ndof
+#          for jn=1:ndof
 #             for in=1:ndof
 #                 if bct[jn]==0 && bct[in]==0
 #                     K_all[e,jn,in] = K_ele[jn,in]
@@ -523,7 +523,7 @@ end
 #                 bV_all[e,jn]  = bc_dir[jn]
 #             end
 #         end
-#         @inbounds for jn=1:ndof
+#          for jn=1:ndof
 #             for in=1:npel
 #                 if bct[jn]==0
 #                     Q_all[e,jn,in] = Q_ele[jn,in]

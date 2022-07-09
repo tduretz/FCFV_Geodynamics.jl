@@ -16,12 +16,12 @@ using Makie.GeometryBasics
     poly!(p, color = v, colormap = cmap, strokewidth = 0, strokecolor = :black, markerstrokewidth = 0, markerstrokecolor = (0, 0, 0, 0), aspect_ratio=:image, colorrange=(min_v,max_v)) #, xlims=(0.0,1.0) marche pas
     # GLMakie.scatter!(mesh.xf[mesh.bc.==3] ,mesh.yf[mesh.bc.==3] )
     Colorbar(f[1, 2], colormap = cmap, limits=(min_v, max_v), flipaxis = true, size = 25, height = Relative(2/3) )
-    resize_to_layout!(f)
+    # resize_to_layout!(f)
     display(f)
     if writefig==true 
         save( string(@__DIR__, "/plot.png"), f)
     end
-    return 
+    return nothing
 end
 
 # function PlotPyPlot(mesh, v, xmin, xmax, ymin, ymax; cmap = :viridis, min_v = minimum(v), max_v = maximum(v), writefig=false)

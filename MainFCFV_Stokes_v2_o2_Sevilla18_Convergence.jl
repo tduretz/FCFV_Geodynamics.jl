@@ -123,7 +123,8 @@ end
     ymin, ymax = 0, 1
     n          = 4
     nx, ny     = N, N
-    solver     = 1
+    BC         = [2; 1; 1; 1;] # S E N W --- 1: Dirichlet / 2: Neumann
+    solver     = -1
     R          = 0.5
     inclusion  = 0
     o2         = order-1
@@ -135,11 +136,11 @@ end
     if mesh_type=="Quadrangles" 
         if o2==0 tau  = 2e1 end
         if o2==1 tau  = 1e6 end
-        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, tau, inclusion, R )
+        mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, tau, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles"  
         if o2==0 tau  = 2e1 end
         if o2==1 tau  = 20e4 end
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, tau, inclusion, R ) 
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, tau, inclusion, R, BC ) 
     end
     println("Number of elements: ", mesh.nel)
 
@@ -159,6 +160,10 @@ end
     SxyNeu = zeros(mesh.nf)
     SyxNeu = zeros(mesh.nf)
     gbar   = zeros(mesh.nel,mesh.nf_el,2)
+    Pe     = zeros(mesh.nel)
+    Vxh    = zeros(mesh.nf)
+    Vyh    = zeros(mesh.nf)
+
     println("Model configuration :")
     @time SetUpProblem!(mesh, Pa, Vxa, Vya, Sxxa, Syya, Sxya, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sex, sey)
 
@@ -172,7 +177,7 @@ end
 
     # Solve for hybrid variable
     println("Linear solve:")
-    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, Muu, solver)
+    @time StokesSolvers!( Vxh, Vyh, Pe, mesh, Kuu, Kup, fu, fp, Muu, solver)
 
     # Reconstruct element values
     println("Compute element values:")
@@ -189,12 +194,21 @@ end
 
     # Visualise
     println("Visualisation:")
+    println( minimum(Pe), ' ',  maximum(Pe))
     @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1 )
     ndof = 2*mesh.nf+mesh.nel
     return ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii
 end
 
-function Run()
+function RunOnce()
+
+    mesh_type  = "UnstructTriangles"
+    order      = 1
+    main( 8, mesh_type, order )
+
+end
+
+function RunConvergence()
 
 #################### ORDER 1
 order = 1 
@@ -268,7 +282,7 @@ p = Plots.plot!( log10.(1.0 ./ N) , log10.(eV_tri),    markershape=:dtriangle, c
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_tri),    markershape=:dtriangle, color=:blue,      linestyle = :dot,  label="Triangles P O1"                     )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eTau_tri),  markershape=:dtriangle, color=:blue,      linestyle = :dash, label="Triangles Tau O1")#, legend=:bottomright, xlabel = "log_10(h_x)", ylabel = "log_10(err_T)" )
 
-p = Plots.plot!(  log10.(1.0 ./ N) , log10.(eV_quad_o2),   markershape=:rect,      color=:red,                         label="Quads V O2"                          )
+p = Plots.plot!( log10.(1.0 ./ N) , log10.(eV_quad_o2),   markershape=:rect,      color=:red,                         label="Quads V O2"                          )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eP_quad_o2),   markershape=:rect,      color=:red,      linestyle = :dot,  label="Quads P O2"                          )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eTau_quad_o2), markershape=:rect,      color=:red,      linestyle = :dash, label="Quads Tau O2"                        )
 p = Plots.plot!( log10.(1.0 ./ N) , log10.(eV_tri_o2),    markershape=:dtriangle, color=:red,                         label="Triangles V O2"                     )
@@ -288,4 +302,5 @@ display(p)
 
 end 
 
-Run()
+# RunConvergence()
+RunOnce()
