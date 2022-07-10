@@ -87,14 +87,22 @@ function Integration1D( nip )
     ipw = zeros(nip,1)
     
     if nip == 3
+        # # Location
+        # ipx[1] = -.775
+        # ipx[2] = 0.0
+        # ipx[3] = .775
+        # # Weight    
+        # ipw[1] = 5.0/9.0
+        # ipw[2] = 8.0/9.0
+        # ipw[3] = 5.0/9.0
         # Location
-        ipx[1] = -.775/2 +.5
-        ipx[2] = 0.0 +.5
-        ipx[3] = .775/2 +.5
+        ipx[1] = -1.0
+        ipx[2] = 0.0
+        ipx[3] = 1.0
         # Weight    
-        ipw[1] = 5.0/9.0
-        ipw[2] = 8.0/9.0
-        ipw[3] = 5.0/9.0
+        ipw[1] = 1.0/3.0
+        ipw[2] = 4.0/3.0
+        ipw[3] = 1.0/3.0
     end
 
     return ipx, ipw
@@ -110,8 +118,8 @@ function ShapeFunctions1D(ipx, nip, nnel)
         ξ = ipx[i]
 
         if nnel==3
-            N[i,:,:]    .= [ξ/2*(ξ-1) (1-ξ)^2   ξ/2*(ξ+1)]'
-            dNdx[i,:,:] .= [ξ-1.0     2.0*(ξ-1) ξ+1.0    ]'  #w.r.t η2
+            N[i,:,:]    .= [ξ/2*(ξ-1)  1.0-ξ^2 ξ/2*(ξ+1)]'
+            dNdx[i,:,:] .= [ξ-1.0/2.0 -2.0*ξ   ξ+1.0/2.0]'  #w.r.t η2
         end
     end
     return N, dNdx

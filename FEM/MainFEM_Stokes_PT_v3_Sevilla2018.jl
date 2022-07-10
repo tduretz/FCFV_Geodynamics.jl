@@ -39,7 +39,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     # Create sides of mesh
     xmin, xmax = -.0, 1.0
     ymin, ymax = -.0, 1.0
-    nx, ny     = Int16(n*10), Int16(n*10)
+    nx, ny     = Int16(n*30), Int16(n*30)
     R          = 1.0
     inclusion  = 0
     εBG        = 1.0
@@ -68,9 +68,9 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     mesh.bcn[mesh.xn.≈0.0] .= 1
     mesh.bcn[mesh.xn.≈1.0] .= 1
 
-    p = Plots.scatter( mesh.xn[mesh.bcn.==1], mesh.yn[mesh.bcn.==1], markershape =:cross, label="Base")
-    p = Plots.scatter!( mesh.xn[mesh.bcn.==2], mesh.yn[mesh.bcn.==2], markershape =:cross, label="Surface")
-    display(Plots.plot(p, aspect_ratio=1.0, xlabel="x [km]", ylabel="y [km]"))
+    # p = Plots.scatter( mesh.xn[mesh.bcn.==1], mesh.yn[mesh.bcn.==1], markershape =:cross, label="Base")
+    # p = Plots.scatter!( mesh.xn[mesh.bcn.==2], mesh.yn[mesh.bcn.==2], markershape =:cross, label="Surface")
+    # display(Plots.plot(p, aspect_ratio=1.0, xlabel="x [km]", ylabel="y [km]"))
 
     Vx   = zeros(mesh.nn)       # Solution on nodes 
     Vy   = zeros(mesh.nn)       # Solution on nodes 
@@ -91,11 +91,11 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             Vx[in] = vx
             Vy[in] = vy
         end
-        if mesh.bcn[in]==2 # Store nodal boundary stress
+        # if mesh.bcn[in]==2 # Store nodal boundary stress
             σxx[in] = Sxx
             σyy[in] = Syy
             σxy[in] = Sxy
-        end
+        # end
     end
     for e = 1:mesh.nel
         x       = mesh.xc[e]
@@ -112,76 +112,6 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     
 
     #----------------------------- SURFACE TRACTIONS -----------------------------#
-    nnfa  = 3                  # number of nodes per face
-    nipfa = 3                  # number of integration point per face
-    nA    = [ 3 1 2 ]          # left node
-    nB    = [ 4 5 6 ]          # mid-face node equivalent to mesh.e2f[e,f]
-    nC    = [ 2 3 1 ]          # right node
-    f2n   = zeros(Int64,3)     # face nodes to element nodes numbering
-    nodes = zeros(Int64,3)     # global node numbering
-    bct   = zeros(Int64,3)     # BC type (2 is Neumann)
-    x     = zeros(nnfa,2)      # global coordinate of face nodes
-    Ni    = zeros(nnfa)        # shape function for integration point
-    dNdXi = ones(nnfa,2)       # shape function derivatives for integration point
-    σ     = zeros(nnfa,3)      # Total stress tensor components for each node on the face
-    T     = zeros(nnfa,2)      # Traction vector for each node on the face
-    J     = zeros(2,2)         # Jacobian
-    Fex   = zeros(mesh.nnel)   # Neumann force vector for the current element 
-    Fey   = zeros(mesh.nnel)   # Neumann force vector for the current element 
-    Fs    = zeros(2)           # Surface traction 
-    Ff    = zeros(2*nnfa)      # Contribution of surface tratction to surface nodes
-    # Loop over element (ideally one could loop only through elements that have Neumann nodes
-    for e=1:1#mesh.nel  
-        # Loop over faces of each element
-        for f=1:mesh.nf_el 
-            # Face normal
-            nx         = mesh.n_x[e,f]
-            ny         = mesh.n_y[e,f]
-            # Node indices along the face (3 nodes since we only use quadratic elements)
-            n1, n2, n3 = mesh.e2n[e,nA[f]], mesh.e2n[e,nB[f]],  mesh.e2n[e,nC[f]]  # mesh.e2f[e,f]
-            nodes     .= [ n1,    n2,    n3    ]
-            f2n       .= [ nA[f], nB[f], nC[f] ]
-            bct       .= mesh.bcn[nodes]
-            # Node coordinates
-            x[:,1]    .= mesh.xn[nodes]      
-            x[:,2]    .= mesh.yn[nodes]  
-            # Nodal stresses
-            σ[:,1]    .= σxx[nodes]
-            σ[:,2]    .= σyy[nodes]
-            σ[:,3]    .= σxy[nodes]
-            # Nodal tractions
-            T[:,1]    .= [σ[1,1]*nx+σ[1,3]*ny,  σ[2,1]*nx+σ[2,3]*ny,  σ[3,1]*nx+σ[3,3]*ny] .* (bct.==2) # only activate if BC is Neumann!!!
-            T[:,2]    .= [σ[1,2]*ny+σ[1,3]*nx,  σ[2,2]*ny+σ[2,3]*nx,  σ[3,2]*ny+σ[3,3]*nx] .* (bct.==2)
-            detJ  = abs((mesh.xn[n3]-mesh.xn[n1]) + (mesh.yn[n3]-mesh.yn[n1]))/2
-            # Loop over integration loop
-            for ip=1:nipfa 
-                Ni         .= N1D[ip,:,:]
-                dNdXi[:,1] .= dNdX1D[ip,:,:] # the second column is set to 1.0 by default dNdy = 1.0 to avoid detJ=0
-                mul!(J, x', dNdXi)
-                # detJ        = J[1,1]*J[2,2] - J[1,2]*J[2,1]
-                # println(detJ, ' ', detJ1)
-                # Surface tractions 
-                Fs[1] = Ni'*T[:,1]  # use shape functions to evaluate traction at integration point
-                Fs[2] = Ni'*T[:,2]
-                # Integrate surface traction contributions
-                Ff[1:nnfa]     .+= ipw1D[ip] .* Ni*Fs[1]*detJ
-                Ff[nnfa+1:end] .+= ipw1D[ip] .* Ni*Fs[2]*detJ   
-            end
-            # Add contributions to element vector (sum?)
-            Fex[f2n] .+= Ff[1:nnfa]
-            Fey[f2n] .+= Ff[nnfa+1]
-        end
-        # Add contributions of element vector to global vector 
-        e2n                = mesh.e2n[e,:]
-        bcn                = mesh.bcn[e2n]
-        if any(i->i==2, bcn)
-            display(Fex)
-            display(Fey)
-        end
-        bu[e2n]          .+= Fex
-        bu[e2n.+mesh.nn] .+= Fey
-    end
-    #----------------------------- SURFACE TRACTIONS -----------------------------#
 
     #-----------------------------------------------------------------#
 
@@ -189,6 +119,78 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         #-----------------------------------------------------------------#
         println("v2")
         @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v2( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
+
+        #----------------------------- SURFACE TRACTIONS -----------------------------#
+        nnfa  = 3                  # number of nodes per face
+        nipfa = 3                  # number of integration point per face
+        nA    = [ 3 1 2 ]          # left node
+        nB    = [ 4 5 6 ]          # mid-face node equivalent to mesh.e2f[e,f]
+        nC    = [ 2 3 1 ]          # right node
+        f2n   = zeros(Int64,3)     # face nodes to element nodes numbering
+        nodes = zeros(Int64,3)     # global node numbering
+        bct   = zeros(Int64,3)     # BC type (2 is Neumann)
+        x     = zeros(nnfa,2)      # global coordinate of face nodes
+        Ni    = zeros(nnfa)        # shape function for integration point
+        dNdXi = ones(nnfa,1)       # shape function derivatives for integration point
+        σ     = zeros(nnfa,3)      # Total stress tensor components for each node on the face
+        T     = zeros(nnfa,2)      # Traction vector for each node on the face
+        J     = zeros(2,1)         # Jacobian
+        Fex   = zeros(mesh.nnel)   # Neumann force vector for the current element 
+        Fey   = zeros(mesh.nnel)   # Neumann force vector for the current element 
+        Fs    = zeros(2)           # Surface traction 
+        Ff    = zeros(2*nnfa)      # Contribution of surface traction to surface nodes
+        # Loop over element (ideally one could loop only through elements that have Neumann nodes
+        for e=1:mesh.nel  
+            Fex .= 0.0
+            Fey .= 0.0  
+            e2n  = mesh.e2n[e,:]
+            bcn  = mesh.bcn[e2n]    
+            # Only carry out boundary integral for nodes with traction BC
+            if any(i->i == 2, bcn)       
+                # Loop over faces of each element
+                for f=1:mesh.nf_el 
+                    Ff .= 0.0
+                    # Face normal
+                    nx         = mesh.n_x[e,f]
+                    ny         = mesh.n_y[e,f]
+                    # Node indices along the face (3 nodes since we only use quadratic elements)
+                    n1, n2, n3 = mesh.e2n[e,nA[f]], mesh.e2n[e,nB[f]],  mesh.e2n[e,nC[f]]  # mesh.e2f[e,f]
+                    nodes     .= [ n1,    n2,    n3    ]
+                    f2n       .= [ nA[f], nB[f], nC[f] ]
+                    bct       .= mesh.bcn[nodes]
+                    # Node coordinates
+                    x[:,1]    .= mesh.xn[nodes]      
+                    x[:,2]    .= mesh.yn[nodes]  
+                    # Nodal stresses
+                    σ[:,1]    .= σxx[nodes]
+                    σ[:,2]    .= σyy[nodes]
+                    σ[:,3]    .= σxy[nodes]
+                    # Nodal tractions
+                    T[:,1]    .= [σ[1,1]*nx+σ[1,3]*ny,  σ[2,1]*nx+σ[2,3]*ny,  σ[3,1]*nx+σ[3,3]*ny]
+                    T[:,2]    .= [σ[1,2]*ny+σ[1,3]*nx,  σ[2,2]*ny+σ[2,3]*nx,  σ[3,2]*ny+σ[3,3]*nx]
+                    # Loop over integration loop
+                    for ip=1:nipfa 
+                        # Compute Jacobian
+                        Ni         .= N1D[ip,:]
+                        dNdXi[:,1] .= dNdX1D[ip,:,1] 
+                        mul!(J, x', dNdXi)
+                        detJ = sqrt( J[1]^2 + J[2]^2)
+                        # Surface tractions 
+                        Fs[1] = Ni'*T[:,1]  # use shape functions to evaluate traction at integration point
+                        Fs[2] = Ni'*T[:,2]
+                        # Integrate surface traction contributions
+                        Ff[1:nnfa]       .+= ipw1D[ip] .* detJ .* Ni .* Fs[1]
+                        Ff[(nnfa+1):end] .+= ipw1D[ip] .* detJ .* Ni .* Fs[2]  
+                    end
+                    # Add contributions to element vector (sum?)
+                    Fex[f2n] .+= (bct.==2) .* Ff[1:nnfa]
+                    Fey[f2n] .+= (bct.==2) .* Ff[(nnfa+1):end]
+                end
+                # Add contributions of element vector to global vector 
+                bu[e2n]          .+= (bcn.==2) .*Fex
+                bu[e2n.+mesh.nn] .+= (bcn.==2) .*Fey
+            end
+        end
 
         #-----------------------------------------------------------------#
         @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, Kuu, solver)

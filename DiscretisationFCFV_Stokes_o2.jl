@@ -250,9 +250,8 @@ function ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDi
                 on    = (bci!=1) & (bcj!=1) # Activate nodal connection if not Dirichlet!
                         
                 # Element matrix components
-                ninj = ni_x*nj_x + ni_y*nj_y
-
-                res     = 1.0/ae[e] * Γj 
+                ninj  = ni_x*nj_x + ni_y*nj_y
+                res   = 1.0/ae[e] * Γj 
 
                 # inv(me) * be_x
                 meidx1  = mei[e,1,1] * rjx[e,j,1] + mei[e,1,2] * rjx[e,j,2] + mei[e,1,3] * rjx[e,j,3]
@@ -308,6 +307,9 @@ function ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDi
             #-----------------------------
             feix  = (bci!=1) * -Γi * (-ax*τi + ηe*Ωe^-1*niΖ_x - tix*Xi - (1-new)*ȷ*gbar[e,i,1])
             feiy  = (bci!=1) * -Γi * (-ay*τi + ηe*Ωe^-1*niΖ_y - tiy*Xi - (1-new)*ȷ*gbar[e,i,2])
+            if (bci==2) 
+                @printf( "T_x = %2.2e fe = %2.2e\n", tix, -Γi*tix)
+            end
             # up block
             Kupv[i   , e] -= (bci!=1) * Γi*ni_x
             Kupv[i+nf, e] -= (bci!=1) * Γi*ni_y
