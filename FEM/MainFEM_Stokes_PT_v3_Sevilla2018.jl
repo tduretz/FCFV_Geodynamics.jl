@@ -44,7 +44,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     inclusion  = 0
     εBG        = 1.0
     η          = [1.0 5.0] 
-    BC         = [2; 1; 1; 1;] # S E N W --- 1: Dirichlet / 2: Neumann
+    BC         = [1; 1; 1; 1;] # S E N W --- 1: Dirichlet / 2: Neumann
     solver     = -1
     
     # Element data
