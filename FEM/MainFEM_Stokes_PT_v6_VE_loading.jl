@@ -29,11 +29,11 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     R          = 1.0
     inclusion  = 0
     εBG        = 1.0
-    η          = 1.0 
-    G          = 1.0 
+    η0         = 1.0 
+    G0         = 1.0 
     ξ          = 10.0      # Maxwell relaxation time
-    Δt         =  η/(G*ξ + 1e-15)
-    nt         = 2
+    Δt         =  η0/(G0*ξ + 1e-15)
+    nt         = 10
     solver     = -1 
     penalty    = 1e5
     tol        = 1e-9
@@ -51,7 +51,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     println("Max. bcn:  ", maximum(mesh.bcn))
 
     mesh.phase = ones(Int, mesh.nel)
-    mesh.ke[mesh.phase.==1] .= η[1]
+    mesh.ke[mesh.phase.==1] .= η0
 
     V   = ( x=zeros(mesh.nn), y=zeros(mesh.nn) )       # Solution on nodes 
     P   = zeros(mesh.np)       # Solution on either elements or nodes 
@@ -60,11 +60,12 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     se  = zeros(mesh.nel, 2)   # Source term on elements
     ε   = ( xx=zeros(mesh.nel, nip), yy=zeros(mesh.nel, nip), xy=zeros(mesh.nel, nip) )
     τ   = ( xx=zeros(mesh.nel, nip), yy=zeros(mesh.nel, nip), xy=zeros(mesh.nel, nip) )
+    τ0  = ( xx=zeros(mesh.nel, nip), yy=zeros(mesh.nel, nip), xy=zeros(mesh.nel, nip) )
     ∇v  = zeros(mesh.nel, nip) 
-    ηip = zeros(mesh.nel, nip)
+    ηv  = η0*ones(mesh.nel, nip)
+    ηve = η0*ones(mesh.nel, nip)
+    G   = G0*ones(mesh.nel, nip)
     
-    @printf("min ηip  %2.2e --- max. ηip  %2.2e\n", minimum(ηip),  maximum(ηip))
-
     # Intial guess
     for in = 1:mesh.nn
         if mesh.bcn[in]==1
@@ -80,20 +81,29 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     @show keys(sparsity)
 
     # For postprocessing
-    τvec = zeros(nt)
+    τvec     = zeros(nt)
+    τvec_ana = zeros(nt)
     
     #-----------------------------------------------------------------#
     
     for it=1:nt
         @printf("##### Time step %03d #####\n", it)
 
-        mesh.ke .= 1.0 ./( 1.0/(G*Δt) + 1.0/η ) 
+        # Compue VE modulus
+        mesh.ke .= 1.0 ./( 1.0/(G0*Δt) + 1.0/η0 ) 
         for ip=1:nip
-            ηip[:,ip] .= mesh.ke
+            ηve[:,ip] .= mesh.ke
         end
 
+        # It would be nice to find a more elegant to unroll the tuple below
+        τ0.xx .= τ.xx 
+        τ0.yy .= τ.yy
+        τ0.xy .= τ.xy
+
         #-----------------------------------------------------------------#
-        ComputeStressFEM_v2!( ηip, ∇v, ε, τ, V, mesh, dNdx, weight ) 
+        ComputeStressFEM_v2!( ηve, G, Δt, ∇v, ε, τ0, τ, V, mesh, dNdx, weight ) 
+        # ComputeStressFEM_v2!( ηve, ∇v, ε, τ, V, mesh, dNdx, weight ) 
+
         fu, fp = ResidualStokes_v1( bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
 
         #-----------------------------------------------------------------#
@@ -106,11 +116,14 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         P   .+= dP
 
         #-----------------------------------------------------------------#
-        ComputeStressFEM_v2!( ηip, ∇v, ε, τ, V, mesh, dNdx, weight ) 
+        ComputeStressFEM_v2!( ηve, G, Δt, ∇v, ε, τ0, τ, V, mesh, dNdx, weight ) 
+        # ComputeStressFEM_v2!( ηve, ∇v, ε, τ, V, mesh, dNdx, weight ) 
+
         fu, fp = ResidualStokes_v1( bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
        
         # For postprocessing
-        τvec[it] = abs(τ.xx[1,1])
+        τvec[it]     = abs(τ.xx[1,1])
+        τvec_ana[it] = 2.0.*εBG.*η0.*(1.0.-exp.(.-(it*Δt).*G0./η0))
     end
 
     #-----------------------------------------------------------------#
@@ -141,12 +154,11 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
 
     #-----------------------------------------------------------------#
 
-    p = plot( 1:nt, τvec )
-    # if USE_MAKIE
-    #     PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:turbo)
-    # else
-    #     PlotPyPlot(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:turbo )
-    # end
+    p = Plots.plot( 1:nt, τvec )
+    p = Plots.plot!( 1:nt, τvec_ana )
+    display(p)
+    # PlotMakie(mesh, τxxe, xmin, xmax, ymin, ymax; cmap=:turbo)
+
 end
 
 main(1, 7, 1, 6, 0.0382, 0.1833, 7.0) # nit = xxxxx
