@@ -89,7 +89,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     for it=1:nt
         @printf("##### Time step %03d #####\n", it)
 
-        # Compue VE modulus
+        # Compute VE modulus
         mesh.ke .= 1.0 ./( 1.0/(G0*Δt) + 1.0/η0 ) 
         for ip=1:nip
             ηve[:,ip] .= mesh.ke
