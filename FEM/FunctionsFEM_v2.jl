@@ -9,7 +9,62 @@ function StabParam(τ, Γ, Ω, mesh_type, ν)
 end
 
 #----------------------------------------------------------#
+```This one is visco-elasto-viscoplastic```
+function ComputeStressFEM_v2!( pl_params, ηip, Gip, Δt, εkk, ε, τ0, τ, V, P, mesh, dNdx, weight ) 
+    C      = pl_params.τ_y
+    sinϕ   = pl_params.sinϕ
+    ηvp    = pl_params.η_reg
+    ndof   = 2*mesh.nnel
+    nnel   = mesh.nnel
+    npel   = mesh.npel
+    nip    = size(weight,2)
+    εip    = zeros(3)
+    εip_vp = zeros(3)
+    τip    = zeros(3)
+    Dev    = [ 4/3 -2/3  0.0;   -2/3  4/3  0.0;   0.0  0.0  1.0]
+    m      = [0.5; 0.5; 1]
+    V_ele  = zeros(ndof)
+    B      = zeros(ndof, 3)
+    τ0ip   = zeros( 3)
+    # Element loop
+     for e = 1:mesh.nel
+        nodes   = mesh.e2n[e,:]
+        if npel==3 && nnel!=4 P[2:3,:] .= (x[1:3,:])' end
+        # Integration loop
+        for ip=1:nip
+            η       = ηip[e,ip]
+            G       = Gip[e,ip]
+            τ0ip   .= [τ0.xx[e,ip]; τ0.yy[e,ip]; τ0.xy[e,ip]]
+            B[1:2:end,1]     .= dNdx[e,ip,:,1]
+            B[2:2:end,2]     .= dNdx[e,ip,:,2]
+            B[1:2:end,3]     .= dNdx[e,ip,:,2]
+            B[2:2:end,3]     .= dNdx[e,ip,:,1]
+            V_ele[1:2:end-1] .= V.x[nodes]
+            V_ele[2:2:end]   .= V.y[nodes]
+            εip              .= B'*V_ele .+ m.*τ0ip./(G*Δt) 
+            τip              .= η.*(Dev*εip)
+            τii               = sqrt(0.5*(τip[1]^2 + τip[2]^2) + τip[3]^2)
+            F                 = τii - ( C + P[e]*sinϕ)  # need to add cosϕ to call it Drucker-Prager but this one follows Stokes2D_simpleVEP
+            if (F>0.0) 
+                λ         = F/(η + ηvp)
+                # εip_vp[1] = 0.5*λ*τip[1]/τii
+                # εip_vp[2] = 0.5*λ*τip[2]/τii
+                # εip_vp[3] =     λ*τip[3]/τii
+                εip_vp     .= m.*λ.*τip./τii
+                τip              .= η.*(Dev*(εip.-εip_vp))
+                τii               = sqrt(0.5*(τip[1]^2 + τip[2]^2) + τip[3]^2)
+                F                 = τii - ( C + P[e]*sinϕ + ηvp*λ)
+            end
+            εkk[e,ip]         = εip[1] + εip[2]                        # divergence
+            ε.xx[e,ip], ε.yy[e,ip], ε.xy[e,ip] = εip[1], εip[2], εip[3]*0.5 # because of engineering convention
+            τ.xx[e,ip], τ.yy[e,ip], τ.xy[e,ip] = τip[1], τip[2], τip[3]
+        end
+    end
+    return nothing
+end 
 
+#----------------------------------------------------------#
+```This one is visco-elastic```
 function ComputeStressFEM_v2!( ηip, Gip, Δt, εkk, ε, τ0, τ, V, mesh, dNdx, weight ) 
     ndof         = 2*mesh.nnel
     nnel         = mesh.nnel
@@ -17,9 +72,9 @@ function ComputeStressFEM_v2!( ηip, Gip, Δt, εkk, ε, τ0, τ, V, mesh, dNdx,
     nip          = size(weight,2)
     εip          = zeros(3)
     τip          = zeros(3)
-    Dev          =  [ 4/3 -2/3  0.0;
-                     -2/3  4/3  0.0;
-                      0.0  0.0  1.0]
+    Dev          = [ 4/3 -2/3  0.0;
+                    -2/3  4/3  0.0;
+                    0.0  0.0  1.0]
     m            = [0.5; 0.5; 1]
     P      = ones(npel,npel)
     V_ele  = zeros(ndof)
@@ -331,14 +386,10 @@ end
         end
     end
     @time F = SparsifyVector( mesh.nn*2, sp.bVi, hcat(Fmom[1,:,:], Fmom[2,:,:]) )
-    # @time Fy = SparsifyVector( mesh.nn*2 sp.bVi, Fmom[1,:,:] )
     Fx = F[1:mesh.nn]
     Fy = F[mesh.nn+1:end]
-    @printf("||Fx|| = %2.2e\n", norm(Fx)/sqrt(length(Fx)))
-    @printf("||Fy|| = %2.2e\n", norm(Fy)/sqrt(length(Fy)))
-    @printf("||Fp|| = %2.2e\n", norm(Fcont)/sqrt(length(Fcont)))
     fu = [Fx; Fy]
-    return fu, Fcont
+    return fu, Fcont, norm(Fx)/sqrt(length(Fx)), norm(Fy)/sqrt(length(Fy)), norm(Fcont)/sqrt(length(Fcont))
 end
 
 #----------------------------------------------------------#

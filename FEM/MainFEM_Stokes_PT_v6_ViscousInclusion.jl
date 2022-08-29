@@ -123,7 +123,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             Pe[e]  += 1.0/mesh.npel * P[mesh.e2p[e,i]]
         end
         for ip=1:nip
-            Sxxe[e] += 1.0/nip * τxx[e,ip]
+            Sxxe[e] += 1.0/nip * τ.xx[e,ip]
         end
     end
     Sxxe .-= Pe
