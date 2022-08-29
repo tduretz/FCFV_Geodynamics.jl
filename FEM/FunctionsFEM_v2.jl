@@ -32,9 +32,9 @@ function ComputeStressFEM_v2!( pl_params, ηip, Gip, Δt, εkk, ε, τ0, τ, V, 
         if npel==3 && nnel!=4 P[2:3,:] .= (x[1:3,:])' end
         # Integration loop
         for ip=1:nip
-            η       = ηip[e,ip]
-            G       = Gip[e,ip]
-            τ0ip   .= [τ0.xx[e,ip]; τ0.yy[e,ip]; τ0.xy[e,ip]]
+            η                 = ηip[e,ip]
+            G                 = Gip[e,ip]
+            τ0ip             .= [τ0.xx[e,ip]; τ0.yy[e,ip]; τ0.xy[e,ip]]
             B[1:2:end,1]     .= dNdx[e,ip,:,1]
             B[2:2:end,2]     .= dNdx[e,ip,:,2]
             B[1:2:end,3]     .= dNdx[e,ip,:,2]
@@ -43,17 +43,14 @@ function ComputeStressFEM_v2!( pl_params, ηip, Gip, Δt, εkk, ε, τ0, τ, V, 
             V_ele[2:2:end]   .= V.y[nodes]
             εip              .= B'*V_ele .+ m.*τ0ip./(G*Δt) 
             τip              .= η.*(Dev*εip)
-            τii               = sqrt(0.5*(τip[1]^2 + τip[2]^2) + τip[3]^2)
+            τii               = sqrt( (m.*τip)'*τip )   # don't worry, same as: τii = sqrt(0.5*(τip[1]^2 + τip[2]^2) + τip[3]^2)
             F                 = τii - ( C + P[e]*sinϕ)  # need to add cosϕ to call it Drucker-Prager but this one follows Stokes2D_simpleVEP
             if (F>0.0) 
-                λ         = F/(η + ηvp)
-                # εip_vp[1] = 0.5*λ*τip[1]/τii
-                # εip_vp[2] = 0.5*λ*τip[2]/τii
-                # εip_vp[3] =     λ*τip[3]/τii
-                εip_vp     .= m.*λ.*τip./τii
-                τip              .= η.*(Dev*(εip.-εip_vp))
-                τii               = sqrt(0.5*(τip[1]^2 + τip[2]^2) + τip[3]^2)
-                F                 = τii - ( C + P[e]*sinϕ + ηvp*λ)
+                λ             = F/(η + ηvp)
+                εip_vp       .= m.*λ.*τip./τii
+                τip          .= η.*(Dev*(εip.-εip_vp))
+                τii           = sqrt( (m.*τip)'*τip )
+                F             = τii - ( C + P[e]*sinϕ + ηvp*λ)
             end
             εkk[e,ip]         = εip[1] + εip[2]                        # divergence
             ε.xx[e,ip], ε.yy[e,ip], ε.xy[e,ip] = εip[1], εip[2], εip[3]*0.5 # because of engineering convention

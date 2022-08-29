@@ -33,7 +33,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     G0         = 1.0 
     ξ          = 10.0      # Maxwell relaxation time
     Δt         =  η0/(G0*ξ + 1e-15)
-    nt         = 20
+    nt         = 30
     solver     = -1 
     penalty    = 1e5
     tol        = 1e-9
@@ -71,12 +71,12 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     
     # Intial guess
     for in = 1:mesh.nn
-        if mesh.bcn[in]==1
+        # if mesh.bcn[in]==1
             x      = mesh.xn[in]
             y      = mesh.yn[in]
             V.x[in] = -x*εBG
             V.y[in] =  y*εBG
-        end
+        # end
     end
 
     # Compute FEM discretisation
