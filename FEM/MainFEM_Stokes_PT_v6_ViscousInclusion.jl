@@ -91,7 +91,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         
     #-----------------------------------------------------------------#
     ComputeStressFEM_v2!( ηip, ∇v, ε, τ, V, mesh, dNdx, weight ) 
-    fu, fp = ResidualStokes_v1( bc, sparsity, se, mesh, N, dNdx, weight,V, P, τ )
+    fu, fp = ResidualStokes_v2( bc, se, mesh, N, dNdx, weight,V, P, τ )
 
     #-----------------------------------------------------------------#
     @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v4( bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
@@ -104,7 +104,11 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
 
     #-----------------------------------------------------------------#
     ComputeStressFEM_v2!( ηip, ∇v, ε, τ, V, mesh, dNdx, weight ) 
-    fu, fp = ResidualStokes_v1( bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
+    fu, fp, nFx, nFy, nFp = ResidualStokes_v2( bc, se, mesh, N, dNdx, weight, V, P, τ )
+
+    @printf("||Fx|| = %2.2e\n", nFx)
+    @printf("||Fy|| = %2.2e\n", nFy)
+    @printf("||Fp|| = %2.2e\n", nFp)
 
     #-----------------------------------------------------------------#
     Vxe  = zeros(mesh.nel)

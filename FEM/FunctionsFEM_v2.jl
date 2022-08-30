@@ -392,23 +392,20 @@ end
 #----------------------------------------------------------#
 
 @views function ResidualStokes_v2( bc, se, mesh, N, dNdx, weight, V, P, τ )
-    nel    = mesh.nel
-    ndof   = 2*mesh.nnel
-    nnel   = mesh.nnel
-    npel   = mesh.npel
-    nip    = size( weight, 2 )
-    Fmom   = zeros( 2, nel, nnel );
-    Fcont  = zeros( nel, npel );
-    nodes  = zeros(Int64, nnel )
-    Vx     = zeros( nnel )
-    Vy     = zeros( nnel )
-    # Element loop
-    dx_nodes  = zeros( nnel)
-    dy_nodes  = zeros( nnel)
-    inx_nodes = zeros(Bool, nnel)
-    iny_nodes = zeros(Bool, nnel)
-    Fx        = zeros(mesh.nn)
-    Fy        = zeros(mesh.nn)
+    nel   = mesh.nel
+    nnel  = mesh.nnel
+    npel  = mesh.npel
+    nip   = size( weight, 2 )
+    Fcont = zeros( nel, npel );
+    nodes = zeros(Int64, nnel )
+    Vx    = zeros( nnel )
+    Vy    = zeros( nnel )
+    dx    = zeros( nnel)
+    dy    = zeros( nnel)
+    inx   = zeros(Bool, nnel)
+    iny   = zeros(Bool, nnel)
+    Fx    = zeros(mesh.nn)
+    Fy    = zeros(mesh.nn)
     # Element loop
     for e = 1:mesh.nel
         nodes  .= mesh.e2n[e,:]
@@ -416,14 +413,14 @@ end
         Vy     .= V.y[nodes]
         # Integration loop
         for ip=1:nip
-            w  = weight[e,ip]
-            dx_nodes   .= dNdx[e,ip,:,1]
-            dy_nodes   .= dNdx[e,ip,:,2]
-            inx_nodes  .= bc.type[e,1,:] .== 0
-            iny_nodes  .= bc.type[e,2,:] .== 0
-            Fcont[e]   -= w *  ( dx_nodes'*Vx + dy_nodes'*Vy ) # linear algebra trick
-            Fx[nodes] .-= w .* ( dx_nodes.*τ.xx[e,ip] .+ dy_nodes.*τ.xy[e,ip] .- dx_nodes.*P[e] ) .* inx_nodes
-            Fy[nodes] .-= w .* ( dy_nodes.*τ.yy[e,ip] .+ dx_nodes.*τ.xy[e,ip] .- dy_nodes.*P[e] ) .* iny_nodes
+            w     = weight[e,ip]
+            dx   .= dNdx[e,ip,:,1]
+            dy   .= dNdx[e,ip,:,2]
+            inx  .= bc.type[e,1,:] .== 0
+            iny  .= bc.type[e,2,:] .== 0
+            Fcont[e]   -= w *  ( dx'*Vx + dy'*Vy ) # linear algebra trick
+            Fx[nodes] .-= w .* ( dx.*τ.xx[e,ip] .+ dy.*τ.xy[e,ip] .- dx.*P[e] ) .* inx
+            Fy[nodes] .-= w .* ( dy.*τ.yy[e,ip] .+ dx.*τ.xy[e,ip] .- dy.*P[e] ) .* iny
         end
     end
     fu = [Fx; Fy]
