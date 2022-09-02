@@ -69,7 +69,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     ηve = η0*ones(mesh.nel, nip)
     G   = G0*ones(mesh.nel, nip)
     # Constitutive matrices
-    celldims    = (3, 3)
+    celldims    = (4, 4)
     Cell        = SMatrix{celldims..., Float64, prod(celldims)}
     D_all       = CPUCellArray{Cell}(undef, mesh.nel, nip) 
     D_all.data .= 0.0
@@ -139,7 +139,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v4( D_all, ηve, bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
 
             #-----------------------------------------------------------------#
-            @time StokesSolvers!(dV.x, dV.y, dP, mesh, Kuu, Kup, fu, fp, Kuu, solver; penalty, tol)
+            @time StokesSolvers!(dV.x, dV.y, dP, mesh, Kuu, Kup, fu, fp, Kuu, solver; -Kup', penalty, tol)
             V.x .+= dV.x
             V.y .+= dV.y
             P   .+= dP

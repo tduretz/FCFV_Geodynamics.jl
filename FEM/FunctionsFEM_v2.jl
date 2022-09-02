@@ -19,14 +19,15 @@ end
 
 #----------------------------------------------------------#
 
-function Stress_VEP!(τip,εip,η,m,C,P,sinϕ,ηvp)
-    τip              .= 2η.*(εip)
-    τii               = sqrt((m.*τip)'*τip)   # don't worry, same as: τii = sqrt(0.5*(τip[1]^2 + τip[2]^2) + τip[3]^2)
-    τy                = C + P*sinϕ         # need to add cosϕ to call it Drucker-Prager but this one follows Stokes2D_simpleVEP
+function Stress_VEP!(τ,ε,η,m,C,sinϕ,ηvp)             
+    τ[1:3]           .= 2η.*(ε[1:3])
+    τ[4]              = ε[4]
+    τii               = sqrt((m.*τ[1:3])'*τ[1:3])   # don't worry, same as: τii = sqrt(0.5*(τip[1]^2 + τip[2]^2) + τip[3]^2)
+    τy                = C + ε[3]*sinϕ         # need to add cosϕ to call it Drucker-Prager but this one follows Stokes2D_simpleVEP
     F                 = τii - τy  
     if (F>0.0) 
         λ             = F/(η + ηvp)
-        τip          .= 2η.*(εip.-0.5*λ.*τip./τii)
+        τ[1:3]       .= 2η.*(ε[1:3].-0.5*λ.*τ[1:3]./τii)
     end
 end
 
@@ -49,8 +50,10 @@ function ComputeStressFEM_v2!( D_all, pl_params, ηip, Gip, Δt, εkk, ε, τ0, 
     V_ele  = zeros(ndof)
     B      = zeros(ndof, 3)
     τ0ip   = zeros( 3)
-    D      = zeros(3,3)
+    D      = zeros(4,4)
     Fchk   = zeros(mesh.nel, nip) 
+    τ1     = zeros(4)
+    ε1     = zeros(4)
     # Element loop
      for e = 1:mesh.nel
         nodes   = mesh.e2n[e,:]
@@ -77,11 +80,13 @@ function ComputeStressFEM_v2!( D_all, pl_params, ηip, Gip, Δt, εkk, ε, τ0, 
             # ηip[e,ip]         = τii/2.0/εii 
             # D .= 2ηip[e,ip].*I(3)
             # @show D
-            S_closed = (τ,ε) -> Stress_VEP!(τ,ε,η,m,C,P[e],sinϕ,ηvp)
-            D .= ForwardDiff.jacobian(S_closed, τip, εip)
+            S_closed = (τ,ε) -> Stress_VEP!(τ,ε,η,m,C,sinϕ,ηvp)
+            ε1 .= [εip; P[e]]
+            D  .= ForwardDiff.jacobian(S_closed, τ1, ε1)
+            τip .= τ1[1:3]
             Fchk[e,ip] = CheckYield( τip, P[e], C,  sinϕ, ηvp, λ, m )
-            for j=1:3
-                for i=1:3
+            for j=1:4
+                for i=1:4
                     field(D_all,j,i)[e,ip] = D[j,i]
                 end
             end
@@ -351,7 +356,7 @@ end
     Dev          =  [ 2/3 -1/3  0.0;
                      -1/3  2/3  0.0;
                       0.0  0.0  0.5]
-    D            = zeros(3,3)
+    D            = zeros(4,4)
     P            = ones(npel, npel)
     Pb           = ones(npel)
     Pi           = zeros(npel)
@@ -386,15 +391,9 @@ end
             B[nnel+1:end,3] .= dNdx[e,ip,:,1]
             Bv[1:nnel]      .= dNdx[e,ip,:,1]
             Bv[nnel+1:end]  .= dNdx[e,ip,:,2]
-            mul!(Bt, D*Dev, B')
+            mul!(Bt, D[1:3,1:3]*Dev, B')
             mul!(K_ele_ip, B, Bt)
             K_ele        .+= w[e,ip]  * K_ele_ip
-            # if e==1 && ip==1
-            #     @show (2*η[e,ip])
-            #     @show D
-            #     error()
-            # end
-            # K_ele        .+= w[e,ip] * 2*η[e,ip] * K_ele_ip
             if npel==3
                 #################### THIS IS NOT OPTMIZED, WILL LIKELY NOT WORK IN 3D ALSO
                 mul!(Pb[2:3], x', Ni )
