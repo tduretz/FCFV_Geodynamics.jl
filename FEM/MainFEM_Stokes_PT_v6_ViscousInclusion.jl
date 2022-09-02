@@ -65,7 +65,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     ∇v  = zeros(mesh.nel, nip)
     ηip = zeros(mesh.nel, nip)
     for ip=1:nip
-        ηip[:,ip] .= mesh.ke
+        ηip[:,ip] .= mesh.ke ./2
     end
 
     # Intial guess
@@ -94,7 +94,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     fu, fp = ResidualStokes_v2( bc, se, mesh, N, dNdx, weight,V, P, τ )
 
     #-----------------------------------------------------------------#
-    @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v4( bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
+    @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v4( ηip, bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
 
     #-----------------------------------------------------------------#
     @time StokesSolvers!(dV.x, dV.y, dP, mesh, Kuu, Kup, fu, fp, Kuu, solver; penalty, tol)
@@ -137,11 +137,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     @printf("min ∇v %2.2e --- min. ∇v %2.2e\n", minimum(∇v), maximum(∇v))
 
     #-----------------------------------------------------------------#
-    if USE_MAKIE
-        PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1)
-    else
-        PlotPyPlot(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1 )
-    end
+    PlotMakie(mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1)
 end
 
 main(1, 7, 1, 6, 0.0382, 0.1833, 7.0) # nit = xxxxx
