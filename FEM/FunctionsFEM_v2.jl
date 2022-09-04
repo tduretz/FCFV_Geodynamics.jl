@@ -19,11 +19,11 @@ end
 
 #----------------------------------------------------------#
 
-function Stress_VEP!(τ,ε,η,m,C,sinϕ,ηvp)             
+function Stress_VEP!( τ, ε ,η, m, C, sinϕ, ηvp )             
     τ[1:3]           .= 2η.*(ε[1:3])
-    τ[4]              = ε[4]
-    τii               = sqrt((m.*τ[1:3])'*τ[1:3])   # don't worry, same as: τii = sqrt(0.5*(τip[1]^2 + τip[2]^2) + τip[3]^2)
-    τy                = C + ε[3]*sinϕ         # need to add cosϕ to call it Drucker-Prager but this one follows Stokes2D_simpleVEP
+    τ[4]              = ε[4]                      # no pressure feed back P = P
+    τii               = sqrt((m.*τ[1:3])'*τ[1:3]) # don't worry, same as: τii = sqrt(0.5*(τip[1]^2 + τip[2]^2) + τip[3]^2)
+    τy                = C + τ[4]*sinϕ             # need to add cosϕ to call it Drucker-Prager but this one follows Stokes2D_simpleVEP
     F                 = τii - τy  
     if (F>0.0) 
         λ             = F/(η + ηvp)
@@ -72,19 +72,19 @@ function ComputeStressFEM_v2!( D_all, pl_params, ηip, Gip, Δt, εkk, ε, τ0, 
             εip              .= Dev*(B'*V_ele) .+ 0.5*τ0ip./(G.*Δt) # effective deviatoric strain rate
             ####################
             # εii               = sqrt((m.*εip)'*εip)
-            τip              .= 2η.*(εip) # compute trial stress 
-            F = CheckYield( τip, P[e], C,  sinϕ, ηvp, 0.0, m )
-            λ = F / (η + ηvp)
-            # Stress_VEP!(τip,εip,η,m,C,P[e],sinϕ,ηvp)
+            # τip              .= 2η.*(εip) # compute trial stress 
+            # F = CheckYield( τip, P[e], C,  sinϕ, ηvp, 0.0, m )
+            # λ = F / (η + ηvp)
+            # Stress_VEP!( τip ,εip, η, m, C, P[e], sinϕ, ηvp)
             # τii               = sqrt((m.*τip)'*τip)
             # ηip[e,ip]         = τii/2.0/εii 
             # D .= 2ηip[e,ip].*I(3)
             # @show D
-            S_closed = (τ,ε) -> Stress_VEP!(τ,ε,η,m,C,sinϕ,ηvp)
-            ε1 .= [εip; P[e]]
-            D  .= ForwardDiff.jacobian(S_closed, τ1, ε1)
-            τip .= τ1[1:3]
-            Fchk[e,ip] = CheckYield( τip, P[e], C,  sinϕ, ηvp, λ, m )
+            S_closed   = (τ,ε) -> Stress_VEP!( τ, ε, η, m, C, sinϕ, ηvp )
+            ε1        .= [εip; P[e]]
+            D         .= ForwardDiff.jacobian( S_closed, τ1, ε1 )
+            τip       .= τ1[1:3]
+            # Fchk[e,ip] = CheckYield( τip, P[e], C,  sinϕ, ηvp, λ, m )
             for j=1:4
                 for i=1:4
                     field(D_all,j,i)[e,ip] = D[j,i]
@@ -103,7 +103,7 @@ function ComputeStressFEM_v2!( D_all, pl_params, ηip, Gip, Δt, εkk, ε, τ0, 
 end 
 
 #----------------------------------------------------------#
-```This one is visco-elasto-viscoplastic```
+# ```This one is visco-elasto-viscoplastic```
 function ComputeStressFEM_v2!( pl_params, ηip, Gip, Δt, εkk, ε, τ0, τ, V, P, mesh, dNdx, weight ) 
     C      = pl_params.τ_y
     sinϕ   = pl_params.sinϕ
@@ -337,10 +337,12 @@ end
     nip          = size(w,2)
     K_all        = zeros(mesh.nel, ndof, ndof) 
     Q_all        = zeros(mesh.nel, ndof, npel)
+    Q_all_div    = zeros(mesh.nel, ndof, npel)
     bV_all       = zeros(mesh.nel, ndof )
     bP_all       = zeros(mesh.nel, npel )
     K_ele        = zeros(ndof, ndof)
     Q_ele        = zeros(ndof, npel)
+    Q_ele_div    = zeros(ndof, npel)
     Q_ele_ip     = zeros(ndof, npel)
     M_ele        = zeros(npel ,npel)
     M_inv        = zeros(npel ,npel)
@@ -353,6 +355,7 @@ end
     Bv           = zeros(ndof)
     x            = zeros(mesh.nnel, 2)
     m            =  [ 1.0; 1.0; 0.0]
+    mjac         = zeros(3)
     Dev          =  [ 2/3 -1/3  0.0;
                      -1/3  2/3  0.0;
                       0.0  0.0  0.5]
@@ -380,6 +383,7 @@ end
         # Integration loop
         for ip=1:nip
             for i=1:3
+                mjac[i] = field(D_all,i,4)[e,ip] 
                 for j=1:3
                     D[j,i] = field(D_all,j,i)[e,ip] 
                 end
@@ -393,7 +397,7 @@ end
             Bv[nnel+1:end]  .= dNdx[e,ip,:,2]
             mul!(Bt, D[1:3,1:3]*Dev, B')
             mul!(K_ele_ip, B, Bt)
-            K_ele        .+= w[e,ip]  * K_ele_ip
+            K_ele          .+= w[e,ip]  * K_ele_ip
             if npel==3
                 #################### THIS IS NOT OPTMIZED, WILL LIKELY NOT WORK IN 3D ALSO
                 mul!(Pb[2:3], x', Ni )
@@ -403,22 +407,13 @@ end
                 #################### THIS IS NOT OPTMIZED, WILL LIKELY NOT WORK IN 3D ALSO
             elseif npel==1  
                 mul!(Q_ele_ip, B, m)
+                Q_ele_div.-= w[e,ip] .* Q_ele_ip  
+                mul!(Q_ele_ip, B, (m.-mjac))
                 Q_ele    .-= w[e,ip] .* Q_ele_ip          # B*m*Np'
             end
             # Source term
             b_ele[1:nnel]     .+= w[e,ip] .* se[e,1] .* Ni 
             b_ele[nnel+1:end] .+= w[e,ip] .* se[e,2] .* Ni 
-            # Visco-elasticity
-            # if e==1
-            #     println(τxx[e,ip])
-            # end
-            # mul!(Bt, Dev, B')
-            # if e==1
-            #     println(w .* B * τ0)
-            # end
-            # b_ele .+= w[e,ip] .* B * τ0 
-            # b_ele[1:nnel]     .+= w .* dNdx[:,1] * τxx[e,ip] 
-            # b_ele[nnel+1:end] .+= w .* dNdx[:,2] * τyy[e,ip] 
         end
         # Element matrices
         bct .= [bc.type[e,1,:]; bc.type[e,2,:]]
@@ -442,7 +437,8 @@ end
         for jn=1:ndof
             for in=1:npel
                 if bct[jn]==0
-                    Q_all[e,jn,in] = Q_ele[jn,in]
+                    Q_all[e,jn,in]     = Q_ele[jn,in]
+                    Q_all_div[e,jn,in] = Q_ele_div[jn,in]
                 else bct[jn]==1
                     bP_all[e,in] += Q_ele[jn,in] * bcv[jn]
                 end
@@ -452,11 +448,13 @@ end
     println("Sparsification...")
     @time begin 
         Kuu = SparsifyMatrix( mesh.nn*2, mesh.nn*2, sp.Ki, sp.Kj, K_all )
+        Kupt= SparsifyMatrix( mesh.nn*2, mesh.np, sp.Qi, sp.Qj, Q_all_div )
         Kup = SparsifyMatrix( mesh.nn*2, mesh.np, sp.Qi, sp.Qj, Q_all )
         fu  = SparsifyVector( mesh.nn*2, sp.bVi, bV_all )
         fp  = SparsifyVector( mesh.np, sp.bPi, bP_all )
+        Kpu = -Kupt'
     end
-    return Kuu, Kup, fu, fp
+    return Kuu, Kup, Kpu, fu, fp
 end
 
 #----------------------------------------------------------#

@@ -34,12 +34,12 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     G0         = 1.0 
     ξ          = 10.0      # Maxwell relaxation time
     Δt         = η0/(G0*ξ + 1e-15)
-    nt         = 15
-    solver     = -1 
+    nt         = 16
+    solver     = 0 
     penalty    = 1e5
     tol        = 1e-10
-    # pl_params  = (τ_y=1.6, sinϕ=sind(30), η_reg=1.2e-2 )
-    pl_params  = (τ_y=1.2, sinϕ=0*sind(30), η_reg=1.2e-2/2 )
+    pl_params  = (τ_y=1.6, sinϕ=sind(30), η_reg=1.2e-2 )
+    # pl_params  = (τ_y=1.2, sinϕ=0*sind(30), η_reg=1.2e-2/2 )
     nitmax     = 20
     tol_abs    = 1e-10
     
@@ -75,7 +75,8 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     D_all.data .= 0.0
 
     # For postprocessing
-    Fmom = zeros(nitmax)
+    Fmom  = zeros(nitmax)
+    Fcont = zeros(nitmax)
     τvec = zeros(nt)
     Vxe  = zeros(mesh.nel)
     Vye  = zeros(mesh.nel)
@@ -104,7 +105,8 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     for it=1:nt
         @printf("##### Time step %03d #####\n", it)
 
-        Fmom .= 0.0
+        Fmom  .= 0.0
+        Fcont .= 0.0
 
         # Compute VE modulus
         for ip=1:nip
@@ -130,16 +132,17 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             @printf("||Fx|| = %2.2e\n", nFx)
             @printf("||Fy|| = %2.2e\n", nFy)
             @printf("||Fp|| = %2.2e\n", nFp)
-            Fmom[iter] = nFx
+            Fmom[iter], Fcont[iter] = nFx, nFp
             if (nFx<tol_abs && nFy<tol_abs)# && nFp<tol_abs) 
                 break
             end
 
             #-----------------------------------------------------------------#
-            @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v4( D_all, ηve, bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
+            @time Kuu, Kup, Kpu, bu, bp = ElementAssemblyLoopFEM_v4( D_all, ηve, bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
 
+            # Kup= - Kpu'
             #-----------------------------------------------------------------#
-            @time StokesSolvers!(dV.x, dV.y, dP, mesh, Kuu, Kup, fu, fp, Kuu, solver; -Kup', penalty, tol)
+            @time StokesSolvers!(dV.x, dV.y, dP, mesh, Kuu, Kup, fu, fp, Kuu, solver; Kpu, penalty, tol)
             V.x .+= dV.x
             V.y .+= dV.y
             P   .+= dP
@@ -147,6 +150,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         end
         
         p = Plots.plot( 1:k, log10.(Fmom[1:k]), title=it )
+        p = Plots.plot!( 1:k, log10.(Fcont[1:k]), title=it )
         display(p)
 
         #-----------------------------------------------------------------#
