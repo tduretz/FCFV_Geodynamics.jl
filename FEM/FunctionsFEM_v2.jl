@@ -369,11 +369,12 @@ end
     println("Element loop...")
     # Element loop
     for e = 1:mesh.nel
-        K_ele  .= 0.0
-        Q_ele  .= 0.0
-        M_ele  .= 0.0
-        b_ele  .= 0.0
-        M_inv  .= 0.0
+        K_ele     .= 0.0
+        Q_ele     .= 0.0
+        Q_ele_div .= 0.0
+        M_ele     .= 0.0
+        b_ele     .= 0.0
+        M_inv     .= 0.0
         # --- for the linear pressure element
         if npel==3
             for jn=2:npel
@@ -431,7 +432,7 @@ end
                 bV_all[e,jn]  += b_ele[jn]
             elseif bct[jn]==1
                 K_all[e,jn,jn] = 1.0
-                bV_all[e,jn]  = bcv[jn]
+                bV_all[e,jn]   = bcv[jn]
             end
         end
         for jn=1:ndof
