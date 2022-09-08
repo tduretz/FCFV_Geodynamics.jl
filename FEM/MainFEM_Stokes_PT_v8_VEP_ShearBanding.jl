@@ -140,7 +140,6 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             #-----------------------------------------------------------------#
             @time Kuu, Kup, Kpu, bu, bp = ElementAssemblyLoopFEM_v4( D_all, ηve, bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
 
-            # Kup= - Kpu'
             #-----------------------------------------------------------------#
             @time StokesSolvers!(dV.x, dV.y, dP, mesh, Kuu, Kup, fu, fp, Kuu, solver; Kpu, penalty, tol)
             V.x .+= dV.x
