@@ -3,7 +3,7 @@ using AlgebraicMultigrid
 import IterativeSolvers
 using SuiteSparse
 
-function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, fu, fp, M, solver; penalty=1e4, tol=1e-10)
+function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, Kpu, Kpp, fu, fp, M, solver; penalty=1e4, tol=1e-10, comp=false)
 
     @printf("Start solver %d\n", solver)
     nVx = Int64(length(fu)/2)
@@ -14,22 +14,24 @@ function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, fu, fp, M, solver; penalty
     
     if solver==0
         # Coupled solve
-        zero_p = spdiagm(nP, nP) 
-        K      = [Kuu Kup; -Kup' zero_p]
+        K      = [Kuu Kup; Kpu Kpp]
         f      = [fu; fp]
         xh     = K\f
         Vxh   .= xh[1:nVx]
         Vyh   .= xh[nVx+1:nVy]
         Pe    .= xh[nVy+1:end] 
-        Pe    .= Pe .- mean(Pe)
+        if comp==false Pe    .= Pe .- mean(Pe) end
     elseif solver==1 || solver==-1
         # Decoupled solve
-        coef  = zeros(mesh.nel*mesh.npel)
-        for i=1:mesh.npel
-            coef[(i-1)*mesh.nel+1:i*mesh.nel] .= penalty.*mesh.ke./mesh.Ω
+        if comp==false 
+            coef  = zeros(mesh.nel*mesh.npel)
+            for i=1:mesh.npel
+                coef[(i-1)*mesh.nel+1:i*mesh.nel] .= penalty.*mesh.ke./mesh.Ω
+            end
+            Kppi  = spdiagm(coef)
+        else
+            Kppi  = spdiagm( 1.0 ./ diag(Kpp) )
         end
-        Kppi  = spdiagm(coef)
-        Kpu   = -Kup'
         Kuusc = Kuu .- Kup*(Kppi*Kpu)
         # PC    = Kuu .- diag(Kuu) .+ diag(M)
         # PC    =  0.5*(M .+ M') 
@@ -49,8 +51,8 @@ function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, fu, fp, M, solver; penalty
         rp    = zeros(length(fp), 1)
         # Iterations
         for rit=1:20
-            ru   .= fu .- Kuu*u .- Kup*p;
-            rp   .= fp .- Kpu*u;
+            ru   .= fu .- Kuu*u .- Kup*p
+            rp   .= fp .- Kpu*u .- Kpp*p
             nrmu = norm(ru)
             nrmp = norm(rp)
             @printf("  --> Powell-Hestenes Iteration %02d\n  Momentum res.   = %2.2e\n  Continuity res. = %2.2e\n", rit, nrmu/sqrt(length(ru)), nrmp/sqrt(length(rp)))
@@ -59,96 +61,12 @@ function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, fu, fp, M, solver; penalty
             end
             fusc .= fu  .- Kup*(Kppi*fp .+ p)
             u    .= Kf\fusc
-            p   .+= Kppi*(fp .- Kpu*u)
+            # @time KSP_GCR_StokesFCFV!( u, Kuusc, fusc, tol, 2, Kxxf, f, v, s, val, VV, SS, restart  )
+            p   .+= Kppi*(fp .- Kpu*u .- Kpp*p)
         end
         # Post-process solve
         Vxh .= u[1:nVx]
         Vyh .= u[nVx+1:nVy]
-        Pe  .= p[:]
-    elseif solver==2
-        # Decoupled solve
-        coef  = zeros(mesh.nel*mesh.npel)
-        for i=1:mesh.npel
-            coef[(i-1)*mesh.nel+1:i*mesh.nel] .= 1e4.*mesh.ke./mesh.Ω
-        end       
-        Kppi  = spdiagm(coef)
-        Kpu   = -Kup'
-        Kuusc = Kuu - Kup*(Kppi*Kpu)
-        PC    =  0.5*(Kuusc + Kuusc') 
-        # t = @elapsed Kf    = cholesky(Hermitian(PC),check = false)
-        # @time ml = ruge_stuben(PC) #pas mal
-        @time ml = smoothed_aggregation(PC) #pas mal
-        @time pc = aspreconditioner(ml)
-        # @printf("Cholesky took = %02.2e s\n", t)
-        u     = zeros(length(fu), 1)
-        ru    = zeros(length(fu), 1)
-        fusc  = zeros(length(fu), 1)
-        p     = zeros(length(fp), 1)
-        rp    = zeros(length(fp), 1)
-        # Iterations
-        for rit=1:20
-            ru   .= fu .- Kuu*u .- Kup*p
-            rp   .= fp .- Kpu*u
-            @printf("  --> Powell-Hestenes Iteration %02d\n  Momentum res.   = %2.2e\n  Continuity res. = %2.2e\n", rit, norm(ru)/sqrt(length(ru)), norm(rp)/sqrt(length(rp)))
-            if norm(ru)/sqrt(length(ru)) < tol && norm(rp)/sqrt(length(ru)) < tol
-                break
-            end
-            fusc .=  fu  - Kup*(Kppi*fp + p)
-            # u    .= Kf\fusc
-            # @time u = IterativeSolvers.gmres(Kuusc, fusc, Pl = pc, reltol=1e-6) #, maxiter=100
-            # @time IterativeSolvers.cg!(u, Kuusc, fusc, Pl = pc, reltol=1e-3)
-            @time IterativeSolvers.cg!(u, PC, fusc, Pl = pc, reltol=1e-6)
-            p   .+= Kppi*(fp - Kpu*u)
-        end
-        # Post-process solve
-        Vxh .= u[1:nVx]
-        Vyh .= u[nVx+1:nV]
-        Pe  .= p[:]
-    elseif solver==3
-        # Decoupled solve
-        coef  = zeros(mesh.nel*mesh.npel)
-        for i=1:mesh.npel
-            coef[(i-1)*mesh.nel+1:i*mesh.nel] .= 1e4.*mesh.ke./mesh.Ω
-        end
-        Kppi  = spdiagm(coef)
-        Kpu   = .- Kup'
-        Kuusc = Kuu .- Kup*(Kppi*Kpu)
-        ndof  = size(Kuu,1)
-        ndofx = Int64(ndof/2)
-        Kxx   = M[1:ndofx,1:ndofx]
-        t = @elapsed Kxxf  = cholesky(Hermitian(Kxx),check = false)
-        @printf("Cholesky took = %02.2e s\n", t)
-        u     = zeros(length(fu), 1)
-        ru    = zeros(length(fu), 1)
-        fusc  = zeros(length(fu), 1)
-        p     = zeros(length(fp), 1)
-        rp    = zeros(length(fp), 1)
-        ######################################
-        restart = 30
-        f      = zeros(Float64, length(fu))
-        v      = zeros(Float64, length(fu))
-        s      = zeros(Float64, length(fu))
-        val    = zeros(Float64, restart)
-        VV     = zeros(Float64, (length(fu), restart) )  # !!!!!!!!!! allocate in the right sense :D
-        SS     = zeros(Float64, (length(fu), restart) )
-        ######################################
-        # Iterations
-        for rit=1:20
-            ru   .= fu[:] .- Kuu*u .- Kup*p
-            rp   .= fp[:] .- Kpu*u
-            nrmu = sqrt(mydotavx( ru,ru ) )#norm(v)
-            nrmp = sqrt(mydotavx( rp,rp ) )#norm(v)
-            @printf("  --> Powell-Hestenes Iteration %02d\n  Momentum res.   = %2.2e\n  Continuity res. = %2.2e\n", rit, nrmu/sqrt(length(ru)), nrmp/sqrt(length(rp)))
-            if nrmu/sqrt(length(ru)) < tol && nrmp/sqrt(length(ru)) < tol
-                break
-            end
-            fusc .=  fu[:] .- Kup*(Kppi*fp .+ p)
-            @time KSP_GCR_StokesFCFV!( u, Kuusc, fusc, tol, 2, Kxxf, f, v, s, val, VV, SS, restart  )
-            p   .+= Kppi*(fp .- Kpu*u)
-        end
-        # Post-process solve
-        Vxh .= u[1:nVx]
-        Vyh .= u[nVx+1:nV]
         Pe  .= p[:]
     end
 end

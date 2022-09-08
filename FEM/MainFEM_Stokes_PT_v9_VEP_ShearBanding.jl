@@ -37,7 +37,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     ξ          = 10.0      # Maxwell relaxation time
     Δt         = η0/(G0*ξ + 1e-15)
     nt         = 16
-    solver     = 1 
+    solver     = 1
     penalty    = 1e5
     tol        = 1e-10
     pl_params  = (C=1.6, cosϕ=1.0, sinϕ=sind(30), ηvp=1.2e-2, sinψ=0.0 )
