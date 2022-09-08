@@ -35,9 +35,9 @@ end
 
 ```This one is visco-elasto-viscoplastic and computes tangent matrices```
 function ComputeStressFEM_v2!( D_all, pl_params, ηip, Gip, Δt, εkk, ε, τ0, τ, V, P, mesh, dNdx, weight ) 
-    C      = pl_params.τ_y
+    C      = pl_params.C
     sinϕ   = pl_params.sinϕ
-    ηvp    = pl_params.η_reg
+    ηvp    = pl_params.ηvp
     ndof   = 2*mesh.nnel
     nnel   = mesh.nnel
     npel   = mesh.npel
@@ -105,9 +105,9 @@ end
 #----------------------------------------------------------#
 # ```This one is visco-elasto-viscoplastic```
 function ComputeStressFEM_v2!( pl_params, ηip, Gip, Δt, εkk, ε, τ0, τ, V, P, mesh, dNdx, weight ) 
-    C      = pl_params.τ_y
+    C      = pl_params.C
     sinϕ   = pl_params.sinϕ
-    ηvp    = pl_params.η_reg
+    ηvp    = pl_params.ηvp
     ndof   = 2*mesh.nnel
     nnel   = mesh.nnel
     npel   = mesh.npel
@@ -270,6 +270,8 @@ end
     K_j   = zeros(Int64, nel, ndof, ndof)
     Q_i   = zeros(Int64, nel, ndof, npel)
     Q_j   = zeros(Int64, nel, ndof, npel)
+    M_i   = zeros(Int64, nel, npel, npel)
+    M_j   = zeros(Int64, nel, npel, npel)
     bV_i  = zeros(Int64, nel, ndof )
     bP_i  = zeros(Int64, nel, npel )
     J     = zeros(2, 2)
@@ -310,6 +312,8 @@ end
         for jn=1:npel
             Q_j[e,:,jn]      .= mesh.e2p[e,jn]
             bP_i[e,jn]        = mesh.e2p[e,jn]
+            M_i[e,jn,:]      .= mesh.e2p[e,jn]
+            M_j[e,:,jn]      .= mesh.e2p[e,jn]
         end
         # Integration loop
         for ip=1:nip
@@ -325,7 +329,47 @@ end
             mul!(dNdx[e,ip,:,:], dNdXi, invJ)                  
         end
     end
-    return dNdx, w, (Ki=K_i, Kj=K_j, Qi=Q_i, Qj=Q_j, bVi=bV_i, bPi=bP_i), (type=bct, val=bcv)
+    return dNdx, w, (Ki=K_i, Kj=K_j, Qi=Q_i, Qj=Q_j, Mi=M_i, Mj=M_j, bVi=bV_i, bPi=bP_i), (type=bct, val=bcv)
+end
+
+#----------------------------------------------------------#
+
+function StoreAllElementMatrices!( e, bct, bcv, bc, K_all, K_ele, Q_all, Q_ele, Q_all_div, Q_ele_div, M_all, M_ele, bV_all, b_ele, bP_all, ndof, npel )
+    # Element matrices
+    bct .= [bc.type[e,1,:]; bc.type[e,2,:]]
+    bcv .= [bc.val[e,1,:];  bc.val[e,2,:]]
+    for jn=1:ndof
+        for in=1:ndof
+            if bct[jn]==0 && bct[in]==0
+                K_all[e,jn,in] = K_ele[jn,in]
+            end
+            if bct[jn]==0 && bct[in]==1
+                bV_all[e,jn] -= K_ele[jn,in]*bcv[in]
+            end
+        end
+        if bct[jn]==0
+            bV_all[e,jn]  += b_ele[jn]
+        elseif bct[jn]==1
+            K_all[e,jn,jn] = 1.0
+            bV_all[e,jn]   = bcv[jn]
+        end
+    end
+    for jn=1:ndof
+        for in=1:npel
+            if bct[jn]==0
+                Q_all[e,jn,in]     = Q_ele[jn,in]
+                Q_all_div[e,jn,in] = Q_ele_div[jn,in]
+            else bct[jn]==1
+                bP_all[e,in] += Q_ele[jn,in] * bcv[jn]
+            end
+        end
+    end
+    for jn=1:npel
+        for in=1:npel
+            M_all[e,jn,in]    = M_ele[jn,in]
+        end
+    end
+    return nothing
 end
 
 #----------------------------------------------------------#
@@ -338,6 +382,7 @@ end
     K_all        = zeros(mesh.nel, ndof, ndof) 
     Q_all        = zeros(mesh.nel, ndof, npel)
     Q_all_div    = zeros(mesh.nel, ndof, npel)
+    M_all        = zeros(mesh.nel, npel, npel)
     bV_all       = zeros(mesh.nel, ndof )
     bP_all       = zeros(mesh.nel, npel )
     K_ele        = zeros(ndof, ndof)
@@ -416,46 +461,18 @@ end
             b_ele[1:nnel]     .+= w[e,ip] .* se[e,1] .* Ni 
             b_ele[nnel+1:end] .+= w[e,ip] .* se[e,2] .* Ni 
         end
-        # Element matrices
-        bct .= [bc.type[e,1,:]; bc.type[e,2,:]]
-        bcv .= [bc.val[e,1,:];  bc.val[e,2,:]]
-        for jn=1:ndof
-            for in=1:ndof
-                if bct[jn]==0 && bct[in]==0
-                    K_all[e,jn,in] = K_ele[jn,in]
-                end
-                if bct[jn]==0 && bct[in]==1
-                    bV_all[e,jn] -= K_ele[jn,in]*bcv[in]
-                end
-            end
-            if bct[jn]==0
-                bV_all[e,jn]  += b_ele[jn]
-            elseif bct[jn]==1
-                K_all[e,jn,jn] = 1.0
-                bV_all[e,jn]   = bcv[jn]
-            end
-        end
-        for jn=1:ndof
-            for in=1:npel
-                if bct[jn]==0
-                    Q_all[e,jn,in]     = Q_ele[jn,in]
-                    Q_all_div[e,jn,in] = Q_ele_div[jn,in]
-                else bct[jn]==1
-                    bP_all[e,in] += Q_ele[jn,in] * bcv[jn]
-                end
-            end
-        end
+        StoreAllElementMatrices!( e, bct, bcv, bc, K_all, K_ele, Q_all, Q_ele, Q_all_div, Q_ele_div, M_all, M_ele, bV_all, b_ele, bP_all, ndof, npel )
     end
+
     println("Sparsification...")
-    @time begin 
-        Kuu = SparsifyMatrix( mesh.nn*2, mesh.nn*2, sp.Ki, sp.Kj, K_all )
-        Kupt= SparsifyMatrix( mesh.nn*2, mesh.np, sp.Qi, sp.Qj, Q_all_div )
-        Kup = SparsifyMatrix( mesh.nn*2, mesh.np, sp.Qi, sp.Qj, Q_all )
-        fu  = SparsifyVector( mesh.nn*2, sp.bVi, bV_all )
-        fp  = SparsifyVector( mesh.np, sp.bPi, bP_all )
-        Kpu = -Kupt'
-    end
-    return Kuu, Kup, Kpu, fu, fp
+    Kuu = SparsifyMatrix( mesh.nn*2, mesh.nn*2, sp.Ki, sp.Kj, K_all )
+    Kupt= SparsifyMatrix( mesh.nn*2, mesh.np, sp.Qi, sp.Qj, Q_all_div )
+    Kup = SparsifyMatrix( mesh.nn*2, mesh.np, sp.Qi, sp.Qj, Q_all )
+    Kpp = SparsifyMatrix( mesh.np,   mesh.np, sp.Mi, sp.Mj, M_all )
+    fu  = SparsifyVector( mesh.nn*2, sp.bVi, bV_all )
+    fp  = SparsifyVector( mesh.np, sp.bPi, bP_all )
+    Kpu = -Kupt'
+    return Kuu, Kup, Kpu, Kpp, fu, fp
 end
 
 #----------------------------------------------------------#

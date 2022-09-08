@@ -13,6 +13,7 @@ using CellArrays, StaticArrays, Setfield
 
 include("FunctionsFEM.jl")
 include("FunctionsFEM_v2.jl")
+include("FunctionsFEM_VEP_comp.jl")
 include("../CreateMeshFCFV.jl")
 include("../VisuFCFV.jl")
 include("../SolversFCFV_Stokes.jl")
@@ -32,6 +33,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     εBG        = -1.0
     η0         = 1.0 
     G0         = 1.0 
+    K0         = 2.0 
     ξ          = 10.0      # Maxwell relaxation time
     Δt         = η0/(G0*ξ + 1e-15)
     nt         = 16
@@ -42,6 +44,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     # pl_params  = (C=1.2, sinϕ=0*sind(30), ηvp=1.2e-2/2 )
     nitmax     = 20
     tol_abs    = 1e-10
+    comp       = true
     
     # Element data
     ipx, ipw  = IntegrationTriangle(nip)
@@ -56,9 +59,12 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     println("Max. bcn:  ", maximum(mesh.bcn))
 
     mesh.ke[mesh.phase.==1] .= η0
+    mesh.ke[mesh.phase.==2] .= η0
 
     V   = ( x=zeros(mesh.nn), y=zeros(mesh.nn) )       # Solution on nodes 
     P   = zeros(mesh.np)       # Solution on either elements or nodes 
+    P0  = zeros(mesh.np)       # Solution on either elements or nodes 
+    ΔP  = zeros(mesh.nel, nip) # Pressure corrections plasticity
     dV  = ( x=zeros(mesh.nn), y=zeros(mesh.nn) ) 
     dP  = zeros(mesh.np)       # Solution on either elements or nodes 
     se  = zeros(mesh.nel, 2)   # Source term on elements
@@ -68,6 +74,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     ∇v  = zeros(mesh.nel, nip) 
     ηve = η0*ones(mesh.nel, nip)
     G   = G0*ones(mesh.nel, nip)
+    K   = K0*ones(mesh.nel, nip)
     # Constitutive matrices
     celldims    = (4, 4)
     Cell        = SMatrix{celldims..., Float64, prod(celldims)}
@@ -99,7 +106,6 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
 
     # Compute FEM discretisation
     dNdx, weight, sparsity, bc = Eval_dNdx_W_Sparsity( mesh, ipw, N, dNdX, V )
-    @show keys(sparsity)
     
     #-----------------------------------------------------------------#
     for it=1:nt
@@ -117,6 +123,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
         τ0.xx .= τ.xx 
         τ0.yy .= τ.yy
         τ0.xy .= τ.xy
+        P0    .= P
 
         k = 0
         for iter=1:nitmax
@@ -126,9 +133,15 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
 
             #-----------------------------------------------------------------#
 
-            ComputeStressFEM_v2!( D_all, pl_params, ηve, G, Δt, ∇v, ε, τ0, τ, V, P, mesh, dNdx, weight ) 
-            fu, fp, nFx, nFy, nFp = ResidualStokes_v2( bc, se, mesh, N, dNdx, weight, V, P, τ )
+            if comp==false
+                ComputeStressFEM_v2!( D_all, pl_params, ηve, G, Δt, ∇v, ε, τ0, τ, V, P, mesh, dNdx, weight ) 
+                fu, fp, nFx, nFy, nFp = ResidualStokes_v2( bc, se, mesh, N, dNdx, weight, V, P, τ )
+            else
+                ComputeStressFEM_v3!( D_all, pl_params, ηve, G, K, Δt, ∇v, ε, τ0, τ, V, P, ΔP, mesh, dNdx, weight ) 
+                fu, fp, nFx, nFy, nFp = ResidualStokes_v3( bc, se, mesh, N, dNdx, weight, V, P0, P, ΔP, τ, K, Δt )
+            end
             
+            #-----------------------------------------------------------------#
             @printf("||Fx|| = %2.2e\n", nFx)
             @printf("||Fy|| = %2.2e\n", nFy)
             @printf("||Fp|| = %2.2e\n", nFp)
@@ -138,15 +151,20 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             end
 
             #-----------------------------------------------------------------#
-            @time Kuu, Kup, Kpu, Kpp, bu, bp = ElementAssemblyLoopFEM_v4( D_all, ηve, bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
+            if comp==false
+                @time Kuu, Kup, Kpu, Kpp, bu, bp = ElementAssemblyLoopFEM_v4( D_all, ηve, bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
+                @time StokesSolvers!(dV.x, dV.y, dP, mesh, Kuu, Kup, Kpu, Kpp, fu, fp, Kuu, solver; penalty, tol)
+            else
+                @time Kuu, Kup, Kpu, Kpp = ElementAssemblyLoopFEM_v5( D_all, ηve, K, Δt, bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
+                @time StokesSolvers!(dV.x, dV.y, dP, mesh, Kuu, Kup, Kpu, Kpp, fu, fp, Kuu, solver; penalty, tol, comp)
+            end
 
-            #-----------------------------------------------------------------#
-            @time StokesSolvers!(dV.x, dV.y, dP, mesh, Kuu, Kup, Kpu, Kpp, fu, fp, Kuu, solver; penalty, tol)
             V.x .+= dV.x
             V.y .+= dV.y
             P   .+= dP
 
         end
+        # P .+= \Delta??
         
         p = Plots.plot( 1:k, log10.(Fmom[1:k]), title=it )
         p = Plots.plot!( 1:k, log10.(Fcont[1:k]), title=it )
@@ -195,3 +213,5 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
 end
 
 main(2, 7, 1, 6, 0.0382, 0.1833, 7.0) # nit = xxxxx
+
+#----------------------------------------------------------#
