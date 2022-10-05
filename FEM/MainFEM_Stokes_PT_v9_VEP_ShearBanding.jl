@@ -36,7 +36,7 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     K0         = 2.0 
     ξ          = 10.0      # Maxwell relaxation time
     Δt         = η0/(G0*ξ + 1e-15)
-    nt         = 16
+    nt         = 1#16
     solver     = 1
     penalty    = 1e5
     tol        = 1e-10
@@ -76,10 +76,12 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
     G   = G0*ones(mesh.nel, nip)
     K   = K0*ones(mesh.nel, nip)
     # Constitutive matrices
-    celldims    = (4, 4)
-    Cell        = SMatrix{celldims..., Float64, prod(celldims)}
-    D_all       = CPUCellArray{Cell}(undef, mesh.nel, nip) 
-    D_all.data .= 0.0
+    celldims     = (4, 4)
+    Cell         = SMatrix{celldims..., Float64, prod(celldims)}
+    D_all        = CPUCellArray{Cell}(undef, mesh.nel, nip) 
+    D_all.data  .= 0.0
+    Dj_all       = CPUCellArray{Cell}(undef, mesh.nel, nip) 
+    Dj_all.data .= 0.0
 
     # For postprocessing
     Fmom  = zeros(nitmax)
@@ -137,7 +139,9 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
                 ComputeStressFEM_v2!( D_all, pl_params, ηve, G, Δt, ∇v, ε, τ0, τ, V, P, mesh, dNdx, weight ) 
                 fu, fp, nFx, nFy, nFp = ResidualStokes_v2( bc, se, mesh, N, dNdx, weight, V, P, τ )
             else
-                ComputeStressFEM_v3!( D_all, pl_params, ηve, G, K, Δt, ∇v, ε, τ0, τ, V, P, ΔP, mesh, dNdx, weight ) 
+                # ComputeStressFEM_v2!( D_all, pl_params, ηve, G, Δt, ∇v, ε, τ0, τ, V, P, mesh, dNdx, weight ) 
+                # Dj_all = D_all
+                @time ComputeStressFEM_v3!( Dj_all, D_all, pl_params, ηve, G, K, Δt, ∇v, ε, τ0, τ, V, P0, P, ΔP, mesh, dNdx, weight ) 
                 fu, fp, nFx, nFy, nFp = ResidualStokes_v3( bc, se, mesh, N, dNdx, weight, V, P0, P, ΔP, τ, K, Δt )
             end
             
@@ -153,10 +157,10 @@ function main( n, nnel, npel, nip, θ, ΔτV, ΔτP )
             #-----------------------------------------------------------------#
             if comp==false
                 @time Kuu, Kup, Kpu, Kpp, bu, bp = ElementAssemblyLoopFEM_v4( D_all, ηve, bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
-                @time StokesSolvers!(dV.x, dV.y, dP, mesh, Kuu, Kup, Kpu, Kpp, fu, fp, Kuu, solver; penalty, tol)
+                @time StokesSolvers!(dV.x, dV.y, dP, mesh, Kuu, Kuu,  Kup, Kup,  Kpu, Kpp, fu, fp, Kuu, solver; penalty, tol)
             else
-                @time Kuu, Kup, Kpu, Kpp = ElementAssemblyLoopFEM_v5( D_all, ηve, K, Δt, bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
-                @time StokesSolvers!(dV.x, dV.y, dP, mesh, Kuu, Kup, Kpu, Kpp, fu, fp, Kuu, solver; penalty, tol, comp)
+                @time Kuu, Kuuj, Kup, Kupj, Kpu, Kpp = ElementAssemblyLoopFEM_v5( Dj_all, D_all, ηve, K, Δt, bc, sparsity, se, mesh, N, dNdx, weight, V, P, τ )
+                @time StokesSolvers!(dV.x, dV.y, dP, mesh, Kuuj, Kuu, Kupj, Kup, Kpu, Kpp, fu, fp, Kuu, solver; penalty, tol, comp)
             end
 
             V.x .+= dV.x
