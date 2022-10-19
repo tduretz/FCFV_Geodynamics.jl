@@ -52,7 +52,7 @@ end
     g      = [0.0 -1.0]
     ρ      = 1
     η      = 1.0
-    solver = -1
+    solver =-1
 
     #-----------------------------------------------------------------#
     # Mesh generation from data file
@@ -126,7 +126,7 @@ end
     pminmax(P)
 
     #-----------------------------------------------------------------#
-    PlotMakie(mesh, Pe, minimum(mesh.xn), maximum(mesh.xn), minimum(mesh.yn), maximum(mesh.yn); cmap=:turbo)
+    @time PlotMakie(mesh, Pe, minimum(mesh.xn), maximum(mesh.xn), minimum(mesh.yn), maximum(mesh.yn); cmap=:turbo)
 
     #-----------------------------------------------------------------#
 end
