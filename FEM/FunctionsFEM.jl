@@ -1,8 +1,6 @@
 
 using SparseArrays, StaticArrays, Setfield
 
-psize(a) = println(size(a))
-
 #----------------------------------------------------------#
 function StabParam(τ, Γ, Ω, mesh_type, ν) 
     return 0. # Stabilisation is only needed for FCFV

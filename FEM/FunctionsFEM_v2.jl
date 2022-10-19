@@ -1,9 +1,6 @@
 
 using SparseArrays, ForwardDiff
 
-psize(a)   = println(size(a))
-pminmax(a) = @printf("min = %2.2e --- max = %2.2e\n", minimum(a), maximum(a))
-
 #----------------------------------------------------------#
 function StabParam(τ, Γ, Ω, mesh_type, ν) 
     return 0. # Stabilisation is only needed for FCFV
