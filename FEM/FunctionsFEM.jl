@@ -1,5 +1,5 @@
 
-using SparseArrays
+using SparseArrays, StaticArrays, Setfield
 
 psize(a) = println(size(a))
 
@@ -147,7 +147,7 @@ end
 
 #----------------------------------------------------------#
 
-@views function ElementAssemblyLoopFEM_v2( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P, τxx, τyy, τxy ) # Adapted from MILAMIN_1.0.1
+@views function ElementAssemblyLoopFEM_v2( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P ) # Adapted from MILAMIN_1.0.1
     ndof         = 2*mesh.nnel
     nnel         = mesh.nnel
     npel         = mesh.npel
@@ -231,9 +231,9 @@ end
         ke               = mesh.ke[e]
         # Integration loop
          for ip=1:nip
-            τ0[1]  = τxx[e,ip]
-            τ0[2]  = τyy[e,ip]
-            τ0[3]  = τxy[e,ip]   
+            # τ0[1]  = τxx[e,ip]
+            # τ0[2]  = τyy[e,ip]
+            # τ0[3]  = τxy[e,ip]   
             Ni    .= N[ip,:,:]
             dNdXi .= dNdX[ip,:,:]
             mul!(J, x', dNdXi)
@@ -275,7 +275,7 @@ end
             # if e==1
             #     println(w .* B * τ0)
             # end
-            b_ele .+= w .* B * τ0 
+            # b_ele .+= w .* B * τ0 
             # b_ele[1:nnel]     .+= w .* dNdx[:,1] * τxx[e,ip] 
             # b_ele[nnel+1:end] .+= w .* dNdx[:,2] * τyy[e,ip] 
         end

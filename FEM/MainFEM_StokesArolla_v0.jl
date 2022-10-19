@@ -5,6 +5,7 @@ include("../CreateMeshFCFV.jl")
 include("../VisuFCFV.jl")
 include("../SolversFCFV_Stokes.jl")
 include("IntegrationPoints.jl")
+include("Helpers.jl")
 
 #-----------------------------------------------------------------#
 @views function read_data(dat_file::String; resol::Int=128, visu_chk::Bool=false)
@@ -101,7 +102,9 @@ end
     @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v2( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
     
     #-----------------------------------------------------------------#
-    @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, bu, bp, Kuu, solver; penalty=1e2)
+    coef  = zeros(mesh.nel*mesh.npel)
+    Kpp   = spdiagm(coef)
+    @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, -Kup', Kpp, bu, bp, Kuu, solver; penalty=1e2)
     
     #-----------------------------------------------------------------#
     Vxe = zeros(mesh.nel)
@@ -118,16 +121,16 @@ end
             Pe[e] += 1.0/mesh.npel * P[mesh.e2p[e,i]]
         end
     end
-    @printf("%2.2e %2.2e\n", minimum(Vx), maximum(Vx))
-    @printf("%2.2e %2.2e\n", minimum(Vy), maximum(Vy))
-    @printf("%2.2e %2.2e\n", minimum(P),  maximum(P) )
+    pminmax(Vx)
+    pminmax(Vy)
+    pminmax(P)
 
     #-----------------------------------------------------------------#
-    # PlotMakie(mesh, Pe, minimum(mesh.xn), maximum(mesh.xn), minimum(mesh.yn), maximum(mesh.yn); cmap=:turbo)
+    PlotMakie(mesh, Pe, minimum(mesh.xn), maximum(mesh.xn), minimum(mesh.yn), maximum(mesh.yn); cmap=:turbo)
 
     #-----------------------------------------------------------------#
 end
 
-for i=1:3
+for i=1:1
    main( 1, 7, 1, 6, 0., 0., 0. )
 end
