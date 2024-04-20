@@ -26,7 +26,9 @@ function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, Kpu, Kpp, fu, fp, M, solve
         if comp==false 
             coef  = zeros(mesh.nel*mesh.npel)
             for i=1:mesh.npel
-                coef[(i-1)*mesh.nel+1:i*mesh.nel] .= penalty.*mesh.ke./mesh.Ω
+                penalty_coeff = penalty #.*mesh.ke[i]./mesh.Ω[i] !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                coef[(i-1)*mesh.nel+1:i*mesh.nel] .= penalty_coeff
+                @show  penalty*mesh.ke[1]*mesh.Ω[1]
             end
             Kppi  = spdiagm(coef)
         else
@@ -44,13 +46,13 @@ function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, Kpu, Kpp, fu, fp, M, solve
             t = @elapsed Kf    = lu(Kuusc)
             @printf("LU took = %02.2e s\n", t)
         end
-        u     = zeros(length(fu), 1)
-        ru    = zeros(length(fu), 1)
-        fusc  = zeros(length(fu), 1)
-        p     = zeros(length(fp), 1)
-        rp    = zeros(length(fp), 1)
+        u     = zeros(length(fu))
+        ru    = zeros(length(fu))
+        fusc  = zeros(length(fu))
+        p     = zeros(length(fp))
+        rp    = zeros(length(fp))
         # Iterations
-        for rit=1:20
+        for rit=1:20             #      !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             ru   .= fu .- Kuu*u .- Kup*p
             rp   .= fp .- Kpu*u .- Kpp*p
             nrmu = norm(ru)
@@ -61,13 +63,26 @@ function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, Kpu, Kpp, fu, fp, M, solve
             end
             fusc .= fu  .- Kup*(Kppi*fp .+ p)
             u    .= Kf\fusc
-            # @time KSP_GCR_StokesFCFV!( u, Kuusc, fusc, tol, 2, Kxxf, f, v, s, val, VV, SS, restart  )
-            p   .+= Kppi*(fp .- Kpu*u .- Kpp*p)
+            p   .+= Kppi*(fp .- Kpu*u)  .- Kpp*p
         end
+
         # Post-process solve
         Vxh .= u[1:nVx]
         Vyh .= u[nVx+1:nVy]
         Pe  .= p[:]
+        
+        # Vxc = zeros(mesh.nel)
+        # Vyc = zeros(mesh.nel)
+        # # Compute residual of global equation
+        # for iel=1:mesh.nel  
+        #     Vxc[iel] = 0.5*(Vxh[mesh.e2f[iel,1]] + Vxh[mesh.e2f[iel,4]]) 
+        #     Vyc[iel] = 0.5*(Vyh[mesh.e2f[iel,2]] + Vyh[mesh.e2f[iel,3]])   
+        # end
+        # @show  display(reshape(Vxc,8,8)')
+        # @show  display(reshape(Vyc,8,8)')
+        # @show  display(reshape(p,8,8)')
+
+ 
     end
 end
 

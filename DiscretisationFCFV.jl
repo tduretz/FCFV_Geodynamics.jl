@@ -129,3 +129,28 @@ function CreateTripletsSparse(mesh, Kv, fv)
 end
 
 #--------------------------------------------------------------------#
+
+function PoissonResidual(Rh, mesh, Th, Te, qx, qy)
+
+    # Compute residual of global equation
+    for iel=1:mesh.nel  
+        
+        for ifac=1:mesh.nf_el
+            
+            nodei = mesh.e2f[iel,ifac]
+            bc    = mesh.bc[nodei]
+            Γi    = mesh.Γ[iel,ifac]
+            ni_x  = mesh.n_x[iel,ifac]
+            ni_y  = mesh.n_y[iel,ifac]
+            τi    = mesh.τ[nodei]      
+
+            # Assemble
+            Rh[nodei] += (bc==0) * Γi * ((ni_x*qx[iel] + ni_y*qy[iel]) + τi*(Te[iel] - Th[nodei]) ) 
+            # Rh[nodei] += (bc==0) * Γi * ( τi*(Te[iel] - Th[nodei])) 
+
+
+        end
+    end
+end
+
+ #--------------------------------------------------------------------#

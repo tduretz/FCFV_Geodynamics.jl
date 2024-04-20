@@ -83,13 +83,13 @@ end
     inclusion  = 0
     solver     = 0
     o2         = order-1
-    BC         = [2; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
+    BC         = [1; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
     # mesh_type  = "Quadrangles"
     # mesh_type  = "UnstructTriangles"
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
-        if o2==0 tau  = 1e0 end
+        if o2==0 tau  = 1   end # 1.0 ---> reproduces figure from paper
         if o2==1 tau  = 1e3 end
         mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, tau, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles"  
@@ -102,8 +102,13 @@ end
     # Source term and BCs etc...
     Tanal  = zeros(mesh.nel)
     se     = zeros(mesh.nel)
+    Te     = zeros(mesh.nel)
+    qx     = zeros(mesh.nel)
+    qy     = zeros(mesh.nel)
     Tdir   = zeros(mesh.nf)
     Tneu   = zeros(mesh.nf)
+    Rh     = zeros(mesh.nf)
+    Th     = zeros(mesh.nf)
     alp = 0.1; bet = 0.3; a = 5.1; b = 4.3; c = -6.2; d = 3.4;
     println("Model configuration :")
     @time SetUpProblem!(mesh , Tanal, Tdir, Tneu, se, a, b, c, d, alp, bet)
@@ -111,6 +116,26 @@ end
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
     @time ae, be, be_o2, ze, pe, mei, pe, rj  = ComputeFCFV_o2(mesh, se, Tdir, tau, o2)
+
+    # # Residual
+    # Th[mesh.bc.==1] .= Tdir[mesh.bc.==1] 
+    # @time Te, qx, qy = ComputeElementValues_o2(mesh, Th, ae, be, be_o2, ze, rj, mei, Tdir, tau, o2)
+
+    # PoissonResidual(Rh, mesh, Th, Te, qx, qy)
+    # @info norm(Th)
+    # display(reshape(Te,8,8)')
+    # display(reshape(qx,8,8)')
+    # display(reshape(qy,8,8)')
+
+    # Rxc = zeros(mesh.nel)
+    # Ryc = zeros(mesh.nel)
+    # # Compute residual of global equation
+    # for iel=1:mesh.nel  
+    #     Rxc[iel] = 0.5*(Rh[mesh.e2f[iel,1]] + Rh[mesh.e2f[iel,4]]) 
+    #     Ryc[iel] = 0.5*(Rh[mesh.e2f[iel,2]] + Rh[mesh.e2f[iel,3]])   
+    # end
+    # display(reshape(Rxc,8,8)')
+    # display(reshape(Ryc,8,8)')
 
     # Assemble element matrices and RHS
     println("Compute element matrices:")
@@ -128,6 +153,10 @@ end
     println("Compute element values:")
     @time Te, qx, qy = ComputeElementValues_o2(mesh, Th, ae, be, be_o2, ze, rj, mei, Tdir, tau, o2)
 
+    # Residual
+    PoissonResidual(Rh, mesh, Th, Te, qx, qy)
+    @info norm(Rh)
+
     # Compute discretisation errors
     err_T, err_qx, err_qy, err_q = ComputeError( mesh, Te, qx, qy, a, b, c, d, alp, bet )
     println("Error in T:  ", err_T )
@@ -137,12 +166,12 @@ end
 
     # Visualise
     println("Visualisation:")
-    @time PlotMakie( mesh, Te, xmin, xmax, ymin, ymax; cmap=:jet1 )
+    @time PlotMakie( mesh, Te, xmin, xmax, ymin, ymax; cmap=:jet1, min_v=0.7, max_v = 1.5 )
 
     return mesh.nf, err_T, err_qx, err_qy, err_q
 end
 
 n         = 8
-order     = 2
+order     = 1
 mesh_type = "Quadrangles"
 main( n, mesh_type, order )

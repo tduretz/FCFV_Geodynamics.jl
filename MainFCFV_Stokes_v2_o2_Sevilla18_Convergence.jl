@@ -123,8 +123,8 @@ end
     ymin, ymax = 0, 1
     n          = 4
     nx, ny     = N, N
-    BC         = [2; 1; 1; 1;] # S E N W --- 1: Dirichlet / 2: Neumann
-    solver     = -1
+    BC         = [1; 1; 1; 1;] # S E N W --- 1: Dirichlet / 2: Neumann
+    solver     = 1
     R          = 0.5
     inclusion  = 0
     o2         = order-1
@@ -134,11 +134,11 @@ end
   
     # Generate mesh
     if mesh_type=="Quadrangles" 
-        if o2==0 tau  = 2e1 end
+        if o2==0 tau  = 20 end  # 20 --> Results from Sevilla et al 2018, Fig. 6
         if o2==1 tau  = 1e6 end
         mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, tau, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles"  
-        if o2==0 tau  = 2e1 end
+        if o2==0 tau  = 1 end
         if o2==1 tau  = 20e4 end
         mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, tau, inclusion, R, BC ) 
     end
@@ -159,7 +159,7 @@ end
     SyyNeu = zeros(mesh.nf)
     SxyNeu = zeros(mesh.nf)
     SyxNeu = zeros(mesh.nf)
-    gbar   = zeros(mesh.nel,mesh.nf_el,2)
+    gbar   = zeros(mesh.nel, mesh.nf_el, 2)
     Pe     = zeros(mesh.nel)
     Vxh    = zeros(mesh.nf)
     Vyh    = zeros(mesh.nf)
@@ -174,16 +174,17 @@ end
     # Assemble element matrices and RHS
     println("Compute element matrices:")
     @time Kuu, Muu, Kup, fu, fp, tsparse = ElementAssemblyLoop_o2(mesh, ae, be, be_o2, ze, mei, pe, rjx, rjy, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, gbar, o2, new)
-
+    
     # Solve for hybrid variable
     println("Linear solve:")
-    @time StokesSolvers!( Vxh, Vyh, Pe, mesh, Kuu, Kup, fu, fp, Muu, solver)
+    Kpp = (sparse([1],[1],[0.0],mesh.nel, mesh.nel))
+    @time StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, -Kup', Kpp, fu, fp, Muu, solver)
 
     # Reconstruct element values
     println("Compute element values:")
     @time Vxe, Vye, Txxe, Tyye, Txye = ComputeElementValues_o2(mesh, Vxh, Vyh, Pe, ae, be, be_o2, ze, rjx, rjy, mei, VxDir, VyDir, o2)
 
-    # # Compute discretisation errors
+    # Compute discretisation errors
     err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii = ComputeError( mesh, Vxe, Vye, Txxe, Tyye, Txye, Pe )
     @printf("Error in Vx : %2.2e\n", err_Vx )
     @printf("Error in Vy : %2.2e\n", err_Vy )
@@ -192,20 +193,32 @@ end
     @printf("Error in Txy: %2.2e\n", err_Txy)
     @printf("Error in P  : %2.2e\n", err_P  )
 
+    F_nodes_x, F_nodes_y = ComputeResidualsFCFV_Stokes_o1(Vxh, Vyh, Pe, mesh, ae, be, ze, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu,  :Gradient)
+    # @show F_nodes_x
+
+    Fxc = zeros(mesh.nel)
+    Fyc = zeros(mesh.nel)
+    # # Compute residual of global equation
+    # for iel=1:mesh.nel  
+    #     @show F_nodes_x[mesh.e2f[iel,1]], F_nodes_x[mesh.e2f[iel,4]]
+    #     @show F_nodes_x[mesh.e2f[iel,2]], F_nodes_x[mesh.e2f[iel,3]]
+    #     Fxc[iel] = 0.5*(F_nodes_x[mesh.e2f[iel,2]] + F_nodes_x[mesh.e2f[iel,3]]) 
+    #     # Fxc[iel] = 0.5*(F_nodes_x[mesh.e2f[iel,1]] + F_nodes_x[mesh.e2f[iel,4]]) 
+    #     Fyc[iel] = 0.5*(F_nodes_y[mesh.e2f[iel,2]] + F_nodes_y[mesh.e2f[iel,3]])   
+    # end
+    # display(reshape(Fxc,8,8)')
+    # display(reshape(Fyc,8,8)')
+
+    # @show size(F_nodes_x), mesh.nf
+    # display(reshape(F_nodes_x,9,8)')
     # Visualise
     println("Visualisation:")
-    println( minimum(Pe), ' ',  maximum(Pe))
-    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1 )
+    println( minimum(Pe), ' ',  maximum(Pe), ' ', mean(Pe))
+    # @time PlotMakie( mesh, sqrt.(Vxe.^2 .+ Vye.^2), xmin, xmax, ymin, ymax; cmap=:jet1)
+    # @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1, min_v = -0.15, max_v = 0.15)
+    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1)
     ndof = 2*mesh.nf+mesh.nel
     return ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii
-end
-
-function RunOnce()
-
-    mesh_type  = "UnstructTriangles"
-    order      = 1
-    main( 8, mesh_type, order )
-
 end
 
 function RunConvergence()
@@ -301,6 +314,15 @@ p = Plots.annotate!(log10.(1.0 ./ N[1]), log10(order2[1]), "O2", :black)
 display(p)
 
 end 
+
+function RunOnce()
+
+    mesh_type  = "Quadrangles"
+    # mesh_type  = "UnstructTriangles"
+    order      = 1
+    main( 8, mesh_type, order )
+
+end
 
 # RunConvergence()
 RunOnce()

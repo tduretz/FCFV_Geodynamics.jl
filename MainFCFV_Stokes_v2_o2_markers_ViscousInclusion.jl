@@ -222,6 +222,9 @@ end
     SxyNeu = zeros(mesh.nf)
     SyxNeu = zeros(mesh.nf)
     gbar   = zeros(mesh.nel,mesh.nf_el,2)
+    Pe     = zeros(mesh.nel)
+    Vxh    = zeros(mesh.nf)
+    Vyh    = zeros(mesh.nf)
     println("Model configuration :")
     @time SetUpProblem!(mesh, Pa, Vxa, Vya, Sxxa, Syya, Sxya, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sex, sey, R, eta, gbar)
 
@@ -245,7 +248,8 @@ end
 
     # Solve for hybrid variable
     println("Linear solve:")
-    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, Muu, solver)
+    Kpp = (sparse([1],[1],[0.0],mesh.nel, mesh.nel))
+    @time StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, -Kup', Kpp, fu, fp, Muu, solver)
 
     # # Reconstruct element values
     println("Compute element values:")
@@ -287,4 +291,4 @@ o2  = 1
 # main(8, "Quadrangles", 280, 1) # L_INF P 1.8 arith
 # main(2, "Quadrangles", 25, 1)
 # main(n, "UnstructTriangles", τ, o2, new)
-main(n, "Quadrangles", 10000, o2, new)
+main(n, "Quadrangles", 50, o2, new)

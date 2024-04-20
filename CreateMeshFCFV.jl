@@ -116,6 +116,7 @@ Base.@kwdef mutable struct FCFV_Mesh
     n_x_f  ::Union{Matrix{Float64}, Missing} = missing # normal 2 face x
     n_y_f  ::Union{Matrix{Float64}, Missing} = missing # normal 2 face y
     τ      ::Union{Vector{Float64}, Missing} = missing # face stabilisation 
+    τe     ::Union{Vector{Float64}, Missing} = missing # element stabilisation 
     # ---- mat props ---- #
     ke     ::Union{Vector{Float64}, Missing} = missing # diffusion coefficient
     phase  ::Union{Vector{Float64}, Missing} = missing # phase
@@ -229,7 +230,8 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
     mesh.bc     = trimesh.pointmarkerlist[mesh.nv+1:end]
     mesh.phase  = trimesh.triangleattributelist[:] 
     mesh.ke     = ones(Float64,mesh.nel)
-    mesh.τ      = zeros(Float64,mesh.nf)
+    mesh.τ      = τr*ones(Float64,mesh.nf)
+    mesh.τe     = τr*ones(Float64,mesh.nf)
     nel  = mesh.nel
     Ωe   = zeros(nel)
     xc   = zeros(nel)
@@ -581,7 +583,8 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC=[2;
     mesh.bc     = tf
     mesh.ke     =  ones(Float64,mesh.nel)
     mesh.e2e    = e2e'
-    mesh.τ      = zeros(Float64,mesh.nf)
+    mesh.τ      = τr*ones(Float64,mesh.nf)
+    mesh.τe     = τr*ones(Float64,mesh.nf)
 
     nodeA = [2 1 3 4]
     nodeB = [3 2 4 1]
