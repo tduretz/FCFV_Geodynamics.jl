@@ -26,7 +26,7 @@ function StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, Kpu, Kpp, fu, fp, M, solve
         if comp==false 
             coef  = zeros(mesh.nel*mesh.npel)
             for i=1:mesh.npel
-                penalty_coeff = penalty #.*mesh.ke[i]./mesh.Ω[i] !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                penalty_coeff = penalty .*mesh.ke[i]./mesh.Ω[i] #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                 coef[(i-1)*mesh.nel+1:i*mesh.nel] .= penalty_coeff
                 @show  penalty*mesh.ke[1]*mesh.Ω[1]
             end

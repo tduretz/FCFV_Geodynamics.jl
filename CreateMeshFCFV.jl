@@ -176,6 +176,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
     if inclusion==1
         # 2. Inclusion
         theta0       = collect(LinRange(0.0,2.0*pi,no_pts_incl+1));
+        @show length(theta0)
         theta        = theta0[1:end-1] # do not include last point (periodic 0 == 2pi)
         xx           = cos.(theta);
         yy           = sin.(theta);
@@ -231,7 +232,7 @@ function MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC
     mesh.phase  = trimesh.triangleattributelist[:] 
     mesh.ke     = ones(Float64,mesh.nel)
     mesh.τ      = τr*ones(Float64,mesh.nf)
-    mesh.τe     = τr*ones(Float64,mesh.nf)
+    mesh.τe     = τr*ones(Float64,mesh.nel)
     nel  = mesh.nel
     Ωe   = zeros(nel)
     xc   = zeros(nel)
@@ -584,7 +585,7 @@ function MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC=[2;
     mesh.ke     =  ones(Float64,mesh.nel)
     mesh.e2e    = e2e'
     mesh.τ      = τr*ones(Float64,mesh.nf)
-    mesh.τe     = τr*ones(Float64,mesh.nf)
+    mesh.τe     = τr*ones(Float64,mesh.nel)
 
     nodeA = [2 1 3 4]
     nodeB = [3 2 4 1]

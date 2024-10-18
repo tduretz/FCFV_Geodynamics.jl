@@ -18,7 +18,8 @@ function ComputeFCFV(mesh, sex, sey, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNe
             Γi    = mesh.Γ[e,i]
             ni_x  = mesh.n_x[e,i]
             ni_y  = mesh.n_y[e,i]
-            τi    = mesh.τ[nodei]  # Stabilisation parameter for the face
+            # τi    = mesh.τ[nodei]  # Stabilisation parameter for the face
+            τi    = mesh.τe[e]
 
             # Assemble
             Ζ[e,1,1] += (bc==1) * Γi*ni_x*VxDir[nodei] # Dirichlet
@@ -62,7 +63,8 @@ function ComputeElementValues(mesh, Vxh, Vyh, Pe, α, β, Ζ, VxDir, VyDir)
             Γi    = mesh.Γ[e,i]
             ni_x  = mesh.n_x[e,i]
             ni_y  = mesh.n_y[e,i]
-            τi    = mesh.τ[nodei]  # Stabilisation parameter for the face
+            # τi    = mesh.τ[nodei]  # Stabilisation parameter for the face
+            τi    = mesh.τe[e]
 
             # Assemble
             Vxe[e]  += (bc!=1) *  Γi*τi*Vxh[nodei]/α[e]
@@ -106,8 +108,13 @@ function ElementAssemblyLoop(mesh, α, β, Ζ, VxDir, VyDir, σxxNeu, σyyNeu, �
             nodei = mesh.e2f[e,i]
             bci   = mesh.bc[nodei]
             ȷ     = 0.0 + (bci==3)*1.0 # indicates interface
+
+
+            ȷ = 1.0
+
             Γi    = mesh.Γ[e,i]
-            τi    = mesh.τ[nodei]  
+            # τi    = mesh.τ[nodei]  
+            τi    = mesh.τe[e]
 
             # if ȷ==1
             # ηn = mesh.ke[mesh.e2e[e,i]]
@@ -127,7 +134,8 @@ function ElementAssemblyLoop(mesh, α, β, Ζ, VxDir, VyDir, σxxNeu, σyyNeu, �
                 nodej = mesh.e2f[e,j]
                 bcj   = mesh.bc[nodej]   
                 Γj    = mesh.Γ[e,j]
-                τj    = mesh.τ[nodej]  
+                # τj    = mesh.τ[nodej]  
+                τj    = mesh.τe[e]
                 δ     = 0.0 + (i==j)*1.0    # Delta operator
                 on    = (bci!=1) & (bcj!=1) # Activate nodal connection if not Dirichlet!
                         
@@ -135,11 +143,14 @@ function ElementAssemblyLoop(mesh, α, β, Ζ, VxDir, VyDir, σxxNeu, σyyNeu, �
                 ninj = ni_x*nj_x + ni_y*nj_y
 
                 # Element matrix 
-                Kuuv[j   , i   , e] = on * -Γi * (α[e]^-1*τi*τj*Γj - ηe*Ωe^-1*Γj*(ninj + new*ȷ*ni_x*nj_x) - τi*δ) # u1u1
-                Kuuv[j+nf, i   , e] = on * -Γi * (                 - ηe*Ωe^-1*Γj*(       new*ȷ*ni_y*nj_x)       ) # u1u2
-                Kuuv[j   , i+nf, e] = on * -Γi * (                 - ηe*Ωe^-1*Γj*(       new*ȷ*ni_x*nj_y)       ) # u2u1
-                Kuuv[j+nf, i+nf, e] = on * -Γi * (α[e]^-1*τi*τj*Γj - ηe*Ωe^-1*Γj*(ninj + new*ȷ*ni_y*nj_y) - τi*δ) # u2u2
-
+                # Kuuv[j   , i   , e] = on * -Γi * (α[e]^-1*τi*τj*Γj - ηe*Ωe^-1*Γj*(ninj + new*ȷ*ni_x*nj_x) - τi*δ) # u1u1
+                # Kuuv[j+nf, i   , e] = on * -Γi * (                 - ηe*Ωe^-1*Γj*(       new*ȷ*ni_y*nj_x)       ) # u1u2
+                # Kuuv[j   , i+nf, e] = on * -Γi * (                 - ηe*Ωe^-1*Γj*(       new*ȷ*ni_x*nj_y)       ) # u2u1
+                # Kuuv[j+nf, i+nf, e] = on * -Γi * (α[e]^-1*τi*τj*Γj - ηe*Ωe^-1*Γj*(ninj + new*ȷ*ni_y*nj_y) - τi*δ) # u2u2
+                Kuuv[j   , i   , e] = on * -Γi * (α[e]^-1*τi*τj*Γj - ηe*Ωe^-1*Γj*(ninj +       ȷ*ni_x*nj_x) - τi*δ) # u1u1
+                Kuuv[j+nf, i   , e] = on * -Γi * (                 - ηe*Ωe^-1*Γj*(             ȷ*ni_y*nj_x)       ) # u1u2
+                Kuuv[j   , i+nf, e] = on * -Γi * (                 - ηe*Ωe^-1*Γj*(             ȷ*ni_x*nj_y)       ) # u2u1
+                Kuuv[j+nf, i+nf, e] = on * -Γi * (α[e]^-1*τi*τj*Γj - ηe*Ωe^-1*Γj*(ninj +       ȷ*ni_y*nj_y) - τi*δ) # u2u2
                 # PC - deactivate terms from new interface implementation
                 Muuv[j   , i   , e] = on * -Γi * (α[e]^-1*τi*τj*Γj - ηe*Ωe^-1*Γj*(ninj + 0*new*ȷ*ni_x*nj_x) - τi*δ) # u1u1
                 Muuv[j+nf, i+nf, e] = on * -Γi * (α[e]^-1*τi*τj*Γj - ηe*Ωe^-1*Γj*(ninj + 0*new*ȷ*ni_y*nj_y) - τi*δ) # u2u2
@@ -299,7 +310,8 @@ function ComputeResidualsFCFV_Stokes_o1(Vxh, Vyh, Pe, mesh, ae, be, ze, sex, sey
         for i=1:nfac
             nodei  = mesh.e2f[e,i]
             dAi    = mesh.Γ[e,i]
-            taui   = mesh.τ[nodei]  
+            # taui   = mesh.τ[nodei] 
+            taui    = mesh.τe[e]
             n      = [mesh.n_x[e,i]; mesh.n_y[e,i]]
             bci    = mesh.bc[nodei]
             Xi     = 0.0 + (bci== 2)*1.0

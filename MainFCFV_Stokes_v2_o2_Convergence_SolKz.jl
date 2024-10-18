@@ -142,6 +142,9 @@ end
     end
 
     # Source term and BCs etc...
+    Vxh    = zeros(mesh.nf)
+    Vyh    = zeros(mesh.nf)
+    Pe     = zeros(mesh.nel)
     Pa     = zeros(mesh.nel)
     Vxa    = zeros(mesh.nel)
     Vya    = zeros(mesh.nel)
@@ -170,7 +173,8 @@ end
 
     # Solve for hybrid variable
     println("Linear solve:")
-    @time Vxh, Vyh, Pe = StokesSolvers(mesh, Kuu, Kup, fu, fp, Muu, solver)
+    Kpp = (sparse([1],[1],[0.0],mesh.nel, mesh.nel))
+    @time StokesSolvers!(Vxh, Vyh, Pe, mesh, Kuu, Kup, -Kup', Kpp, fu, fp, Muu, solver)
 
     # Reconstruct element values
     println("Compute element values:")
@@ -189,7 +193,7 @@ end
     # println("Visualisation:")
     @printf(" %2.2e %2.2e\n", minimum(log10.(mesh.ke)), maximum(log10.(mesh.ke)))
     @printf(" %2.2e %2.2e\n", minimum(sey), maximum(sey))
-    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=cgrad(:lajolla, rev=true) )
+    @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet ) #cmap=cgrad(:lajolla, rev=true)
     ndof = 2*mesh.nf+mesh.nel
     return ndof, err_Vx, err_Vy, err_Txx, err_Tyy, err_Txy, err_P, err_V, err_Tii
 end
@@ -389,5 +393,7 @@ function RunConvergence(mesh_type)
 end 
 
 #Run()
-RunConvergence("Quadrangles" )
+# RunConvergence("Quadrangles" )
 # RunStab()
+
+main( 30, "UnstructTriangles", 0, 0, 500 )

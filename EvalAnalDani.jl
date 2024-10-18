@@ -8,8 +8,10 @@ function EvalAnalDani( x, y, rc, mm, mc )
 # ---------------------------------------------------------------------------
 
 # INPUT:
-gr  = 0;                        # Simple shear: gr=1, er=0
-er  = -1;                       # Strain rate
+# gr  = 0;                        # Simple shear: gr=1, er=0
+# er  = -1;                       # Strain rate
+gr  = 1; 
+er  = 0;
 A   =   mm*(mc-mm)/(mc+mm);
 i   =   1im;
 

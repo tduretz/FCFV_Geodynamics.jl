@@ -157,15 +157,15 @@ end
     # Create sides of mesh
     xmin, xmax = -3.0, 3.0
     ymin, ymax = -3.0, 3.0
-    nx, ny     = 30*n, 30*n
-    solver     = -1
-    R          = 1.0
+    nx, ny     = 20*n, 20*n
+    solver     = 0
+    R          = 0.6
     inclusion  = 1
     eta        = [1.0 100.0]
     # mesh_type  = "Quadrangles"
     # mesh_type  = "UnstructTriangles" 
     # mesh_type  = "TrianglesSameMATLAB"
-    BC         = [2; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
+    BC         = [1; 1; 1; 1] # S E N W --- 1: Dirichlet / 2: Neumann
     # new        = 1 # implementation if interface
 
     # Generate mesh
@@ -175,7 +175,7 @@ end
         mesh = MakeQuadMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC )
     elseif mesh_type=="UnstructTriangles" 
         tau = 1.0
-        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC )
+        mesh = MakeTriangleMesh( nx, ny, xmin, xmax, ymin, ymax, τr, inclusion, R, BC, ((xmax-xmin)/nx)*((ymax-ymin)/ny), 200 )
     elseif mesh_type=="TrianglesSameMATLAB"  
         tau  = 1.0#/5.0
         area = 1.0 # area factor: SETTING REPRODUCE THE RESULTS OF MATLAB CODE USING TRIANGLE
@@ -208,6 +208,9 @@ end
     gbar   = zeros(mesh.nel,mesh.nf_el, 2)
     println("Model configuration :")
     @time SetUpProblem!(mesh, Pa, Pa_f, Vxa, Vya, Sxxa, Syya, Sxya, VxDir, VyDir, SxxNeu, SyyNeu, SxyNeu, SyxNeu, sex, sey, R, eta, gbar)
+
+    mesh.τe .=   mesh.ke
+    @show minimum(mesh.τe), maximum(mesh.τe)
 
     # Compute some mesh vectors 
     println("Compute FCFV vectors:")
@@ -256,6 +259,8 @@ end
     # @time PlotMakie( mesh, Verr, xmin, xmax, ymin, ymax, :jet1, minimum(Verr), maximum(Verr) )
     # @time PlotMakie( mesh, Pe, xmin, xmax, ymin, ymax; cmap=:jet1, min_v =minimum(Pa), max_v =maximum(Pa) )
     @time PlotMakie( mesh, Vye, xmin, xmax, ymin, ymax; cmap=:jet1, min_v =minimum(Vye), max_v =maximum(Vye) )
+    # @time PlotMakie( mesh, Vxe, xmin, xmax, ymin, ymax; cmap=:jet1, min_v =minimum(Vxe), max_v =maximum(Vxe) )
+
     # @time PlotMakie( mesh, Perr, xmin, xmax, ymin, ymax, :jet1, minimum(Perr), maximum(Perr) )
     # @time PlotMakie( mesh, Txxe, xmin, xmax, ymin, ymax, :jet1, -6.0, 2.0 )
     # @time PlotMakie( mesh, mesh.ke, xmin, xmax, ymin, ymax; cmap=:jet1 )
@@ -264,13 +269,13 @@ end
     return maximum(Perr)
 end
 
-new = 0 
+new = 1 
 n   = 2
 τ   = 1.0
 o2  = 0
 
-main( n, "Quadrangles", 5.0, o2, new )
-# main( n, "UnstructTriangles", 0.1, o2, new )
+# main( n, "Quadrangles", 5.0, o2, new )
+main( n, "UnstructTriangles", 0.1, o2, new )
 
 # τ    = 1:5:200
 # perr = zeros(size(τ))

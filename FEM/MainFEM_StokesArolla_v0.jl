@@ -52,14 +52,14 @@ end
     g      = [0.0 -1.0]
     ρ      = 1
     η      = 1.0
-    solver =-1
+    solver = -1
 
     #-----------------------------------------------------------------#
     # Mesh generation from data file
     xp, yp, tp = read_data("./FEM/arolla51.txt"; resol=100, visu_chk=false)
     Lc     = maximum(xp) - minimum(xp)   
     xp, yp = xp./Lc, yp./Lc
-    # # Add sliding section
+    # Add sliding section
     tp[xp.>2200 .&& xp.<2500 .&& yp.<2700] .= 4
     # Check
     # p = Plots.scatter( xp[tp.==1]./1e3, yp[tp.==1]./1e3, markershape =:cross, label="Base")
@@ -102,7 +102,7 @@ end
     @time Kuu, Kup, bu, bp = ElementAssemblyLoopFEM_v2( se, mesh, ipx, ipw, N, dNdX, Vx, Vy, P )
     
     #-----------------------------------------------------------------#
-    coef  = zeros(mesh.nel*mesh.npel)
+    coef  = 0 .*ones(mesh.nel*mesh.npel)
     Kpp   = spdiagm(coef)
     @time StokesSolvers!(Vx, Vy, P, mesh, Kuu, Kup, -Kup', Kpp, bu, bp, Kuu, solver; penalty=1e2)
     
@@ -132,5 +132,5 @@ end
 end
 
 for i=1:1
-   main( 1, 7, 1, 6, 0., 0., 0. )
+   main( 1, 7, 1, 3, 0., 0., 0. )
 end
